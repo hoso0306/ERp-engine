@@ -114,9 +114,9 @@ Thiết lập môi trường Docker và PostgreSQL cho Development.
 
 ### Definition of Done
 
-* [ ] Docker Compose hoạt động.
-* [ ] PostgreSQL chạy thành công.
-* [ ] Có thể kết nối Database.
+* [ v] Docker Compose hoạt động.
+* [ v] PostgreSQL chạy thành công.
+* [ v] Có thể kết nối Database.
 
 **Commit đề xuất**
 
