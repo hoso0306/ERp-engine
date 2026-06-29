@@ -6,12 +6,119 @@ datasource db {
   provider = "postgresql"
 }
 
+// ──────────────────────────────────────
+// Enum
+// ──────────────────────────────────────
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ──────────────────────────────────────
+// System
+// ──────────────────────────────────────
+
 model User {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(cuid())
   email     String   @unique
   name      String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  saleCustomers    Customer[] @relation("CustomerSale")
+  createdCustomers Customer[] @relation("CustomerCreatedBy")
+  updatedCustomers Customer[] @relation("CustomerUpdatedBy")
+
   @@map("users")
+}
+
+model RunningNumber {
+  id            String   @id @default(cuid())
+  type          String   @unique
+  prefix        String
+  lastNumber    Int      @default(0) @map("last_number")
+  paddingLength Int      @default(6) @map("padding_length")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("running_numbers")
+}
+
+// ──────────────────────────────────────
+// Master Data
+// ──────────────────────────────────────
+
+model CustomerGroup {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customers Customer[]
+
+  @@map("customer_groups")
+}
+
+model DeliveryRoute {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customers Customer[]
+
+  @@map("delivery_routes")
+}
+
+// ──────────────────────────────────────
+// Customer
+// ──────────────────────────────────────
+
+model Customer {
+  id              String         @id @default(cuid())
+  code            String         @unique
+  name            String
+  phone           String         @unique
+  email           String?
+  province        String?
+  district        String?
+  ward            String?
+  address         String?
+
+  customerGroupId String?        @map("customer_group_id")
+  deliveryRouteId String?        @map("delivery_route_id")
+  saleId          String?        @map("sale_id")
+
+  priority        Priority       @default(MEDIUM)
+  status          CustomerStatus @default(ACTIVE)
+  defaultDiscount Decimal        @default(0) @map("default_discount") @db.Decimal(5, 2)
+  debtLimit       Decimal        @default(0) @map("debt_limit") @db.Decimal(15, 0)
+  debtTermDays    Int            @default(30) @map("debt_term_days")
+  note            String?
+
+  createdBy       String?        @map("created_by")
+  updatedBy       String?        @map("updated_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  deliveryRoute   DeliveryRoute? @relation(fields: [deliveryRouteId], references: [id])
+  sale            User?          @relation("CustomerSale", fields: [saleId], references: [id])
+  createdByUser   User?          @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser   User?          @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([customerGroupId])
+  @@index([deliveryRouteId])
+  @@index([saleId])
+  @@index([status])
+  @@index([deletedAt])
+
+  @@map("customers")
 }

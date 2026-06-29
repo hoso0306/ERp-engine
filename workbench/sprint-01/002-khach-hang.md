@@ -75,13 +75,13 @@ Hoàn thành chức năng xem danh sách khách hàng.
 
 ### Definition of Done
 
-* [ ] Database đáp ứng chức năng.
-* [ ] API danh sách hoạt động.
-* [ ] Giao diện danh sách hoạt động.
-* [ ] Tìm kiếm hoạt động.
-* [ ] Bộ lọc hoạt động.
-* [ ] Phân trang hoạt động.
-* [ ] Build thành công.
+* [x] Database đáp ứng chức năng.
+* [x] API danh sách hoạt động.
+* [x] Giao diện danh sách hoạt động.
+* [x] Tìm kiếm hoạt động.
+* [x] Bộ lọc hoạt động.
+* [x] Phân trang hoạt động.
+* [x] Build thành công.
 
 **Commit**
 
