@@ -174,10 +174,10 @@ Frontend có thể gọi thành công API từ Backend.
 
 ### Definition of Done
 
-* [ ] Frontend gọi được API.
-* [ ] Hiển thị dữ liệu thành công.
-* [ ] Không lỗi CORS.
-* [ ] Không lỗi Network.
+* [ v] Frontend gọi được API.
+* [ v] Hiển thị dữ liệu thành công.
+* [ v] Không lỗi CORS.
+* [ v] Không lỗi Network.
 
 **Commit đề xuất**
 
@@ -195,15 +195,15 @@ Kiểm tra toàn bộ Foundation trước khi bắt đầu phát triển nghiệ
 
 ### Definition of Done
 
-* [ ] Frontend hoạt động.
-* [ ] Backend hoạt động.
-* [ ] PostgreSQL hoạt động.
-* [ ] Prisma hoạt động.
-* [ ] Docker hoạt động.
-* [ ] Health API hoạt động.
-* [ ] Build thành công.
-* [ ] Không còn lỗi TypeScript.
-* [ ] Không còn lỗi Runtime.
+* [ v] Frontend hoạt động.
+* [ v] Backend hoạt động.
+* [ v] PostgreSQL hoạt động.
+* [ v] Prisma hoạt động.
+* [ v] Docker hoạt động.
+* [ v] Health API hoạt động.
+* [ v] Build thành công.
+* [ v] Không còn lỗi TypeScript.
+* [ v] Không còn lỗi Runtime.
 
 **Commit đề xuất**
 
