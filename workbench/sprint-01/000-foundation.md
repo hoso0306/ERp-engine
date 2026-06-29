@@ -134,9 +134,9 @@ Thiết lập Prisma và kết nối với PostgreSQL.
 
 ### Definition of Done
 
-* [ ] Prisma hoạt động.
-* [ ] Migration đầu tiên thành công.
-* [ ] Prisma Studio mở được.
+* [ v] Prisma hoạt động.
+* [ v] Migration đầu tiên thành công.
+* [ v] Prisma Studio mở được.
 
 **Commit đề xuất**
 
@@ -154,9 +154,9 @@ Tạo API kiểm tra trạng thái hoạt động của hệ thống.
 
 ### Definition of Done
 
-* [ ] API hoạt động.
-* [ ] Trả về trạng thái hệ thống.
-* [ ] Có thể kiểm tra Backend đã chạy.
+* [v ] API hoạt động.
+* [v ] Trả về trạng thái hệ thống.
+* [v ] Có thể kiểm tra Backend đã chạy.
 
 **Commit đề xuất**
 
