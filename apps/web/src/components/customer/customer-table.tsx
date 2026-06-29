@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -51,6 +52,8 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
 };
 
 export function CustomerTable({ customers, meta, onPageChange }: CustomerTableProps) {
+  const router = useRouter();
+
   return (
     <div>
       <div className="rounded-md border">
@@ -73,7 +76,7 @@ export function CustomerTable({ customers, meta, onPageChange }: CustomerTablePr
               const status = statusMap[c.status] ?? statusMap.ACTIVE;
 
               return (
-                <TableRow key={c.id}>
+                <TableRow key={c.id} className="cursor-pointer" onClick={() => router.push(`/customers/${c.id}`)}>
                   <TableCell className="font-mono text-xs">{c.code}</TableCell>
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell>{c.phone}</TableCell>

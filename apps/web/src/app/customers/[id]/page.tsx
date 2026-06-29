@@ -1,0 +1,162 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
+import { toast } from "sonner";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+interface Customer {
+  id: string;
+  code: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  province: string | null;
+  district: string | null;
+  ward: string | null;
+  address: string | null;
+  priority: string;
+  status: string;
+  defaultDiscount: string;
+  debtLimit: string;
+  debtTermDays: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customerGroup: { id: string; name: string } | null;
+  deliveryRoute: { id: string; name: string } | null;
+  sale: { id: string; name: string } | null;
+}
+
+const priorityLabels: Record<string, string> = { LOW: "Thấp", MEDIUM: "Trung bình", HIGH: "Cao" };
+const statusLabels: Record<string, string> = { ACTIVE: "Hoạt động", INACTIVE: "Ngừng hoạt động" };
+
+function Field({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-medium">{value || "—"}</dd>
+    </div>
+  );
+}
+
+export default function CustomerDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/customers/${params.id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Không tìm thấy khách hàng.");
+        return res.json();
+      })
+      .then(setCustomer)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  async function handleDelete() {
+    try {
+      const res = await fetch(`${API_URL}/api/customers/${params.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể xoá khách hàng.");
+        return;
+      }
+      toast.success("Đã xoá khách hàng.");
+      router.push("/customers");
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    }
+  }
+
+  if (loading) return <Loading />;
+  if (error) return <ErrorState description={error} onRetry={() => router.refresh()} />;
+  if (!customer) return null;
+
+  const fullAddress = [customer.address, customer.ward, customer.district, customer.province]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={customer.name}
+        description={customer.code}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" render={<Link href={`/customers/${customer.id}/edit`} />}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Chỉnh sửa
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Xoá
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="flex gap-2">
+        <Badge variant={customer.status === "ACTIVE" ? "default" : "secondary"}>
+          {statusLabels[customer.status]}
+        </Badge>
+        <Badge variant={customer.priority === "HIGH" ? "destructive" : customer.priority === "LOW" ? "secondary" : "default"}>
+          {priorityLabels[customer.priority]}
+        </Badge>
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin cơ bản</h3>
+        <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <Field label="Số điện thoại" value={customer.phone} />
+          <Field label="Email" value={customer.email} />
+          <Field label="Địa chỉ" value={fullAddress} />
+        </dl>
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin kinh doanh</h3>
+        <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <Field label="Nhóm khách hàng" value={customer.customerGroup?.name} />
+          <Field label="Tuyến giao hàng" value={customer.deliveryRoute?.name} />
+          <Field label="Người phụ trách" value={customer.sale?.name} />
+          <Field label="Chiết khấu" value={`${customer.defaultDiscount}%`} />
+          <Field label="Hạn mức công nợ" value={`${Number(customer.debtLimit).toLocaleString("vi-VN")} đ`} />
+          <Field label="Thời hạn công nợ" value={`${customer.debtTermDays} ngày`} />
+        </dl>
+      </div>
+
+      {customer.note && (
+        <div className="rounded-lg border p-6">
+          <h3 className="mb-2 text-sm font-medium text-muted-foreground">Ghi chú</h3>
+          <p className="text-sm">{customer.note}</p>
+        </div>
+      )}
+
+      <div className="text-xs text-muted-foreground">
+        Tạo lúc: {new Date(customer.createdAt).toLocaleString("vi-VN")} · Cập nhật: {new Date(customer.updatedAt).toLocaleString("vi-VN")}
+      </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Xoá khách hàng"
+        description={`Bạn có chắc muốn xoá "${customer.name}" (${customer.code})? Hành động này không thể hoàn tác.`}
+        confirmLabel="Xoá"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
+    </div>
+  );
+}

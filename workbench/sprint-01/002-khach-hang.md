@@ -99,11 +99,11 @@ Hoàn thành chức năng thêm mới khách hàng.
 
 ### Definition of Done
 
-* [ ] API tạo khách hàng hoạt động.
-* [ ] Form thêm khách hàng hoạt động.
-* [ ] Validation hoạt động.
-* [ ] Lưu dữ liệu thành công.
-* [ ] Build thành công.
+* [x] API tạo khách hàng hoạt động.
+* [x] Form thêm khách hàng hoạt động.
+* [x] Validation hoạt động.
+* [x] Lưu dữ liệu thành công.
+* [x] Build thành công.
 
 **Commit**
 
@@ -121,11 +121,11 @@ Hoàn thành chức năng xem và cập nhật thông tin khách hàng.
 
 ### Definition of Done
 
-* [ ] API hoạt động.
-* [ ] Trang chi tiết hoạt động.
-* [ ] Chỉnh sửa thành công.
-* [ ] Hiển thị đúng dữ liệu.
-* [ ] Build thành công.
+* [x] API hoạt động.
+* [x] Trang chi tiết hoạt động.
+* [x] Chỉnh sửa thành công.
+* [x] Hiển thị đúng dữ liệu.
+* [x] Build thành công.
 
 **Commit**
 
@@ -143,10 +143,12 @@ Hoàn thành chức năng xóa mềm khách hàng.
 
 ### Definition of Done
 
-* [ ] API Soft Delete hoạt động.
-* [ ] Không xóa dữ liệu vật lý.
-* [ ] Tuân thủ Business Rule.
-* [ ] Build thành công.
+* [x] API Soft Delete hoạt động.
+* [x] Không xóa dữ liệu vật lý.
+* [x] Tuân thủ Business Rule.
+* [x] Tab "Đã xoá" hiển thị KH đã xoá.
+* [x] Khôi phục KH đã xoá hoạt động.
+* [x] Build thành công.
 
 **Commit**
 
@@ -164,11 +166,13 @@ Hoàn thành chức năng Import và Export Excel.
 
 ### Definition of Done
 
-* [ ] Import Excel hoạt động.
-* [ ] Export Excel hoạt động.
-* [ ] Kiểm tra dữ liệu khi Import.
-* [ ] Thông báo lỗi rõ ràng.
-* [ ] Build thành công.
+* [x] Import Excel hoạt động.
+* [x] Export Excel hoạt động.
+* [x] File mẫu import có đầy đủ các trường giống export.
+* [x] Trường bắt buộc đánh dấu * trong file mẫu.
+* [x] Kiểm tra dữ liệu khi Import.
+* [x] Thông báo lỗi rõ ràng.
+* [x] Build thành công.
 
 **Commit**
 
@@ -186,13 +190,13 @@ Kiểm tra và hoàn thiện toàn bộ Module.
 
 ### Definition of Done
 
-* [ ] Toàn bộ chức năng hoạt động.
-* [ ] Không còn lỗi TypeScript.
-* [ ] Không còn lỗi Runtime.
-* [ ] Build thành công.
-* [ ] Đã tự review.
-* [ ] Đề xuất Commit Message.
-* [ ] Dừng.
+* [x] Toàn bộ chức năng hoạt động.
+* [x] Không còn lỗi TypeScript.
+* [x] Không còn lỗi Runtime.
+* [x] Build thành công.
+* [x] Đã tự review.
+* [x] Đề xuất Commit Message.
+* [x] Dừng.
 
 **Commit**
 
@@ -206,10 +210,10 @@ chore(customer): complete customer module
 
 Module được xem là hoàn thành khi:
 
-* [ ] Hoàn thành toàn bộ Task.
+* [x] Hoàn thành toàn bộ Task.
 * [ ] Đã Commit.
 * [ ] Đã Push GitHub.
-* [ ] Sẵn sàng cho Module tiếp theo.
+* [x] Sẵn sàng cho Module tiếp theo.
 
 ---
 
