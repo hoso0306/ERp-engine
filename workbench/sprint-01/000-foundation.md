@@ -18,8 +18,8 @@ Sau khi hoàn thành:
 
 # Trạng thái
 
-- [ ] Task 01 - Khởi tạo Workspace
-- [ ] Task 02 - Khởi tạo Frontend
+- [V ] Task 01 - Khởi tạo Workspace
+- [V ] Task 02 - Khởi tạo Frontend
 - [ ] Task 03 - Khởi tạo Backend
 - [ ] Task 04 - Docker & PostgreSQL
 - [ ] Task 05 - Prisma ORM
@@ -53,10 +53,10 @@ Khởi tạo Workspace của dự án theo đúng cấu trúc đã thống nhấ
 
 ### Definition of Done
 
-- [ ] pnpm workspace hoạt động.
-- [ ] apps được nhận diện.
-- [ ] packages được nhận diện.
-- [ ] Có thể chạy lệnh pnpm trên toàn bộ dự án.
+- [v ] pnpm workspace hoạt động.
+- [v ] apps được nhận diện.
+- [v ] packages được nhận diện.
+- [v ] Có thể chạy lệnh pnpm trên toàn bộ dự án.
 
 **Commit đề xuất**
 
@@ -74,9 +74,9 @@ Khởi tạo ứng dụng Web sử dụng Next.js và TypeScript.
 
 ### Definition of Done
 
-* [ ] Frontend chạy thành công.
-* [ ] Không lỗi.
-* [ ] Có thể truy cập bằng trình duyệt.
+* [ v] Frontend chạy thành công.
+* [v ] Không lỗi.
+* [v ] Có thể truy cập bằng trình duyệt.
 
 **Commit đề xuất**
 
@@ -94,9 +94,9 @@ Khởi tạo API sử dụng NestJS và TypeScript.
 
 ### Definition of Done
 
-* [ ] Backend chạy thành công.
-* [ ] Không lỗi.
-* [ ] Có thể gọi API.
+* [ v] Backend chạy thành công.
+* [ v] Không lỗi.
+* [ v] Có thể gọi API.
 
 **Commit đề xuất**
 
