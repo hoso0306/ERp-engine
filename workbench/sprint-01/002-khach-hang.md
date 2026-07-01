@@ -211,8 +211,8 @@ chore(customer): complete customer module
 Module được xem là hoàn thành khi:
 
 * [x] Hoàn thành toàn bộ Task.
-* [ ] Đã Commit.
-* [ ] Đã Push GitHub.
+* [x] Đã Commit.
+* [x] Đã Push GitHub.
 * [x] Sẵn sàng cho Module tiếp theo.
 
 ---

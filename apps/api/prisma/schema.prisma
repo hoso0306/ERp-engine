@@ -21,6 +21,40 @@ enum CustomerStatus {
   INACTIVE
 }
 
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum ParameterType {
+  NUMBER
+  TEXT
+  ENUM
+  BOOLEAN
+}
+
+enum VersionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum RoundType {
+  NONE
+  CEIL
+  FLOOR
+  ROUND
+}
+
+enum PricingRuleType {
+  MIN_AREA
+  MIN_DIMENSION
+  MIN_VALUE
+  ROUND
+  CUSTOM
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -74,6 +108,254 @@ model DeliveryRoute {
   customers Customer[]
 
   @@map("delivery_routes")
+}
+
+// ──────────────────────────────────────
+// Unit & Product Type
+// ──────────────────────────────────────
+
+model Unit {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  materials Material[]
+  products  Product[]
+
+  @@map("units")
+}
+
+model ProductType {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  products  Product[]
+
+  @@map("product_types")
+}
+
+// ──────────────────────────────────────
+// Material
+// ──────────────────────────────────────
+
+model Material {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  unitId    String   @map("unit_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  unit             Unit                      @relation(fields: [unitId], references: [id])
+  prices           MaterialPrice[]
+  requirementItems MaterialRequirementItem[]
+
+  @@index([isActive])
+  @@map("materials")
+}
+
+model MaterialPrice {
+  id            String    @id @default(cuid())
+  materialId    String    @map("material_id")
+  supplierId    String?   @map("supplier_id")
+  price         Decimal   @db.Decimal(15, 2)
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isDefault     Boolean   @default(false) @map("is_default")
+  note          String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  material      Material  @relation(fields: [materialId], references: [id])
+
+  @@index([materialId])
+  @@index([materialId, isDefault])
+  @@index([materialId, effectiveFrom])
+  @@map("material_prices")
+}
+
+// ──────────────────────────────────────
+// Product
+// ──────────────────────────────────────
+
+model Product {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  name          String
+  productTypeId String        @map("product_type_id")
+  unitId        String        @map("unit_id")
+  status        ProductStatus @default(DRAFT)
+  description   String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  productType         ProductType          @relation(fields: [productTypeId], references: [id])
+  unit                Unit                 @relation(fields: [unitId], references: [id])
+  parameters          ProductParameter[]
+  pricingRule         PricingRule?
+  materialRequirement MaterialRequirement?
+
+  @@index([productTypeId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+model ProductParameter {
+  id             String        @id @default(cuid())
+  productId      String        @map("product_id")
+  name           String
+  label          String
+  type           ParameterType
+  unit           String?
+  defaultValue   String?       @map("default_value")
+  isRequired     Boolean       @default(false) @map("is_required")
+  minValue       Decimal?      @map("min_value") @db.Decimal(15, 4)
+  maxValue       Decimal?      @map("max_value") @db.Decimal(15, 4)
+  step           Decimal?      @db.Decimal(15, 4)
+  usedInPricing  Boolean       @default(true) @map("used_in_pricing")
+  usedInMaterial Boolean       @default(true) @map("used_in_material")
+  displayOrder   Int           @default(0) @map("display_order")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  product        Product                  @relation(fields: [productId], references: [id])
+  options        ProductParameterOption[]
+
+  @@unique([productId, name])
+  @@index([productId, displayOrder])
+  @@map("product_parameters")
+}
+
+model ProductParameterOption {
+  id           String           @id @default(cuid())
+  parameterId  String           @map("parameter_id")
+  value        String
+  label        String?
+  displayOrder Int              @default(0) @map("display_order")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  parameter    ProductParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
+
+  @@index([parameterId, displayOrder])
+  @@map("product_parameter_options")
+}
+
+// ──────────────────────────────────────
+// Pricing Rule
+// ──────────────────────────────────────
+
+model PricingRule {
+  id        String               @id @default(cuid())
+  productId String               @unique @map("product_id")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  product   Product              @relation(fields: [productId], references: [id])
+  versions  PricingRuleVersion[]
+
+  @@map("pricing_rules")
+}
+
+model PricingRuleVersion {
+  id              String            @id @default(cuid())
+  pricingRuleId   String            @map("pricing_rule_id")
+  versionNumber   Int               @map("version_number")
+  name            String?
+  expression      String?
+  priceRoundType  RoundType         @default(NONE) @map("price_round_type")
+  priceRoundValue Decimal?          @map("price_round_value") @db.Decimal(15, 0)
+  status          VersionStatus     @default(DRAFT)
+  note            String?
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  pricingRule     PricingRule       @relation(fields: [pricingRuleId], references: [id])
+  items           PricingRuleItem[]
+
+  @@unique([pricingRuleId, versionNumber])
+  @@index([pricingRuleId, status])
+  @@map("pricing_rule_versions")
+}
+
+model PricingRuleItem {
+  id                   String             @id @default(cuid())
+  pricingRuleVersionId String             @map("pricing_rule_version_id")
+  ruleType             PricingRuleType    @map("rule_type")
+  targetParameter      String?            @map("target_parameter")
+  value                Decimal            @db.Decimal(15, 4)
+  displayOrder         Int                @default(0) @map("display_order")
+  description          String?
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  pricingRuleVersion   PricingRuleVersion @relation(fields: [pricingRuleVersionId], references: [id], onDelete: Cascade)
+
+  @@index([pricingRuleVersionId])
+  @@map("pricing_rule_items")
+}
+
+// ──────────────────────────────────────
+// Material Requirement
+// ──────────────────────────────────────
+
+model MaterialRequirement {
+  id        String                       @id @default(cuid())
+  productId String                       @unique @map("product_id")
+  createdAt DateTime                     @default(now()) @map("created_at")
+  updatedAt DateTime                     @updatedAt @map("updated_at")
+
+  product   Product                      @relation(fields: [productId], references: [id])
+  versions  MaterialRequirementVersion[]
+
+  @@map("material_requirements")
+}
+
+model MaterialRequirementVersion {
+  id                    String                    @id @default(cuid())
+  materialRequirementId String                    @map("material_requirement_id")
+  versionNumber         Int                       @map("version_number")
+  name                  String?
+  status                VersionStatus             @default(DRAFT)
+  note                  String?
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
+
+  materialRequirement   MaterialRequirement       @relation(fields: [materialRequirementId], references: [id])
+  items                 MaterialRequirementItem[]
+
+  @@unique([materialRequirementId, versionNumber])
+  @@index([materialRequirementId, status])
+  @@map("material_requirement_versions")
+}
+
+model MaterialRequirementItem {
+  id                           String                     @id @default(cuid())
+  materialRequirementVersionId String                     @map("material_requirement_version_id")
+  materialId                   String                     @map("material_id")
+  expression                   String
+  wastePercent                 Decimal                    @default(0) @map("waste_percent") @db.Decimal(5, 2)
+  roundType                    RoundType                  @default(NONE) @map("round_type")
+  roundValue                   Decimal?                   @map("round_value") @db.Decimal(15, 4)
+  note                         String?
+  displayOrder                 Int                        @default(0) @map("display_order")
+  createdAt                    DateTime                   @default(now()) @map("created_at")
+  updatedAt                    DateTime                   @updatedAt @map("updated_at")
+
+  materialRequirementVersion   MaterialRequirementVersion @relation(fields: [materialRequirementVersionId], references: [id], onDelete: Cascade)
+  material                     Material                   @relation(fields: [materialId], references: [id])
+
+  @@index([materialRequirementVersionId])
+  @@index([materialId])
+  @@map("material_requirement_items")
 }
 
 // ──────────────────────────────────────

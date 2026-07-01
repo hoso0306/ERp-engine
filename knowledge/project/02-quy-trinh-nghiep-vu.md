@@ -223,3 +223,24 @@ Hoàn tất
 Quy trình trên phản ánh cách vận hành hiện tại của doanh nghiệp.
 
 Trong quá trình triển khai, nếu khách hàng thay đổi quy trình hoặc bổ sung nghiệp vụ mới, tài liệu này sẽ được cập nhật trước khi phát triển phần mềm.
+
+# 7. Business Snapshot Rule
+
+Khi một chứng từ được xác nhận, hệ thống phải lưu Snapshot của toàn bộ dữ liệu phục vụ tính toán.
+
+Snapshot bao gồm nhưng không giới hạn:
+
+- Thông tin sản phẩm
+- Cấu hình sản phẩm
+- Phiên bản công thức tính giá
+- Phiên bản BOM
+- Danh sách nguyên liệu
+- Giá nguyên liệu
+- Giá vốn
+- Giá bán
+- Chiết khấu
+- Thuế
+- Lợi nhuận
+- Thông tin khách hàng liên quan
+
+Sau khi Snapshot được tạo, mọi thay đổi của dữ liệu gốc không được làm thay đổi kết quả của chứng từ đã xác nhận.
