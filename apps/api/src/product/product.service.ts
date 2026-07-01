@@ -4,6 +4,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, ProductStatus, ParameterType, RoundType, PricingRuleType } from '@prisma/client';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -1152,6 +1153,199 @@ export class ProductService {
     }
 
     return { inputParams, items, totalCost };
+  }
+
+  // ──────────────────────────────────────
+  // Export
+  // ──────────────────────────────────────
+
+  async exportProduct(productId: string): Promise<{ buffer: Buffer; code: string }> {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        productType: { select: { name: true } },
+        unit: { select: { name: true } },
+      },
+    });
+    if (!product) throw new NotFoundException('Sản phẩm không tồn tại.');
+
+    const parameters = await this.prisma.productParameter.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'asc' },
+      include: { options: { orderBy: { displayOrder: 'asc' } } },
+    });
+
+    const pricingRule = await this.prisma.pricingRule.findUnique({
+      where: { productId },
+      include: {
+        versions: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+          include: { items: { orderBy: { displayOrder: 'asc' } } },
+        },
+      },
+    });
+
+    const materialReq = await this.prisma.materialRequirement.findUnique({
+      where: { productId },
+      include: {
+        versions: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+          include: {
+            items: {
+              orderBy: { displayOrder: 'asc' },
+              include: {
+                material: {
+                  select: {
+                    code: true,
+                    name: true,
+                    unit: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ERP Engine';
+    workbook.created = new Date();
+
+    // Sheet 1 — Product Info
+    const infoSheet = workbook.addWorksheet('Thông tin sản phẩm');
+    infoSheet.getColumn(1).width = 24;
+    infoSheet.getColumn(2).width = 40;
+    const infoRows = [
+      ['Mã sản phẩm', product.code],
+      ['Tên sản phẩm', product.name],
+      ['Loại sản phẩm', product.productType?.name ?? ''],
+      ['Đơn vị tính', product.unit?.name ?? ''],
+      ['Trạng thái', product.status],
+      ['Mô tả', product.description ?? ''],
+      ['Ngày tạo', product.createdAt.toLocaleString('vi-VN')],
+      ['Cập nhật', product.updatedAt.toLocaleString('vi-VN')],
+    ];
+    infoRows.forEach(([label, value]) => {
+      const row = infoSheet.addRow([label, value]);
+      row.getCell(1).font = { bold: true };
+    });
+
+    // Sheet 2 — Parameters
+    const paramSheet = workbook.addWorksheet('Thông số sản phẩm');
+    paramSheet.columns = [
+      { header: 'Tên biến', key: 'name', width: 20 },
+      { header: 'Nhãn', key: 'label', width: 25 },
+      { header: 'Kiểu', key: 'type', width: 12 },
+      { header: 'Đơn vị', key: 'unit', width: 12 },
+      { header: 'Bắt buộc', key: 'isRequired', width: 12 },
+      { header: 'Giá trị mặc định', key: 'defaultValue', width: 20 },
+      { header: 'Min', key: 'minValue', width: 10 },
+      { header: 'Max', key: 'maxValue', width: 10 },
+      { header: 'Step', key: 'step', width: 10 },
+      { header: 'Dùng báo giá', key: 'usedInPricing', width: 14 },
+      { header: 'Dùng định mức', key: 'usedInMaterial', width: 14 },
+      { header: 'Thứ tự', key: 'displayOrder', width: 10 },
+      { header: 'Options (ENUM)', key: 'options', width: 50 },
+    ];
+    paramSheet.getRow(1).font = { bold: true };
+    for (const p of parameters) {
+      paramSheet.addRow({
+        name: p.name,
+        label: p.label,
+        type: p.type,
+        unit: p.unit ?? '',
+        isRequired: p.isRequired ? 'Có' : 'Không',
+        defaultValue: p.defaultValue ?? '',
+        minValue: p.minValue !== null ? Number(p.minValue) : '',
+        maxValue: p.maxValue !== null ? Number(p.maxValue) : '',
+        step: p.step !== null ? Number(p.step) : '',
+        usedInPricing: p.usedInPricing ? 'Có' : 'Không',
+        usedInMaterial: p.usedInMaterial ? 'Có' : 'Không',
+        displayOrder: p.displayOrder,
+        options: p.options
+          .map((o) => (o.label ? `${o.value}:${o.label}` : o.value))
+          .join(' | '),
+      });
+    }
+
+    // Sheet 3 — Pricing Rule
+    const priceSheet = workbook.addWorksheet('Quy tắc báo giá');
+    priceSheet.getColumn(1).width = 24;
+    priceSheet.getColumn(2).width = 60;
+    const activePriceVersion = pricingRule?.versions?.[0] ?? null;
+    if (activePriceVersion) {
+      const metaRows = [
+        ['Phiên bản', `v${activePriceVersion.versionNumber}${activePriceVersion.name ? ` — ${activePriceVersion.name}` : ''}`],
+        ['Expression', activePriceVersion.expression ?? ''],
+        ['Round Type', activePriceVersion.priceRoundType],
+        ['Round Value', activePriceVersion.priceRoundValue !== null ? Number(activePriceVersion.priceRoundValue) : ''],
+        ['Ghi chú', activePriceVersion.note ?? ''],
+      ];
+      metaRows.forEach(([label, value]) => {
+        const row = priceSheet.addRow([label, value]);
+        row.getCell(1).font = { bold: true };
+      });
+
+      if (activePriceVersion.items.length > 0) {
+        priceSheet.addRow([]);
+        const headerRow = priceSheet.addRow(['Loại Rule', 'Thông số áp dụng', 'Giá trị tối thiểu', 'Mô tả']);
+        headerRow.font = { bold: true };
+        for (const item of activePriceVersion.items) {
+          priceSheet.addRow([
+            item.ruleType,
+            item.targetParameter ?? '',
+            Number(item.value),
+            item.description ?? '',
+          ]);
+        }
+      }
+    } else {
+      priceSheet.addRow(['Chưa có phiên bản ACTIVE']);
+    }
+
+    // Sheet 4 — Material Requirement
+    const matSheet = workbook.addWorksheet('Định mức vật liệu');
+    matSheet.getColumn(1).width = 24;
+    matSheet.getColumn(2).width = 40;
+    const activeMatVersion = materialReq?.versions?.[0] ?? null;
+    if (activeMatVersion) {
+      const matMetaRows = [
+        ['Phiên bản', `v${activeMatVersion.versionNumber}${activeMatVersion.name ? ` — ${activeMatVersion.name}` : ''}`],
+        ['Ghi chú', activeMatVersion.note ?? ''],
+      ];
+      matMetaRows.forEach(([label, value]) => {
+        const row = matSheet.addRow([label, value]);
+        row.getCell(1).font = { bold: true };
+      });
+
+      if (activeMatVersion.items.length > 0) {
+        matSheet.addRow([]);
+        const matHeader = matSheet.addRow([
+          'Nguyên liệu', 'Mã', 'Đơn vị', 'Expression', 'Hao hụt (%)', 'Round Step', 'Ghi chú',
+        ]);
+        matHeader.font = { bold: true };
+        matSheet.getColumn(4).width = 50;
+        for (const item of activeMatVersion.items) {
+          matSheet.addRow([
+            item.material.name,
+            item.material.code,
+            item.material.unit?.name ?? '',
+            item.expression,
+            Number(item.wastePercent),
+            item.roundValue !== null ? Number(item.roundValue) : 0,
+            item.note ?? '',
+          ]);
+        }
+      }
+    } else {
+      matSheet.addRow(['Chưa có phiên bản ACTIVE']);
+    }
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return { buffer: Buffer.from(arrayBuffer), code: product.code };
   }
 
   // ──────────────────────────────────────

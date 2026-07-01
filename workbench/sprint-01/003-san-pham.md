@@ -306,9 +306,9 @@ Cho phép Export toàn bộ dữ liệu Module Product.
 
 ### Definition of Done
 
-- [ ] Export hoạt động.
-- [ ] File đúng dữ liệu.
-- [ ] Build thành công.
+- [x] Export hoạt động.
+- [x] File đúng dữ liệu.
+- [x] Build thành công.
 
 **Commit**
 
@@ -326,12 +326,12 @@ Kiểm tra và hoàn thiện toàn bộ Module.
 
 ### Definition of Done
 
-- [ ] Không lỗi Runtime.
-- [ ] Không lỗi TypeScript.
-- [ ] Build thành công.
-- [ ] Tự Review.
-- [ ] Đề xuất Commit.
-- [ ] Dừng.
+- [x] Không lỗi Runtime.
+- [x] Không lỗi TypeScript.
+- [x] Build thành công.
+- [x] Tự Review.
+- [x] Đề xuất Commit.
+- [x] Dừng.
 
 **Commit**
 
@@ -345,10 +345,10 @@ chore(product): complete product module
 
 Module được xem là hoàn thành khi:
 
-- [ ] Hoàn thành toàn bộ Task.
-- [ ] Đã Commit.
-- [ ] Đã Push GitHub.
-- [ ] Sẵn sàng cho Module Báo giá.
+- [ x] Hoàn thành toàn bộ Task.
+- [ x] Đã Commit.
+- [ x] Đã Push GitHub.
+- [ x] Sẵn sàng cho Module Báo giá.
 
 ---
 

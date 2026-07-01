@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, StreamableFile } from '@nestjs/common';
+import type { Response } from 'express';
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -16,6 +17,20 @@ export class ProductController {
   @Get('deleted')
   findDeleted(@Query() query: ProductQueryDto) {
     return this.productService.findDeletedProducts(query);
+  }
+
+  @Get(':id/export')
+  async exportProduct(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, code } = await this.productService.exportProduct(id);
+    const filename = `product-${code}.xlsx`;
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Get(':id')

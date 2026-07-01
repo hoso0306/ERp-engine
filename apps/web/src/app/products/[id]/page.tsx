@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
@@ -51,6 +51,7 @@ export default function ProductDetailPage() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [nextStatus, setNextStatus] = useState<string>("");
   const [acting, setActing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/api/products/${params.id}`)
@@ -104,6 +105,28 @@ export default function ProductDetailPage() {
   function openStatusDialog(status: string) {
     setNextStatus(status);
     setStatusOpen(true);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/products/${params.id}/export`);
+      if (!res.ok) {
+        toast.error("Không thể xuất file.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `product-${product?.code ?? params.id}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (loading) return <Loading />;
@@ -165,6 +188,10 @@ export default function ProductDetailPage() {
                 Xoá
               </Button>
             )}
+            <Button variant="outline" onClick={handleExport} disabled={exporting}>
+              <Download className="mr-2 h-4 w-4" />
+              {exporting ? "Đang xuất..." : "Export"}
+            </Button>
           </div>
         }
       />
