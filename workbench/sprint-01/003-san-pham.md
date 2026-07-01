@@ -99,15 +99,15 @@ Hoàn thành Backend CRUD cho Module Product.
 
 ### Definition of Done
 
-- [ ] Database hoạt động.
-- [ ] CRUD Product hoạt động.
-- [ ] Quản lý trạng thái DRAFT / ACTIVE / INACTIVE.
-- [ ] Soft Delete chỉ áp dụng cho Product DRAFT.
-- [ ] CRUD Product Type hoạt động.
-- [ ] CRUD Unit hoạt động.
-- [ ] CRUD Material hoạt động.
-- [ ] CRUD Material Price hoạt động.
-- [ ] API Build thành công.
+- [x] Database hoạt động.
+- [x] CRUD Product hoạt động.
+- [x] Quản lý trạng thái DRAFT / ACTIVE / INACTIVE.
+- [x] Soft Delete chỉ áp dụng cho Product DRAFT.
+- [x] CRUD Product Type hoạt động.
+- [x] CRUD Unit hoạt động.
+- [x] CRUD Material hoạt động.
+- [x] CRUD Material Price hoạt động.
+- [x] API Build thành công.
 
 **Commit**
 
