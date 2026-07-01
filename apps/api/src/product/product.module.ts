@@ -6,6 +6,7 @@ import { ProductTypeController } from './product-type.controller';
 import { MaterialController } from './material.controller';
 import { ProductParameterController } from './product-parameter.controller';
 import { PricingRuleController } from './pricing-rule.controller';
+import { MaterialRequirementController } from './material-requirement.controller';
 
 @Module({
   controllers: [
@@ -15,6 +16,7 @@ import { PricingRuleController } from './pricing-rule.controller';
     ProductController,
     ProductParameterController,
     PricingRuleController,
+    MaterialRequirementController,
   ],
   providers: [ProductService],
   exports: [ProductService],

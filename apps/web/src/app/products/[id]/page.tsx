@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { ProductParameterList } from "@/components/product/product-parameter-list";
 import { PricingRuleSection } from "@/components/product/pricing-rule-section";
+import { MaterialRequirementSection } from "@/components/product/material-requirement-section";
 import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -194,6 +195,10 @@ export default function ProductDetailPage() {
 
       <div className="rounded-lg border p-6">
         <PricingRuleSection productId={product.id} />
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <MaterialRequirementSection productId={product.id} />
       </div>
 
       <div className="text-xs text-muted-foreground">

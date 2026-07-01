@@ -24,6 +24,10 @@ import { CreatePricingRuleVersionDto } from './dto/create-pricing-rule-version.d
 import { UpdatePricingRuleVersionDto } from './dto/update-pricing-rule-version.dto';
 import { CreatePricingRuleItemDto } from './dto/create-pricing-rule-item.dto';
 import { UpdatePricingRuleItemDto } from './dto/update-pricing-rule-item.dto';
+import { CreateMaterialRequirementVersionDto } from './dto/create-material-requirement-version.dto';
+import { UpdateMaterialRequirementVersionDto } from './dto/update-material-requirement-version.dto';
+import { CreateMaterialRequirementItemDto } from './dto/create-material-requirement-item.dto';
+import { UpdateMaterialRequirementItemDto } from './dto/update-material-requirement-item.dto';
 
 @Injectable()
 export class ProductService {
@@ -840,6 +844,314 @@ export class ProductService {
     );
 
     return { inputParams, adjustedParams, rawPrice, finalPrice };
+  }
+
+  // ──────────────────────────────────────
+  // Material Requirement
+  // ──────────────────────────────────────
+
+  async findMaterialRequirement(productId: string) {
+    await this.findOneProduct(productId);
+    let req = await this.prisma.materialRequirement.findUnique({
+      where: { productId },
+      include: { versions: { orderBy: { versionNumber: 'asc' } } },
+    });
+    if (!req) {
+      req = await this.prisma.materialRequirement.create({
+        data: { productId },
+        include: { versions: { orderBy: { versionNumber: 'asc' } } },
+      });
+    }
+    return req;
+  }
+
+  async findMaterialRequirementVersion(versionId: string) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            material: {
+              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+            },
+          },
+        },
+        materialRequirement: { select: { productId: true } },
+      },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    return version;
+  }
+
+  async createMaterialRequirementVersion(productId: string, dto: CreateMaterialRequirementVersionDto) {
+    await this.findOneProduct(productId);
+    let req = await this.prisma.materialRequirement.findUnique({ where: { productId } });
+    if (!req) {
+      req = await this.prisma.materialRequirement.create({ data: { productId } });
+    }
+
+    const last = await this.prisma.materialRequirementVersion.findFirst({
+      where: { materialRequirementId: req.id },
+      orderBy: { versionNumber: 'desc' },
+    });
+    const nextVersionNumber = (last?.versionNumber ?? 0) + 1;
+
+    return this.prisma.materialRequirementVersion.create({
+      data: {
+        materialRequirementId: req.id,
+        versionNumber: nextVersionNumber,
+        name: dto.name?.trim() || null,
+        status: 'DRAFT',
+        note: dto.note?.trim() || null,
+      },
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            material: {
+              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+            },
+          },
+        },
+        materialRequirement: { select: { productId: true } },
+      },
+    });
+  }
+
+  async updateMaterialRequirementVersion(id: string, dto: UpdateMaterialRequirementVersionDto) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id } });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể chỉnh sửa phiên bản DRAFT.');
+    }
+
+    const data: Prisma.MaterialRequirementVersionUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name?.trim() || null;
+    if (dto.note !== undefined) data.note = dto.note?.trim() || null;
+
+    return this.prisma.materialRequirementVersion.update({
+      where: { id },
+      data,
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            material: {
+              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+            },
+          },
+        },
+        materialRequirement: { select: { productId: true } },
+      },
+    });
+  }
+
+  async activateMaterialRequirementVersion(id: string) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status === 'ACTIVE') {
+      throw new BadRequestException('Phiên bản này đã đang hoạt động.');
+    }
+    if (version.items.length === 0) {
+      throw new BadRequestException('Phiên bản cần có ít nhất một Item trước khi kích hoạt.');
+    }
+    for (const item of version.items) {
+      this.validateExpression(item.expression);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.materialRequirementVersion.updateMany({
+        where: { materialRequirementId: version.materialRequirementId, status: 'ACTIVE' },
+        data: { status: 'ARCHIVED' },
+      });
+      return tx.materialRequirementVersion.update({
+        where: { id },
+        data: { status: 'ACTIVE' },
+        include: {
+          items: {
+            orderBy: { displayOrder: 'asc' },
+            include: {
+              material: {
+                select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+              },
+            },
+          },
+          materialRequirement: { select: { productId: true } },
+        },
+      });
+    });
+  }
+
+  async deleteMaterialRequirementVersion(id: string) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id } });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể xoá phiên bản DRAFT.');
+    }
+    return this.prisma.materialRequirementVersion.delete({ where: { id } });
+  }
+
+  async createMaterialRequirementItem(versionId: string, dto: CreateMaterialRequirementItemDto) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể thêm Item vào phiên bản DRAFT.');
+    }
+    if (!dto.materialId) throw new BadRequestException('Nguyên liệu là bắt buộc.');
+    const material = await this.prisma.material.findUnique({ where: { id: dto.materialId } });
+    if (!material) throw new NotFoundException('Nguyên liệu không tồn tại.');
+    if (!dto.expression?.trim()) throw new BadRequestException('Expression là bắt buộc.');
+    this.validateExpression(dto.expression.trim());
+    if (dto.wastePercent !== undefined && dto.wastePercent < 0) {
+      throw new BadRequestException('Tỷ lệ hao hụt không được âm.');
+    }
+    if (dto.roundStep !== undefined && dto.roundStep < 0) {
+      throw new BadRequestException('Round Step không được âm.');
+    }
+
+    const roundType = dto.roundStep && dto.roundStep > 0 ? 'CEIL' : 'NONE';
+    const roundValue = dto.roundStep && dto.roundStep > 0 ? dto.roundStep : null;
+
+    return this.prisma.materialRequirementItem.create({
+      data: {
+        materialRequirementVersionId: versionId,
+        materialId: dto.materialId,
+        expression: dto.expression.trim(),
+        wastePercent: dto.wastePercent ?? 0,
+        roundType: roundType as RoundType,
+        roundValue: roundValue,
+        note: dto.note?.trim() || null,
+        displayOrder: dto.displayOrder ?? 0,
+      },
+      include: {
+        material: {
+          select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+        },
+      },
+    });
+  }
+
+  async updateMaterialRequirementItem(id: string, dto: UpdateMaterialRequirementItemDto) {
+    const item = await this.prisma.materialRequirementItem.findUnique({
+      where: { id },
+      include: { materialRequirementVersion: { select: { status: true } } },
+    });
+    if (!item) throw new NotFoundException('Item không tồn tại.');
+    if (item.materialRequirementVersion.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể chỉnh sửa Item trong phiên bản DRAFT.');
+    }
+
+    if (dto.materialId !== undefined) {
+      const mat = await this.prisma.material.findUnique({ where: { id: dto.materialId } });
+      if (!mat) throw new NotFoundException('Nguyên liệu không tồn tại.');
+    }
+    if (dto.expression !== undefined && dto.expression.trim()) {
+      this.validateExpression(dto.expression.trim());
+    }
+    if (dto.wastePercent !== undefined && dto.wastePercent < 0) {
+      throw new BadRequestException('Tỷ lệ hao hụt không được âm.');
+    }
+    if (dto.roundStep !== undefined && dto.roundStep < 0) {
+      throw new BadRequestException('Round Step không được âm.');
+    }
+
+    const data: Prisma.MaterialRequirementItemUpdateInput = {};
+    if (dto.materialId !== undefined) data.material = { connect: { id: dto.materialId } };
+    if (dto.expression !== undefined) data.expression = dto.expression.trim();
+    if (dto.wastePercent !== undefined) data.wastePercent = dto.wastePercent;
+    if (dto.roundStep !== undefined) {
+      data.roundType = dto.roundStep > 0 ? 'CEIL' : 'NONE';
+      data.roundValue = dto.roundStep > 0 ? dto.roundStep : null;
+    }
+    if (dto.note !== undefined) data.note = dto.note?.trim() || null;
+    if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
+
+    return this.prisma.materialRequirementItem.update({
+      where: { id },
+      data,
+      include: {
+        material: {
+          select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+        },
+      },
+    });
+  }
+
+  async deleteMaterialRequirementItem(id: string) {
+    const item = await this.prisma.materialRequirementItem.findUnique({
+      where: { id },
+      include: { materialRequirementVersion: { select: { status: true } } },
+    });
+    if (!item) throw new NotFoundException('Item không tồn tại.');
+    if (item.materialRequirementVersion.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể xoá Item trong phiên bản DRAFT.');
+    }
+    return this.prisma.materialRequirementItem.delete({ where: { id } });
+  }
+
+  async previewMaterial(versionId: string, inputParams: Record<string, number>) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            material: {
+              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.items.length === 0) {
+      throw new BadRequestException('Phiên bản chưa có Item nào.');
+    }
+
+    let totalCost = 0;
+    const items = [];
+
+    for (const item of version.items) {
+      const baseQty = this.evaluateExpression(item.expression, inputParams);
+      const waste = Number(item.wastePercent);
+      const wastedQty = baseQty * (1 + waste / 100);
+
+      let finalQty = wastedQty;
+      const roundVal = item.roundValue ? Number(item.roundValue) : null;
+      if (item.roundType !== 'NONE' && roundVal && roundVal > 0) {
+        finalQty = this.applyRounding(wastedQty, item.roundType, roundVal);
+      }
+
+      const prices = await this.prisma.materialPrice.findMany({
+        where: { materialId: item.materialId },
+        orderBy: [{ isDefault: 'desc' }, { effectiveFrom: 'desc' }],
+        take: 1,
+      });
+      const unitPrice = prices.length > 0 ? Number(prices[0].price) : 0;
+      const itemCost = finalQty * unitPrice;
+      totalCost += itemCost;
+
+      items.push({
+        materialId: item.materialId,
+        materialCode: (item.material as any).code,
+        materialName: (item.material as any).name,
+        unit: (item.material as any).unit,
+        expression: item.expression,
+        baseQty,
+        wastePercent: waste,
+        wastedQty,
+        roundStep: roundVal,
+        finalQty,
+        unitPrice,
+        itemCost,
+      });
+    }
+
+    return { inputParams, items, totalCost };
   }
 
   // ──────────────────────────────────────

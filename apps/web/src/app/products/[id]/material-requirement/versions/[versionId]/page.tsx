@@ -1,0 +1,543 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, Plus, Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loading, ErrorState, ConfirmDialog } from "@/components/shared";
+import {
+  MaterialRequirementItemDialog,
+  type MaterialRequirementItem,
+} from "@/components/product/material-requirement-item-dialog";
+import { toast } from "sonner";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+interface ProductParameter {
+  id: string;
+  name: string;
+  label: string;
+  type: string;
+  usedInMaterial: boolean;
+}
+
+interface MaterialRequirementVersion {
+  id: string;
+  versionNumber: number;
+  name: string | null;
+  status: string;
+  note: string | null;
+  items: MaterialRequirementItem[];
+  materialRequirement: { productId: string };
+}
+
+const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  DRAFT: { label: "Nháp", variant: "outline" },
+  ACTIVE: { label: "Đang dùng", variant: "default" },
+  ARCHIVED: { label: "Lưu trữ", variant: "secondary" },
+};
+
+export default function MaterialRequirementVersionPage() {
+  const params = useParams();
+  const router = useRouter();
+  const productId = params.id as string;
+  const versionId = params.versionId as string;
+
+  const [version, setVersion] = useState<MaterialRequirementVersion | null>(null);
+  const [parameters, setParameters] = useState<ProductParameter[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<MaterialRequirementItem | null>(null);
+  const [deleteItemOpen, setDeleteItemOpen] = useState(false);
+  const [deleteItemTarget, setDeleteItemTarget] = useState<MaterialRequirementItem | null>(null);
+
+  const [activating, setActivating] = useState(false);
+  const [deleteVersionOpen, setDeleteVersionOpen] = useState(false);
+
+  // Preview state
+  const [previewInputs, setPreviewInputs] = useState<Record<string, string>>({});
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{
+    inputParams: Record<string, number>;
+    items: {
+      materialCode: string;
+      materialName: string;
+      unit: { name: string } | null;
+      expression: string;
+      baseQty: number;
+      wastePercent: number;
+      wastedQty: number;
+      roundStep: number | null;
+      finalQty: number;
+      unitPrice: number;
+      itemCost: number;
+    }[];
+    totalCost: number;
+  } | null>(null);
+
+  const loadVersion = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
+      );
+      if (!res.ok) throw new Error("Không tìm thấy phiên bản.");
+      const data: MaterialRequirementVersion = await res.json();
+      setVersion(data);
+      setName(data.name ?? "");
+      setNote(data.note ?? "");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, versionId]);
+
+  useEffect(() => {
+    loadVersion();
+    fetch(`${API_URL}/api/products/${productId}/parameters`)
+      .then((r) => r.json())
+      .then((data: ProductParameter[]) => setParameters(data.filter((p) => p.usedInMaterial)))
+      .catch(() => {});
+  }, [productId, loadVersion]);
+
+  const isDraft = version?.status === "DRAFT";
+  const status = version ? (statusMap[version.status] ?? statusMap.DRAFT) : statusMap.DRAFT;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() || null, note: note.trim() || null }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể lưu.");
+        return;
+      }
+      const updated = await res.json();
+      setVersion(updated);
+      toast.success("Đã lưu.");
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleActivate() {
+    setActivating(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/activate`,
+        { method: "PATCH" },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể kích hoạt.");
+        return;
+      }
+      const updated = await res.json();
+      setVersion(updated);
+      toast.success("Đã kích hoạt phiên bản.");
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  async function handleDeleteVersion() {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể xoá.");
+        return;
+      }
+      toast.success("Đã xoá phiên bản.");
+      router.push(`/products/${productId}`);
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    }
+  }
+
+  async function handleDeleteItem() {
+    if (!deleteItemTarget) return;
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/items/${deleteItemTarget.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể xoá Item.");
+        return;
+      }
+      toast.success("Đã xoá Item.");
+      loadVersion();
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    }
+  }
+
+  async function handlePreview() {
+    const params: Record<string, number> = {};
+    for (const [k, v] of Object.entries(previewInputs)) {
+      const n = parseFloat(v);
+      if (!isNaN(n)) params[k] = n;
+    }
+
+    setPreviewing(true);
+    setPreviewResult(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/preview`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(params),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể tính định mức.");
+        return;
+      }
+      const result = await res.json();
+      setPreviewResult(result);
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  if (loading) return <Loading />;
+  if (error || !version) return <ErrorState description={error ?? "Không tìm thấy."} onRetry={loadVersion} />;
+
+  const numberParams = parameters.filter((p) => p.type === "NUMBER");
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon-sm" render={<Link href={`/products/${productId}`} />}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold">
+              Định mức vật liệu — v{version.versionNumber}
+              {version.name ? ` (${version.name})` : ""}
+            </h1>
+            <Badge variant={status.variant}>{status.label}</Badge>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {isDraft && (
+            <>
+              <Button onClick={handleActivate} disabled={activating}>
+                {activating ? "Đang kích hoạt..." : "Kích hoạt"}
+              </Button>
+              <Button variant="destructive" onClick={() => setDeleteVersionOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Xoá
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="rounded-lg border p-6 space-y-4">
+        <h2 className="text-sm font-medium text-muted-foreground">Thông tin phiên bản</h2>
+        <div className="space-y-2">
+          <Label htmlFor="ver-name">Tên phiên bản</Label>
+          <Input
+            id="ver-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!isDraft}
+            placeholder="ví dụ: Định mức chuẩn 2025"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ver-note">Ghi chú</Label>
+          <Textarea
+            id="ver-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={!isDraft}
+            rows={3}
+          />
+        </div>
+
+        {/* Available variables */}
+        {parameters.length > 0 && (
+          <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium">Biến có thể dùng trong Expression:</p>
+            <p className="font-mono">{parameters.map((p) => p.name).join(", ")}</p>
+          </div>
+        )}
+
+        {isDraft && (
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Đang lưu..." : "Lưu"}
+          </Button>
+        )}
+      </div>
+
+      {/* Items */}
+      <div className="rounded-lg border p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-muted-foreground">Danh sách nguyên liệu</h2>
+          {isDraft && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditItem(null);
+                setItemDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Thêm Item
+            </Button>
+          )}
+        </div>
+
+        {version.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Chưa có Item nào.</p>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nguyên liệu</TableHead>
+                  <TableHead>Expression</TableHead>
+                  <TableHead className="text-right w-24">Hao hụt (%)</TableHead>
+                  <TableHead className="text-right w-28">Round Step</TableHead>
+                  <TableHead>Ghi chú</TableHead>
+                  {isDraft && <TableHead className="w-20" />}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {version.items.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {item.material.code}
+                      </span>
+                      <br />
+                      <span className="text-sm">{item.material.name}</span>
+                      {item.material.unit && (
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          ({item.material.unit.name})
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs max-w-xs truncate">
+                      {item.expression}
+                    </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {Number(item.wastePercent) > 0 ? `${item.wastePercent}%` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-mono">
+                      {item.roundValue !== null ? item.roundValue : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {item.note || "—"}
+                    </TableCell>
+                    {isDraft && (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => {
+                              setEditItem(item);
+                              setItemDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => {
+                              setDeleteItemTarget(item);
+                              setDeleteItemOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Preview */}
+      <div className="rounded-lg border p-6 space-y-4">
+        <h2 className="text-sm font-medium text-muted-foreground">Preview định mức</h2>
+
+        {numberParams.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Không có thông số NUMBER nào được đánh dấu "Dùng cho định mức".
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {numberParams.map((p) => (
+                <div key={p.id} className="space-y-1">
+                  <Label htmlFor={`preview-${p.name}`} className="text-xs">
+                    {p.label}{" "}
+                    <span className="font-mono text-muted-foreground">({p.name})</span>
+                  </Label>
+                  <Input
+                    id={`preview-${p.name}`}
+                    type="number"
+                    step="any"
+                    value={previewInputs[p.name] ?? ""}
+                    onChange={(e) =>
+                      setPreviewInputs((prev) => ({ ...prev, [p.name]: e.target.value }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <Button onClick={handlePreview} disabled={previewing || version.items.length === 0}>
+              {previewing ? "Đang tính..." : "Tính định mức"}
+            </Button>
+
+            {previewResult && (
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nguyên liệu</TableHead>
+                        <TableHead className="text-right">Số lượng gốc</TableHead>
+                        <TableHead className="text-right">Sau hao hụt</TableHead>
+                        <TableHead className="text-right">Sau làm tròn</TableHead>
+                        <TableHead className="text-right">Đơn giá</TableHead>
+                        <TableHead className="text-right">Thành tiền</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewResult.items.map((item, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <span className="text-sm">{item.materialName}</span>
+                            {item.unit && (
+                              <span className="text-xs text-muted-foreground">
+                                {" "}
+                                ({item.unit.name})
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {item.baseQty.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {item.wastedQty.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm font-medium">
+                            {item.finalQty.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {item.unitPrice > 0
+                              ? item.unitPrice.toLocaleString("vi-VN")
+                              : <span className="text-muted-foreground">Chưa có giá</span>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {item.unitPrice > 0
+                              ? item.itemCost.toLocaleString("vi-VN")
+                              : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="flex justify-end">
+                  <div className="text-right space-y-1">
+                    <p className="text-sm text-muted-foreground">Tổng giá vốn</p>
+                    <p className="text-2xl font-bold">
+                      {previewResult.totalCost.toLocaleString("vi-VN")} ₫
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Dialogs */}
+      <MaterialRequirementItemDialog
+        open={itemDialogOpen}
+        onOpenChange={setItemDialogOpen}
+        productId={productId}
+        versionId={versionId}
+        item={editItem}
+        onSaved={loadVersion}
+      />
+
+      <ConfirmDialog
+        open={deleteItemOpen}
+        onOpenChange={setDeleteItemOpen}
+        title="Xoá Item"
+        description={`Xoá nguyên liệu "${deleteItemTarget?.material.name}"?`}
+        confirmLabel="Xoá"
+        variant="destructive"
+        onConfirm={handleDeleteItem}
+      />
+
+      <ConfirmDialog
+        open={deleteVersionOpen}
+        onOpenChange={setDeleteVersionOpen}
+        title="Xoá phiên bản"
+        description={`Xoá phiên bản v${version.versionNumber}? Hành động này không thể hoàn tác.`}
+        confirmLabel="Xoá"
+        variant="destructive"
+        onConfirm={handleDeleteVersion}
+      />
+    </div>
+  );
+}

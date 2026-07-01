@@ -274,14 +274,14 @@ Kết quả:
 
 ### Definition of Done
 
-- [ ] CRUD Material Requirement Version.
-- [ ] CRUD Material Requirement Item (material, expression, wastePercent, roundStep).
-- [ ] roundStep: nhập số thực dương, làm tròn lên (ceiling). 0 hoặc trống = không làm tròn.
-- [ ] Chỉ một Material Requirement Version active tại một thời điểm.
-- [ ] Validate Expression.
-- [ ] Preview số lượng vật tư (sau waste% và roundStep).
-- [ ] Preview giá vốn (số lượng × MaterialPrice).
-- [ ] Build thành công.
+- [x] CRUD Material Requirement Version.
+- [x] CRUD Material Requirement Item (material, expression, wastePercent, roundStep).
+- [x] roundStep: nhập số thực dương, làm tròn lên (ceiling). 0 hoặc trống = không làm tròn.
+- [x] Chỉ một Material Requirement Version active tại một thời điểm.
+- [x] Validate Expression.
+- [x] Preview số lượng vật tư (sau waste% và roundStep).
+- [x] Preview giá vốn (số lượng × MaterialPrice).
+- [x] Build thành công.
 
 **Commit**
 
