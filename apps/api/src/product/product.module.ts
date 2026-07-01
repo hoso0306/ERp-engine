@@ -4,6 +4,8 @@ import { ProductController } from './product.controller';
 import { UnitController } from './unit.controller';
 import { ProductTypeController } from './product-type.controller';
 import { MaterialController } from './material.controller';
+import { ProductParameterController } from './product-parameter.controller';
+import { PricingRuleController } from './pricing-rule.controller';
 
 @Module({
   controllers: [
@@ -11,6 +13,8 @@ import { MaterialController } from './material.controller';
     ProductTypeController,
     MaterialController,
     ProductController,
+    ProductParameterController,
+    PricingRuleController,
   ],
   providers: [ProductService],
   exports: [ProductService],

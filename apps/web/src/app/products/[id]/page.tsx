@@ -7,6 +7,8 @@ import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
+import { ProductParameterList } from "@/components/product/product-parameter-list";
+import { PricingRuleSection } from "@/components/product/pricing-rule-section";
 import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -185,6 +187,14 @@ export default function ProductDetailPage() {
           <p className="text-sm">{product.description}</p>
         </div>
       )}
+
+      <div className="rounded-lg border p-6">
+        <ProductParameterList productId={product.id} />
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <PricingRuleSection productId={product.id} />
+      </div>
 
       <div className="text-xs text-muted-foreground">
         Tạo lúc: {new Date(product.createdAt).toLocaleString("vi-VN")} · Cập nhật:{" "}

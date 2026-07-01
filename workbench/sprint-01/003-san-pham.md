@@ -207,9 +207,9 @@ Thuộc tính:
 
 ### Definition of Done
 
-- [ ] CRUD Product Parameter.
-- [ ] UI hoạt động.
-- [ ] Build thành công.
+- [x] CRUD Product Parameter.
+- [x] UI hoạt động.
+- [x] Build thành công.
 
 **Commit**
 
@@ -234,12 +234,12 @@ Hoàn thành Pricing Rule.
 
 ### Definition of Done
 
-- [ ] CRUD Pricing Rule Version.
-- [ ] CRUD Pricing Rule Item (type, targetParameter, minValue, description).
-- [ ] Chỉ một Pricing Rule Version active tại một thời điểm.
-- [ ] Validate Expression.
-- [ ] Preview giá bán (áp dụng Rule Items → Expression → Price Round Step).
-- [ ] Build thành công.
+- [x] CRUD Pricing Rule Version.
+- [x] CRUD Pricing Rule Item (type, targetParameter, minValue, description).
+- [x] Chỉ một Pricing Rule Version active tại một thời điểm.
+- [x] Validate Expression.
+- [x] Preview giá bán (áp dụng Rule Items → Expression → Price Round Step).
+- [x] Build thành công.
 
 **Commit**
 
