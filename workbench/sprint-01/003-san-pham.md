@@ -135,11 +135,11 @@ Hoàn thành giao diện quản lý sản phẩm.
 
 ### Definition of Done
 
-- [ ] UI hoạt động.
-- [ ] Gọi API thành công.
-- [ ] Soft Delete chỉ áp dụng cho Product DRAFT.
-- [ ] Product ACTIVE và INACTIVE không được xóa.
-- [ ] Build thành công.
+- [x] UI hoạt động.
+- [x] Gọi API thành công.
+- [x] Soft Delete chỉ áp dụng cho Product DRAFT.
+- [x] Product ACTIVE và INACTIVE không được xóa.
+- [x] Build thành công.
 
 **Commit**
 
@@ -164,12 +164,12 @@ Hoàn thành quản lý Nguyên liệu và Giá nguyên liệu.
 
 ### Definition of Done
 
-- [ ] CRUD Material.
-- [ ] Mã nguyên liệu sinh tự động (NL000001), cho phép sửa lại.
-- [ ] CRUD Material Price (supplierId, price, effectiveFrom, effectiveTo, isDefault).
-- [ ] Đánh dấu isDefault để hệ thống ưu tiên khi tính giá vốn.
-- [ ] Xem lịch sử giá của từng nguyên liệu.
-- [ ] Build thành công.
+- [x] CRUD Material.
+- [x] Mã nguyên liệu sinh tự động (NL000001), cho phép sửa lại.
+- [x] CRUD Material Price (supplierId, price, effectiveFrom, effectiveTo, isDefault).
+- [x] Đánh dấu isDefault để hệ thống ưu tiên khi tính giá vốn.
+- [x] Xem lịch sử giá của từng nguyên liệu.
+- [x] Build thành công.
 
 **Commit**
 
