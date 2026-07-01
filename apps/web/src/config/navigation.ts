@@ -11,6 +11,8 @@ import {
   RotateCcw,
   BarChart3,
   Settings,
+  Ruler,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +51,13 @@ export const navigation: NavGroup[] = [
       { title: "Nguyên liệu", href: "/materials", icon: Boxes },
       { title: "Sản xuất", href: "/production", icon: Factory },
       { title: "Kho", href: "/warehouse", icon: Warehouse },
+    ],
+  },
+  {
+    label: "Danh mục",
+    items: [
+      { title: "Loại sản phẩm", href: "/product-types", icon: Tag },
+      { title: "Đơn vị tính", href: "/units", icon: Ruler },
     ],
   },
   {
