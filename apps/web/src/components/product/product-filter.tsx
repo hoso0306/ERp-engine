@@ -15,6 +15,12 @@ interface FilterOption {
   name: string;
 }
 
+interface ProductionCenterOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface ProductFilterProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -23,6 +29,9 @@ interface ProductFilterProps {
   productTypes: FilterOption[];
   productTypeId: string;
   onProductTypeChange: (value: string | null) => void;
+  productionCenters: ProductionCenterOption[];
+  productionCenterId: string;
+  onProductionCenterChange: (value: string | null) => void;
 }
 
 export function ProductFilter({
@@ -33,6 +42,9 @@ export function ProductFilter({
   productTypes,
   productTypeId,
   onProductTypeChange,
+  productionCenters,
+  productionCenterId,
+  onProductionCenterChange,
 }: ProductFilterProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -67,6 +79,20 @@ export function ProductFilter({
           {productTypes.map((t) => (
             <SelectItem key={t.id} value={t.id}>
               {t.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={productionCenterId} onValueChange={onProductionCenterChange}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Xưởng sản xuất" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Tất cả xưởng</SelectItem>
+          {productionCenters.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.name}
             </SelectItem>
           ))}
         </SelectContent>

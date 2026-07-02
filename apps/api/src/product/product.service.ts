@@ -29,10 +29,67 @@ import { CreateMaterialRequirementVersionDto } from './dto/create-material-requi
 import { UpdateMaterialRequirementVersionDto } from './dto/update-material-requirement-version.dto';
 import { CreateMaterialRequirementItemDto } from './dto/create-material-requirement-item.dto';
 import { UpdateMaterialRequirementItemDto } from './dto/update-material-requirement-item.dto';
+import { CreateProductionCenterDto } from './dto/create-production-center.dto';
+import { UpdateProductionCenterDto } from './dto/update-production-center.dto';
 
 @Injectable()
 export class ProductService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ──────────────────────────────────────
+  // Production Center
+  // ──────────────────────────────────────
+
+  async findAllProductionCenters() {
+    return this.prisma.productionCenter.findMany({ orderBy: { name: 'asc' } });
+  }
+
+  async findOneProductionCenter(id: string) {
+    const pc = await this.prisma.productionCenter.findUnique({ where: { id } });
+    if (!pc) throw new NotFoundException('Xưởng sản xuất không tồn tại.');
+    return pc;
+  }
+
+  async createProductionCenter(dto: CreateProductionCenterDto) {
+    if (!dto.name?.trim()) throw new BadRequestException('Tên xưởng là bắt buộc.');
+    const existing = await this.prisma.productionCenter.findFirst({ where: { name: dto.name.trim() } });
+    if (existing) throw new ConflictException('Tên xưởng đã tồn tại.');
+    const code = await this.generateCode('PRODUCTION_CENTER');
+    return this.prisma.productionCenter.create({
+      data: {
+        code,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        isActive: dto.isActive ?? true,
+      },
+    });
+  }
+
+  async updateProductionCenter(id: string, dto: UpdateProductionCenterDto) {
+    await this.findOneProductionCenter(id);
+    if (dto.name !== undefined) {
+      if (!dto.name.trim()) throw new BadRequestException('Tên xưởng là bắt buộc.');
+      const existing = await this.prisma.productionCenter.findFirst({
+        where: { name: dto.name.trim(), id: { not: id } },
+      });
+      if (existing) throw new ConflictException('Tên xưởng đã tồn tại.');
+    }
+    return this.prisma.productionCenter.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name.trim() }),
+        ...(dto.description !== undefined && { description: dto.description?.trim() || null }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+    });
+  }
+
+  async deleteProductionCenter(id: string) {
+    await this.findOneProductionCenter(id);
+    const inUse = await this.prisma.product.count({ where: { productionCenterId: id } });
+    if (inUse > 0) throw new BadRequestException('Không thể xoá xưởng đang được sử dụng bởi sản phẩm.');
+    return this.prisma.productionCenter.delete({ where: { id } });
+  }
 
   // ──────────────────────────────────────
   // Unit
@@ -316,6 +373,9 @@ export class ProductService {
     if (query.productTypeId) {
       where.productTypeId = query.productTypeId;
     }
+    if (query.productionCenterId) {
+      where.productionCenterId = query.productionCenterId;
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -326,6 +386,7 @@ export class ProductService {
         include: {
           productType: { select: { id: true, name: true } },
           unit: { select: { id: true, name: true } },
+          productionCenter: { select: { id: true, code: true, name: true } },
         },
       }),
       this.prisma.product.count({ where }),
@@ -356,6 +417,7 @@ export class ProductService {
         include: {
           productType: { select: { id: true, name: true } },
           unit: { select: { id: true, name: true } },
+          productionCenter: { select: { id: true, code: true, name: true } },
         },
       }),
       this.prisma.product.count({ where }),
@@ -370,6 +432,7 @@ export class ProductService {
       include: {
         productType: { select: { id: true, name: true } },
         unit: { select: { id: true, name: true } },
+        productionCenter: { select: { id: true, code: true, name: true } },
       },
     });
     if (!product) throw new NotFoundException('Sản phẩm không tồn tại.');
@@ -380,8 +443,10 @@ export class ProductService {
     if (!dto.name?.trim()) throw new BadRequestException('Tên sản phẩm là bắt buộc.');
     if (!dto.productTypeId) throw new BadRequestException('Loại sản phẩm là bắt buộc.');
     if (!dto.unitId) throw new BadRequestException('Đơn vị là bắt buộc.');
+    if (!dto.productionCenterId) throw new BadRequestException('Xưởng sản xuất là bắt buộc.');
     await this.findOneProductType(dto.productTypeId);
     await this.findOneUnit(dto.unitId);
+    await this.findOneProductionCenter(dto.productionCenterId);
 
     const code = await this.generateCode('PRODUCT');
     return this.prisma.product.create({
@@ -390,12 +455,14 @@ export class ProductService {
         name: dto.name.trim(),
         productTypeId: dto.productTypeId,
         unitId: dto.unitId,
+        productionCenterId: dto.productionCenterId,
         description: dto.description?.trim() || null,
         status: 'DRAFT',
       },
       include: {
         productType: { select: { id: true, name: true } },
         unit: { select: { id: true, name: true } },
+        productionCenter: { select: { id: true, code: true, name: true } },
       },
     });
   }
@@ -407,11 +474,13 @@ export class ProductService {
     }
     if (dto.productTypeId) await this.findOneProductType(dto.productTypeId);
     if (dto.unitId) await this.findOneUnit(dto.unitId);
+    if (dto.productionCenterId) await this.findOneProductionCenter(dto.productionCenterId);
 
     const data: Prisma.ProductUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.productTypeId !== undefined) data.productType = { connect: { id: dto.productTypeId } };
     if (dto.unitId !== undefined) data.unit = { connect: { id: dto.unitId } };
+    if (dto.productionCenterId !== undefined) data.productionCenter = { connect: { id: dto.productionCenterId } };
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
 
     return this.prisma.product.update({
@@ -420,6 +489,7 @@ export class ProductService {
       include: {
         productType: { select: { id: true, name: true } },
         unit: { select: { id: true, name: true } },
+        productionCenter: { select: { id: true, code: true, name: true } },
       },
     });
   }

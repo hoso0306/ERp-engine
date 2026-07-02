@@ -13,6 +13,7 @@ import {
   Settings,
   Ruler,
   Tag,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -56,6 +57,7 @@ export const navigation: NavGroup[] = [
   {
     label: "Danh mục",
     items: [
+      { title: "Xưởng sản xuất", href: "/production-centers", icon: Building2 },
       { title: "Loại sản phẩm", href: "/product-types", icon: Tag },
       { title: "Đơn vị tính", href: "/units", icon: Ruler },
     ],

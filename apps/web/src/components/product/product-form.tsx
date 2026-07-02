@@ -22,12 +22,21 @@ interface Option {
   name: string;
 }
 
+interface ProductionCenterOption {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
 export function ProductForm() {
   const router = useRouter();
   const [productTypes, setProductTypes] = useState<Option[]>([]);
   const [units, setUnits] = useState<Option[]>([]);
+  const [productionCenters, setProductionCenters] = useState<ProductionCenterOption[]>([]);
   const [productTypeId, setProductTypeId] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [productionCenterId, setProductionCenterId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -38,6 +47,10 @@ export function ProductForm() {
     fetch(`${API_URL}/api/units`)
       .then((r) => r.json())
       .then(setUnits)
+      .catch(() => {});
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setProductionCenters)
       .catch(() => {});
   }, []);
 
@@ -50,6 +63,7 @@ export function ProductForm() {
       name: form.get("name"),
       productTypeId,
       unitId,
+      productionCenterId,
     };
 
     const description = form.get("description");
@@ -123,13 +137,29 @@ export function ProductForm() {
         </div>
 
         <div className="space-y-2">
+          <Label>Xưởng sản xuất *</Label>
+          <Select value={productionCenterId} onValueChange={(v) => setProductionCenterId(v ?? "")} required>
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn xưởng sản xuất" />
+            </SelectTrigger>
+            <SelectContent>
+              {productionCenters.filter((c) => c.isActive !== false).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.code} — {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="description">Mô tả</Label>
           <Textarea id="description" name="description" rows={3} />
         </div>
       </fieldset>
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={submitting || !productTypeId || !unitId}>
+        <Button type="submit" disabled={submitting || !productTypeId || !unitId || !productionCenterId}>
           {submitting ? "Đang lưu..." : "Tạo sản phẩm"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.push("/products")}>

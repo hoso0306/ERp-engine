@@ -353,8 +353,13 @@ Mỗi sản phẩm bao gồm:
 - Tên sản phẩm
 - Loại sản phẩm
 - Đơn vị tính
+- **Production Center** (bắt buộc, NOT NULL) — xưởng sản xuất phụ trách sản phẩm này
 - Trạng thái
 - Mô tả
+
+**Production Center** là thuộc tính bắt buộc của Product.
+
+V1: Một Product thuộc đúng một Production Center. Hệ thống dùng thông tin này để sinh Production Order khi Báo giá được duyệt. Không để Sales chọn — lấy trực tiếp từ Product.
 
 Mã sản phẩm sử dụng Running Number.
 

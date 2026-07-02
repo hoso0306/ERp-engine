@@ -7,9 +7,11 @@ import { MaterialController } from './material.controller';
 import { ProductParameterController } from './product-parameter.controller';
 import { PricingRuleController } from './pricing-rule.controller';
 import { MaterialRequirementController } from './material-requirement.controller';
+import { ProductionCenterController } from './production-center.controller';
 
 @Module({
   controllers: [
+    ProductionCenterController,
     UnitController,
     ProductTypeController,
     MaterialController,

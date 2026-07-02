@@ -55,6 +55,21 @@ enum PricingRuleType {
   CUSTOM
 }
 
+enum QuotationStatus {
+  DRAFT
+  SENT
+  APPROVED
+  CANCELLED
+}
+
+enum QuotationTimelineAction {
+  QUOTATION_CREATED
+  QUOTATION_SENT
+  QUOTATION_APPROVED
+  QUOTATION_CANCELLED
+  QUOTATION_MANUAL_OVERRIDE
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -89,10 +104,11 @@ model RunningNumber {
 // ──────────────────────────────────────
 
 model CustomerGroup {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  name            String   @unique
+  discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   customers Customer[]
 
@@ -108,6 +124,25 @@ model DeliveryRoute {
   customers Customer[]
 
   @@map("delivery_routes")
+}
+
+// ──────────────────────────────────────
+// Production Center
+// ──────────────────────────────────────
+
+model ProductionCenter {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  products    Product[]
+
+  @@index([isActive])
+  @@map("production_centers")
 }
 
 // ──────────────────────────────────────
@@ -185,24 +220,28 @@ model MaterialPrice {
 // ──────────────────────────────────────
 
 model Product {
-  id            String        @id @default(cuid())
-  code          String        @unique
-  name          String
-  productTypeId String        @map("product_type_id")
-  unitId        String        @map("unit_id")
-  status        ProductStatus @default(DRAFT)
-  description   String?
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  deletedAt     DateTime?     @map("deleted_at")
+  id                  String        @id @default(cuid())
+  code                String        @unique
+  name                String
+  productTypeId       String        @map("product_type_id")
+  unitId              String        @map("unit_id")
+  productionCenterId  String        @map("production_center_id")
+  status              ProductStatus @default(DRAFT)
+  description         String?
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  deletedAt           DateTime?     @map("deleted_at")
 
   productType         ProductType          @relation(fields: [productTypeId], references: [id])
   unit                Unit                 @relation(fields: [unitId], references: [id])
+  productionCenter    ProductionCenter     @relation(fields: [productionCenterId], references: [id])
   parameters          ProductParameter[]
   pricingRule         PricingRule?
   materialRequirement MaterialRequirement?
+  quotationItems      QuotationItem[]
 
   @@index([productTypeId])
+  @@index([productionCenterId])
   @@index([status])
   @@index([deletedAt])
   @@map("products")
@@ -395,6 +434,7 @@ model Customer {
   sale            User?          @relation("CustomerSale", fields: [saleId], references: [id])
   createdByUser   User?          @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
   updatedByUser   User?          @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+  quotations      Quotation[]
 
   @@index([customerGroupId])
   @@index([deliveryRouteId])
@@ -403,4 +443,95 @@ model Customer {
   @@index([deletedAt])
 
   @@map("customers")
+}
+
+// ──────────────────────────────────────
+// Quotation
+// ──────────────────────────────────────
+
+model Quotation {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  customerId   String          @map("customer_id")
+  status       QuotationStatus @default(DRAFT)
+  expiryDate   DateTime?       @map("expiry_date")
+  note         String?
+  salesOrderId String?         @map("sales_order_id")
+
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer Customer            @relation(fields: [customerId], references: [id])
+  items    QuotationItem[]
+  timeline QuotationTimeline[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([salesOrderId])
+  @@index([expiryDate])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          String  @id @default(cuid())
+  quotationId String  @map("quotation_id")
+  productId   String  @map("product_id")
+  quantity    Decimal @db.Decimal(15, 4)
+
+  pricingRuleVersionId         String? @map("pricing_rule_version_id")
+  materialRequirementVersionId String? @map("material_requirement_version_id")
+
+  systemPrice               Decimal @default(0) @map("system_price")                @db.Decimal(15, 0)
+  groupDiscount             Decimal @default(0) @map("group_discount")               @db.Decimal(5, 2)
+  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent")  @db.Decimal(5, 2)
+  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount")   @db.Decimal(15, 0)
+  discountReason            String? @map("discount_reason")
+  finalPrice                Decimal @default(0) @map("final_price")                  @db.Decimal(15, 0)
+  subtotal                  Decimal @default(0)                                       @db.Decimal(15, 0)
+
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  quotation  Quotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product    Product                  @relation(fields: [productId], references: [id])
+  parameters QuotationItemParameter[]
+
+  @@index([quotationId])
+  @@index([productId])
+  @@map("quotation_items")
+}
+
+model QuotationItemParameter {
+  id              String   @id @default(cuid())
+  quotationItemId String   @map("quotation_item_id")
+  name            String
+  label           String
+  value           String
+  unit            String?
+  displayOrder    Int      @default(0) @map("display_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  quotationItem QuotationItem @relation(fields: [quotationItemId], references: [id], onDelete: Cascade)
+
+  @@index([quotationItemId])
+  @@map("quotation_item_parameters")
+}
+
+model QuotationTimeline {
+  id          String                  @id @default(cuid())
+  quotationId String                  @map("quotation_id")
+  action      QuotationTimelineAction
+  payload     Json?
+  createdBy   String?                 @map("created_by")
+  createdAt   DateTime                @default(now()) @map("created_at")
+
+  quotation Quotation @relation(fields: [quotationId], references: [id])
+
+  @@index([quotationId])
+  @@index([quotationId, createdAt])
+  @@map("quotation_timelines")
 }

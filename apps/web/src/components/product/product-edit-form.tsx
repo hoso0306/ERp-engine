@@ -22,6 +22,13 @@ interface Option {
   name: string;
 }
 
+interface ProductionCenterOption {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
 interface ProductData {
   id: string;
   code: string;
@@ -29,6 +36,7 @@ interface ProductData {
   description: string | null;
   productTypeId: string;
   unitId: string;
+  productionCenterId: string | null;
   status: string;
 }
 
@@ -40,8 +48,10 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
   const router = useRouter();
   const [productTypes, setProductTypes] = useState<Option[]>([]);
   const [units, setUnits] = useState<Option[]>([]);
+  const [productionCenters, setProductionCenters] = useState<ProductionCenterOption[]>([]);
   const [productTypeId, setProductTypeId] = useState(product.productTypeId);
   const [unitId, setUnitId] = useState(product.unitId);
+  const [productionCenterId, setProductionCenterId] = useState(product.productionCenterId ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -52,6 +62,10 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
     fetch(`${API_URL}/api/units`)
       .then((r) => r.json())
       .then(setUnits)
+      .catch(() => {});
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setProductionCenters)
       .catch(() => {});
   }, []);
 
@@ -64,6 +78,7 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
       name: form.get("name"),
       productTypeId,
       unitId,
+      productionCenterId: productionCenterId || undefined,
       description: form.get("description") || null,
     };
 
@@ -136,6 +151,22 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Xưởng sản xuất *</Label>
+          <Select value={productionCenterId} onValueChange={(v) => setProductionCenterId(v ?? "")}>
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn xưởng sản xuất" />
+            </SelectTrigger>
+            <SelectContent>
+              {productionCenters.filter((c) => c.isActive).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.code} — {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">

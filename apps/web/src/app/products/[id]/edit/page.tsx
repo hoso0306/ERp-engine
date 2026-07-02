@@ -14,6 +14,7 @@ interface Product {
   description: string | null;
   productTypeId: string;
   unitId: string;
+  productionCenterId: string | null;
   status: string;
 }
 

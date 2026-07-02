@@ -17,15 +17,23 @@ interface ProductType {
   name: string;
 }
 
+interface ProductionCenter {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export default function ProductsPage() {
   const [tab, setTab] = useState("all");
 
   const [products, setProducts] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
+  const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [productTypeId, setProductTypeId] = useState("all");
+  const [productionCenterId, setProductionCenterId] = useState("all");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +51,7 @@ export default function ProductsPage() {
       if (search) params.set("search", search);
       if (status !== "all") params.set("status", status);
       if (productTypeId !== "all") params.set("productTypeId", productTypeId);
+      if (productionCenterId !== "all") params.set("productionCenterId", productionCenterId);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -55,7 +64,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, productTypeId, page]);
+  }, [search, status, productTypeId, productionCenterId, page]);
 
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
@@ -79,6 +88,10 @@ export default function ProductsPage() {
       .then((r) => r.json())
       .then(setProductTypes)
       .catch(() => {});
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setProductionCenters)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -88,7 +101,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, productTypeId]);
+  }, [search, status, productTypeId, productionCenterId]);
 
   useEffect(() => {
     if (tab === "deleted") fetchDeleted();
@@ -129,6 +142,9 @@ export default function ProductsPage() {
             productTypes={productTypes}
             productTypeId={productTypeId}
             onProductTypeChange={(v) => setProductTypeId(v ?? "all")}
+            productionCenters={productionCenters}
+            productionCenterId={productionCenterId}
+            onProductionCenterChange={(v) => setProductionCenterId(v ?? "all")}
           />
 
           {loading && <Loading />}
