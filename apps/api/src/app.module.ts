@@ -8,6 +8,7 @@ import { ProductModule } from './product/product.module';
 import { PricingEngineModule } from './pricing-engine/pricing-engine.module';
 import { QuotationModule } from './quotation/quotation.module';
 import { SalesOrderModule } from './sales-order/sales-order.module';
+import { ProductionModule } from './production/production.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SalesOrderModule } from './sales-order/sales-order.module';
     PricingEngineModule,
     QuotationModule,
     SalesOrderModule,
+    ProductionModule,
   ],
 })
 export class AppModule {}

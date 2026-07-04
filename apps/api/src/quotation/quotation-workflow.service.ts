@@ -14,6 +14,8 @@ import {
   RoundType,
   SalesOrderTimelineAction,
   SalesOrderTimelineActorType,
+  ProductionOrderTimelineAction,
+  ProductionOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
@@ -869,7 +871,7 @@ export class QuotationWorkflowService {
         const poCode = `${poRunning.prefix}${String(poRunning.lastNumber).padStart(poRunning.paddingLength, '0')}`;
         productionOrderCodes.push(poCode);
 
-        await tx.productionOrder.create({
+        const productionOrder = await tx.productionOrder.create({
           data: {
             code: poCode,
             salesOrderId: salesOrder.id,
@@ -885,6 +887,17 @@ export class QuotationWorkflowService {
                 quantity: i.quantity,
               })),
             },
+          },
+        });
+
+        // Task 02 (Production module) — ghi Timeline cho từng Production Order
+        // vừa tạo, trong cùng transaction approve() này.
+        await tx.productionOrderTimeline.create({
+          data: {
+            productionOrderId: productionOrder.id,
+            action: ProductionOrderTimelineAction.PRODUCTION_ORDER_CREATED,
+            actorType: ProductionOrderTimelineActorType.SYSTEM,
+            payload: { salesOrderCode },
           },
         });
       }

@@ -44,8 +44,8 @@ async function main() {
 
   await prisma.runningNumber.upsert({
     where: { type: 'PRODUCTION_ORDER' },
-    update: {},
-    create: { type: 'PRODUCTION_ORDER', prefix: 'SX', lastNumber: 0, paddingLength: 6 },
+    update: { prefix: 'PO' },
+    create: { type: 'PRODUCTION_ORDER', prefix: 'PO', lastNumber: 0, paddingLength: 6 },
   });
 
   // Customer Groups

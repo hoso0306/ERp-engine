@@ -11,6 +11,8 @@ import {
   PaymentStatus,
   SalesOrderTimelineAction,
   SalesOrderTimelineActorType,
+  ProductionOrderTimelineAction,
+  ProductionOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
@@ -341,6 +343,29 @@ export class SalesOrderService {
         where: { id },
         data: { status: SalesOrderStatus.CANCELLED },
       });
+
+      // Task 07 (Production module) — cascade Production Order sang CANCELLED.
+      // Đến đây đã xác nhận không có PO nào IN_PRODUCTION/PRODUCTION_COMPLETED
+      // (chặn ở validation phía trên), nên toàn bộ PO còn lại đều đang PENDING.
+      const pendingProductionOrders = salesOrder.productionOrders.filter(
+        (po) => po.status === ProductionOrderStatus.PENDING,
+      );
+
+      if (pendingProductionOrders.length > 0) {
+        await tx.productionOrder.updateMany({
+          where: { id: { in: pendingProductionOrders.map((po) => po.id) } },
+          data: { status: ProductionOrderStatus.CANCELLED },
+        });
+
+        await tx.productionOrderTimeline.createMany({
+          data: pendingProductionOrders.map((po) => ({
+            productionOrderId: po.id,
+            action: ProductionOrderTimelineAction.CANCELLED,
+            actorType: ProductionOrderTimelineActorType.SYSTEM,
+            payload: { reason: dto.reason.trim() },
+          })),
+        });
+      }
 
       await tx.salesOrderTimeline.create({
         data: {

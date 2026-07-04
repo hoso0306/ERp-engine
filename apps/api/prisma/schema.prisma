@@ -107,6 +107,20 @@ enum SalesOrderTimelineAction {
   CANCELLED
 }
 
+// Enum riêng cho Production, không tái sử dụng SalesOrderTimelineActorType —
+// xem knowledge/modules/production.md mục ActorType.
+enum ProductionOrderTimelineActorType {
+  SYSTEM
+  USER
+}
+
+enum ProductionOrderTimelineAction {
+  PRODUCTION_ORDER_CREATED
+  STARTED
+  COMPLETED
+  CANCELLED
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -740,11 +754,14 @@ model ProductionOrder {
   productionCenterId   String                @map("production_center_id")
   productionCenterName String                @map("production_center_name")
   status               ProductionOrderStatus @default(PENDING)
+  startedAt            DateTime?             @map("started_at")
+  completedAt          DateTime?             @map("completed_at")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
 
-  salesOrder SalesOrder            @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   items      ProductionOrderItem[]
+  timeline   ProductionOrderTimeline[]
 
   @@index([salesOrderId])
   @@index([productionCenterId])
@@ -767,4 +784,24 @@ model ProductionOrderItem {
 
   @@index([productionOrderId])
   @@map("production_order_items")
+}
+
+// ──────────────────────────────────────
+// Production Order Timeline (audit log)
+// ──────────────────────────────────────
+
+model ProductionOrderTimeline {
+  id                String                           @id @default(cuid())
+  productionOrderId String                           @map("production_order_id")
+  action            ProductionOrderTimelineAction
+  actorType         ProductionOrderTimelineActorType @map("actor_type")
+  payload           Json?
+  createdBy         String?                          @map("created_by")
+  createdAt         DateTime                         @default(now()) @map("created_at")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id])
+
+  @@index([productionOrderId])
+  @@index([productionOrderId, createdAt])
+  @@map("production_order_timelines")
 }

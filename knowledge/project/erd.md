@@ -283,6 +283,8 @@ erDiagram
         string productionCenterId
         string productionCenterName
         enum status
+        datetime startedAt
+        datetime completedAt
     }
 
     ProductionOrderItem {
@@ -292,6 +294,16 @@ erDiagram
         string productCode
         string productName
         decimal quantity
+    }
+
+    ProductionOrderTimeline {
+        string id PK
+        string productionOrderId FK
+        enum action
+        enum actorType
+        json payload
+        string createdBy
+        datetime createdAt
     }
 
     %% ─────────────────────────────────────
@@ -350,6 +362,7 @@ erDiagram
     %% Sales Order → Production Order
     SalesOrder                 ||--|{ ProductionOrder             : "phiếu SX theo xưởng"
     ProductionOrder            ||--|{ ProductionOrderItem         : "dòng SP"
+    ProductionOrder            ||--o{ ProductionOrderTimeline     : "lịch sử (audit log)"
 
     %% Sales Order → Timeline
     SalesOrder                 ||--o{ SalesOrderTimeline          : "lịch sử (audit log)"
@@ -477,6 +490,17 @@ Field `payload Json?` không được Postgres enforce schema, nên quy ước c
 | `CANCELLED` | `{ reason }` |
 
 `actorType: USER` → `createdBy` bắt buộc có giá trị (userId). `actorType: SYSTEM` → `createdBy` có thể `null`.
+
+---
+
+### 11. Production module — hoàn thiện nền tảng ✅ Đã xử lý (Task 00 — sprint-01, `006-san-xuat.md`)
+
+Đã xử lý các điểm còn để ngỏ ở mục 9 (`PRODUCTION_ORDER` giữ prefix `SX`) và bổ sung phần Production còn thiếu so với `knowledge/modules/production.md`:
+
+- `ProductionOrder` — thêm `startedAt`, `completedAt` (`DateTime?`).
+- `ProductionOrderTimeline` (`production_order_timelines`) — model mới, cùng pattern `SalesOrderTimeline`: `action` (`ProductionOrderTimelineAction`: `PRODUCTION_ORDER_CREATED`/`STARTED`/`COMPLETED`/`CANCELLED`), `actorType` (**enum riêng** `ProductionOrderTimelineActorType`, không tái sử dụng `SalesOrderTimelineActorType` — xem lý do ở `production.md`), `payload Json?`, `createdBy`, `createdAt`.
+- Quan hệ `ProductionOrder ||--o{ ProductionOrderTimeline`.
+- `RunningNumber` cho `type: 'PRODUCTION_ORDER'` đổi `prefix: 'SX' → 'PO'` (migration + seed), nhất quán với `SO`/`BG` toàn ERP.
 
 ---
 
