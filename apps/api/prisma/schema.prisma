@@ -70,6 +70,19 @@ enum QuotationTimelineAction {
   QUOTATION_MANUAL_OVERRIDE
 }
 
+enum SalesOrderStatus {
+  DANG_SAN_XUAT
+  HOAN_THANH
+  DA_HUY
+}
+
+enum ProductionOrderStatus {
+  CHO_SAN_XUAT
+  DANG_SAN_XUAT
+  HOAN_THANH
+  DA_HUY
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -456,16 +469,17 @@ model Quotation {
   status       QuotationStatus @default(DRAFT)
   expiryDate   DateTime?       @map("expiry_date")
   note         String?
-  salesOrderId String?         @map("sales_order_id")
+  salesOrderId String?         @unique @map("sales_order_id")
 
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  customer Customer            @relation(fields: [customerId], references: [id])
-  items    QuotationItem[]
-  timeline QuotationTimeline[]
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  salesOrder  SalesOrder?         @relation(fields: [salesOrderId], references: [id])
+  items       QuotationItem[]
+  timeline    QuotationTimeline[]
 
   @@index([customerId])
   @@index([status])
@@ -488,6 +502,7 @@ model QuotationItem {
   additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent")  @db.Decimal(5, 2)
   additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount")   @db.Decimal(15, 0)
   discountReason            String? @map("discount_reason")
+  discountBy                String? @map("discount_by")
   finalPrice                Decimal @default(0) @map("final_price")                  @db.Decimal(15, 0)
   subtotal                  Decimal @default(0)                                       @db.Decimal(15, 0)
 
@@ -534,4 +549,162 @@ model QuotationTimeline {
   @@index([quotationId])
   @@index([quotationId, createdAt])
   @@map("quotation_timelines")
+}
+
+// ──────────────────────────────────────
+// Sales Order (generated from Quotation.approve)
+// ──────────────────────────────────────
+
+model SalesOrder {
+  id            String           @id @default(cuid())
+  code          String           @unique
+  quotationCode String           @map("quotation_code")
+  customerId    String           @map("customer_id")
+  customerName  String           @map("customer_name")
+  customerPhone String           @map("customer_phone")
+  status        SalesOrderStatus @default(DANG_SAN_XUAT)
+  totalAmount   Decimal          @map("total_amount") @db.Decimal(15, 0)
+  note          String?
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  quotation        Quotation?
+  items            SalesOrderItem[]
+  productionOrders ProductionOrder[]
+
+  @@index([customerId])
+  @@index([status])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id           String @id @default(cuid())
+  salesOrderId String @map("sales_order_id")
+
+  productId            String @map("product_id")
+  productCode          String @map("product_code")
+  productName          String @map("product_name")
+  productionCenterId   String @map("production_center_id")
+  productionCenterName String @map("production_center_name")
+
+  pricingRuleVersionId         String? @map("pricing_rule_version_id")
+  systemPrice                  Decimal @map("system_price") @db.Decimal(15, 0)
+  groupDiscount                Decimal @map("group_discount") @db.Decimal(5, 2)
+  additionalDiscountPercent    Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
+  additionalDiscountAmount     Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
+  finalPrice                   Decimal @map("final_price") @db.Decimal(15, 0)
+  quantity                     Decimal @db.Decimal(15, 4)
+  subtotal                     Decimal @db.Decimal(15, 0)
+
+  materialRequirementVersionId String? @map("material_requirement_version_id")
+  planCost                     Decimal @default(0) @map("plan_cost") @db.Decimal(15, 0)
+
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  salesOrder SalesOrder              @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  parameters SalesOrderItemParameter[]
+  bom        OrderBOM?
+
+  @@index([salesOrderId])
+  @@map("sales_order_items")
+}
+
+model SalesOrderItemParameter {
+  id               String @id @default(cuid())
+  salesOrderItemId String @map("sales_order_item_id")
+  name             String
+  label            String
+  value            String
+  unit             String?
+  displayOrder     Int    @default(0) @map("display_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  salesOrderItem SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+
+  @@index([salesOrderItemId])
+  @@map("sales_order_item_parameters")
+}
+
+// ──────────────────────────────────────
+// Order BOM (snapshot of Material Requirement)
+// ──────────────────────────────────────
+
+model OrderBOM {
+  id                           String   @id @default(cuid())
+  salesOrderId                 String   @map("sales_order_id")
+  salesOrderItemId             String   @unique @map("sales_order_item_id")
+  materialRequirementVersionId String   @map("material_requirement_version_id")
+  planCost                     Decimal  @default(0) @map("plan_cost") @db.Decimal(15, 0)
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  salesOrderItem SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+  items          OrderBOMItem[]
+
+  @@index([salesOrderId])
+  @@map("order_boms")
+}
+
+model OrderBOMItem {
+  id           String  @id @default(cuid())
+  orderBOMId   String  @map("order_bom_id")
+  materialId   String  @map("material_id")
+  materialCode String  @map("material_code")
+  materialName String  @map("material_name")
+  materialUnit String? @map("material_unit")
+  expression   String
+  wastePercent Decimal @default(0) @map("waste_percent") @db.Decimal(5, 2)
+  quantity     Decimal @db.Decimal(15, 4)
+  unitPrice    Decimal @default(0) @map("unit_price") @db.Decimal(15, 2)
+  lineTotal    Decimal @default(0) @map("line_total") @db.Decimal(15, 0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  orderBOM OrderBOM @relation(fields: [orderBOMId], references: [id], onDelete: Cascade)
+
+  @@index([orderBOMId])
+  @@map("order_bom_items")
+}
+
+// ──────────────────────────────────────
+// Production Order
+// ──────────────────────────────────────
+
+model ProductionOrder {
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  salesOrderId         String                @map("sales_order_id")
+  productionCenterId   String                @map("production_center_id")
+  productionCenterName String                @map("production_center_name")
+  status               ProductionOrderStatus @default(CHO_SAN_XUAT)
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  salesOrder SalesOrder           @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  items      ProductionOrderItem[]
+
+  @@index([salesOrderId])
+  @@index([productionCenterId])
+  @@index([status])
+  @@map("production_orders")
+}
+
+model ProductionOrderItem {
+  id                String  @id @default(cuid())
+  productionOrderId String  @map("production_order_id")
+  salesOrderItemId  String  @map("sales_order_item_id")
+  productId         String  @map("product_id")
+  productCode       String  @map("product_code")
+  productName       String  @map("product_name")
+  quantity          Decimal @db.Decimal(15, 4)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+
+  @@index([productionOrderId])
+  @@map("production_order_items")
 }

@@ -5,6 +5,8 @@ import { ExcelModule } from './shared/excel/excel.module';
 import { HealthModule } from './health/health.module';
 import { CustomerModule } from './customer/customer.module';
 import { ProductModule } from './product/product.module';
+import { PricingEngineModule } from './pricing-engine/pricing-engine.module';
+import { QuotationModule } from './quotation/quotation.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { ProductModule } from './product/product.module';
     HealthModule,
     CustomerModule,
     ProductModule,
+    PricingEngineModule,
+    QuotationModule,
   ],
 })
 export class AppModule {}

@@ -36,6 +36,18 @@ async function main() {
     create: { type: 'QUOTATION', prefix: 'BG', lastNumber: 0, paddingLength: 6 },
   });
 
+  await prisma.runningNumber.upsert({
+    where: { type: 'SALES_ORDER' },
+    update: {},
+    create: { type: 'SALES_ORDER', prefix: 'DH', lastNumber: 0, paddingLength: 6 },
+  });
+
+  await prisma.runningNumber.upsert({
+    where: { type: 'PRODUCTION_ORDER' },
+    update: {},
+    create: { type: 'PRODUCTION_ORDER', prefix: 'SX', lastNumber: 0, paddingLength: 6 },
+  });
+
   // Customer Groups
   const groups = ['Khách lẻ', 'Đại lý', 'Doanh nghiệp'];
   for (const name of groups) {
