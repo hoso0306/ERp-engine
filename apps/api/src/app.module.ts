@@ -7,6 +7,7 @@ import { CustomerModule } from './customer/customer.module';
 import { ProductModule } from './product/product.module';
 import { PricingEngineModule } from './pricing-engine/pricing-engine.module';
 import { QuotationModule } from './quotation/quotation.module';
+import { SalesOrderModule } from './sales-order/sales-order.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { QuotationModule } from './quotation/quotation.module';
     ProductModule,
     PricingEngineModule,
     QuotationModule,
+    SalesOrderModule,
   ],
 })
 export class AppModule {}

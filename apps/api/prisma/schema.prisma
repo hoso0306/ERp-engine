@@ -71,16 +71,40 @@ enum QuotationTimelineAction {
 }
 
 enum SalesOrderStatus {
-  DANG_SAN_XUAT
-  HOAN_THANH
-  DA_HUY
+  IN_PRODUCTION
+  PRODUCTION_COMPLETED
+  SHIPPED
+  DELIVERED
+  CANCELLED
 }
 
 enum ProductionOrderStatus {
-  CHO_SAN_XUAT
-  DANG_SAN_XUAT
-  HOAN_THANH
-  DA_HUY
+  PENDING
+  IN_PRODUCTION
+  PRODUCTION_COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum SalesOrderTimelineActorType {
+  SYSTEM
+  USER
+}
+
+enum SalesOrderTimelineAction {
+  SALES_ORDER_CREATED
+  PRODUCTION_ORDERS_GENERATED
+  PRODUCTION_COMPLETED
+  SHIPPED
+  DELIVERED
+  PAYMENT_STATUS_CHANGED
+  MANUAL_OVERRIDE
+  CANCELLED
 }
 
 // ──────────────────────────────────────
@@ -144,15 +168,15 @@ model DeliveryRoute {
 // ──────────────────────────────────────
 
 model ProductionCenter {
-  id          String    @id @default(cuid())
-  code        String    @unique
+  id          String   @id @default(cuid())
+  code        String   @unique
   name        String
   description String?
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  products    Product[]
+  products Product[]
 
   @@index([isActive])
   @@map("production_centers")
@@ -175,13 +199,13 @@ model Unit {
 }
 
 model ProductType {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  products  Product[]
+  products Product[]
 
   @@map("product_types")
 }
@@ -212,6 +236,7 @@ model MaterialPrice {
   id            String    @id @default(cuid())
   materialId    String    @map("material_id")
   supplierId    String?   @map("supplier_id")
+  supplierName  String?   @map("supplier_name")
   price         Decimal   @db.Decimal(15, 2)
   effectiveFrom DateTime  @map("effective_from")
   effectiveTo   DateTime? @map("effective_to")
@@ -220,7 +245,7 @@ model MaterialPrice {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  material      Material  @relation(fields: [materialId], references: [id])
+  material Material @relation(fields: [materialId], references: [id])
 
   @@index([materialId])
   @@index([materialId, isDefault])
@@ -233,17 +258,17 @@ model MaterialPrice {
 // ──────────────────────────────────────
 
 model Product {
-  id                  String        @id @default(cuid())
-  code                String        @unique
-  name                String
-  productTypeId       String        @map("product_type_id")
-  unitId              String        @map("unit_id")
-  productionCenterId  String        @map("production_center_id")
-  status              ProductStatus @default(DRAFT)
-  description         String?
-  createdAt           DateTime      @default(now()) @map("created_at")
-  updatedAt           DateTime      @updatedAt @map("updated_at")
-  deletedAt           DateTime?     @map("deleted_at")
+  id                 String        @id @default(cuid())
+  code               String        @unique
+  name               String
+  productTypeId      String        @map("product_type_id")
+  unitId             String        @map("unit_id")
+  productionCenterId String        @map("production_center_id")
+  status             ProductStatus @default(DRAFT)
+  description        String?
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  deletedAt          DateTime?     @map("deleted_at")
 
   productType         ProductType          @relation(fields: [productTypeId], references: [id])
   unit                Unit                 @relation(fields: [unitId], references: [id])
@@ -278,8 +303,8 @@ model ProductParameter {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  product        Product                  @relation(fields: [productId], references: [id])
-  options        ProductParameterOption[]
+  product Product                  @relation(fields: [productId], references: [id])
+  options ProductParameterOption[]
 
   @@unique([productId, name])
   @@index([productId, displayOrder])
@@ -287,15 +312,15 @@ model ProductParameter {
 }
 
 model ProductParameterOption {
-  id           String           @id @default(cuid())
-  parameterId  String           @map("parameter_id")
+  id           String   @id @default(cuid())
+  parameterId  String   @map("parameter_id")
   value        String
   label        String?
-  displayOrder Int              @default(0) @map("display_order")
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  parameter    ProductParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
+  parameter ProductParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
 
   @@index([parameterId, displayOrder])
   @@map("product_parameter_options")
@@ -306,32 +331,32 @@ model ProductParameterOption {
 // ──────────────────────────────────────
 
 model PricingRule {
-  id        String               @id @default(cuid())
-  productId String               @unique @map("product_id")
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  productId String   @unique @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  product   Product              @relation(fields: [productId], references: [id])
-  versions  PricingRuleVersion[]
+  product  Product              @relation(fields: [productId], references: [id])
+  versions PricingRuleVersion[]
 
   @@map("pricing_rules")
 }
 
 model PricingRuleVersion {
-  id              String            @id @default(cuid())
-  pricingRuleId   String            @map("pricing_rule_id")
-  versionNumber   Int               @map("version_number")
+  id              String        @id @default(cuid())
+  pricingRuleId   String        @map("pricing_rule_id")
+  versionNumber   Int           @map("version_number")
   name            String?
   expression      String?
-  priceRoundType  RoundType         @default(NONE) @map("price_round_type")
-  priceRoundValue Decimal?          @map("price_round_value") @db.Decimal(15, 0)
-  status          VersionStatus     @default(DRAFT)
+  priceRoundType  RoundType     @default(NONE) @map("price_round_type")
+  priceRoundValue Decimal?      @map("price_round_value") @db.Decimal(15, 0)
+  status          VersionStatus @default(DRAFT)
   note            String?
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  pricingRule     PricingRule       @relation(fields: [pricingRuleId], references: [id])
-  items           PricingRuleItem[]
+  pricingRule PricingRule       @relation(fields: [pricingRuleId], references: [id])
+  items       PricingRuleItem[]
 
   @@unique([pricingRuleId, versionNumber])
   @@index([pricingRuleId, status])
@@ -339,17 +364,17 @@ model PricingRuleVersion {
 }
 
 model PricingRuleItem {
-  id                   String             @id @default(cuid())
-  pricingRuleVersionId String             @map("pricing_rule_version_id")
-  ruleType             PricingRuleType    @map("rule_type")
-  targetParameter      String?            @map("target_parameter")
-  value                Decimal            @db.Decimal(15, 4)
-  displayOrder         Int                @default(0) @map("display_order")
+  id                   String          @id @default(cuid())
+  pricingRuleVersionId String          @map("pricing_rule_version_id")
+  ruleType             PricingRuleType @map("rule_type")
+  targetParameter      String?         @map("target_parameter")
+  value                Decimal         @db.Decimal(15, 4)
+  displayOrder         Int             @default(0) @map("display_order")
   description          String?
-  createdAt            DateTime           @default(now()) @map("created_at")
-  updatedAt            DateTime           @updatedAt @map("updated_at")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
 
-  pricingRuleVersion   PricingRuleVersion @relation(fields: [pricingRuleVersionId], references: [id], onDelete: Cascade)
+  pricingRuleVersion PricingRuleVersion @relation(fields: [pricingRuleVersionId], references: [id], onDelete: Cascade)
 
   @@index([pricingRuleVersionId])
   @@map("pricing_rule_items")
@@ -360,29 +385,29 @@ model PricingRuleItem {
 // ──────────────────────────────────────
 
 model MaterialRequirement {
-  id        String                       @id @default(cuid())
-  productId String                       @unique @map("product_id")
-  createdAt DateTime                     @default(now()) @map("created_at")
-  updatedAt DateTime                     @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  productId String   @unique @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  product   Product                      @relation(fields: [productId], references: [id])
-  versions  MaterialRequirementVersion[]
+  product  Product                      @relation(fields: [productId], references: [id])
+  versions MaterialRequirementVersion[]
 
   @@map("material_requirements")
 }
 
 model MaterialRequirementVersion {
-  id                    String                    @id @default(cuid())
-  materialRequirementId String                    @map("material_requirement_id")
-  versionNumber         Int                       @map("version_number")
+  id                    String        @id @default(cuid())
+  materialRequirementId String        @map("material_requirement_id")
+  versionNumber         Int           @map("version_number")
   name                  String?
-  status                VersionStatus             @default(DRAFT)
+  status                VersionStatus @default(DRAFT)
   note                  String?
-  createdAt             DateTime                  @default(now()) @map("created_at")
-  updatedAt             DateTime                  @updatedAt @map("updated_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
 
-  materialRequirement   MaterialRequirement       @relation(fields: [materialRequirementId], references: [id])
-  items                 MaterialRequirementItem[]
+  materialRequirement MaterialRequirement       @relation(fields: [materialRequirementId], references: [id])
+  items               MaterialRequirementItem[]
 
   @@unique([materialRequirementId, versionNumber])
   @@index([materialRequirementId, status])
@@ -390,20 +415,20 @@ model MaterialRequirementVersion {
 }
 
 model MaterialRequirementItem {
-  id                           String                     @id @default(cuid())
-  materialRequirementVersionId String                     @map("material_requirement_version_id")
-  materialId                   String                     @map("material_id")
+  id                           String    @id @default(cuid())
+  materialRequirementVersionId String    @map("material_requirement_version_id")
+  materialId                   String    @map("material_id")
   expression                   String
-  wastePercent                 Decimal                    @default(0) @map("waste_percent") @db.Decimal(5, 2)
-  roundType                    RoundType                  @default(NONE) @map("round_type")
-  roundValue                   Decimal?                   @map("round_value") @db.Decimal(15, 4)
+  wastePercent                 Decimal   @default(0) @map("waste_percent") @db.Decimal(5, 2)
+  roundType                    RoundType @default(NONE) @map("round_type")
+  roundValue                   Decimal?  @map("round_value") @db.Decimal(15, 4)
   note                         String?
-  displayOrder                 Int                        @default(0) @map("display_order")
-  createdAt                    DateTime                   @default(now()) @map("created_at")
-  updatedAt                    DateTime                   @updatedAt @map("updated_at")
+  displayOrder                 Int       @default(0) @map("display_order")
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  updatedAt                    DateTime  @updatedAt @map("updated_at")
 
-  materialRequirementVersion   MaterialRequirementVersion @relation(fields: [materialRequirementVersionId], references: [id], onDelete: Cascade)
-  material                     Material                   @relation(fields: [materialId], references: [id])
+  materialRequirementVersion MaterialRequirementVersion @relation(fields: [materialRequirementVersionId], references: [id], onDelete: Cascade)
+  material                   Material                   @relation(fields: [materialId], references: [id])
 
   @@index([materialRequirementVersionId])
   @@index([materialId])
@@ -415,19 +440,19 @@ model MaterialRequirementItem {
 // ──────────────────────────────────────
 
 model Customer {
-  id              String         @id @default(cuid())
-  code            String         @unique
-  name            String
-  phone           String         @unique
-  email           String?
-  province        String?
-  district        String?
-  ward            String?
-  address         String?
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  phone    String  @unique
+  email    String?
+  province String?
+  district String?
+  ward     String?
+  address  String?
 
-  customerGroupId String?        @map("customer_group_id")
-  deliveryRouteId String?        @map("delivery_route_id")
-  saleId          String?        @map("sale_id")
+  customerGroupId String? @map("customer_group_id")
+  deliveryRouteId String? @map("delivery_route_id")
+  saleId          String? @map("sale_id")
 
   priority        Priority       @default(MEDIUM)
   status          CustomerStatus @default(ACTIVE)
@@ -436,25 +461,24 @@ model Customer {
   debtTermDays    Int            @default(30) @map("debt_term_days")
   note            String?
 
-  createdBy       String?        @map("created_by")
-  updatedBy       String?        @map("updated_by")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  deletedAt       DateTime?      @map("deleted_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id])
-  deliveryRoute   DeliveryRoute? @relation(fields: [deliveryRouteId], references: [id])
-  sale            User?          @relation("CustomerSale", fields: [saleId], references: [id])
-  createdByUser   User?          @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser   User?          @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
-  quotations      Quotation[]
+  customerGroup CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  deliveryRoute DeliveryRoute? @relation(fields: [deliveryRouteId], references: [id])
+  sale          User?          @relation("CustomerSale", fields: [saleId], references: [id])
+  createdByUser User?          @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?          @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+  quotations    Quotation[]
 
   @@index([customerGroupId])
   @@index([deliveryRouteId])
   @@index([saleId])
   @@index([status])
   @@index([deletedAt])
-
   @@map("customers")
 }
 
@@ -476,10 +500,10 @@ model Quotation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  customer    Customer            @relation(fields: [customerId], references: [id])
-  salesOrder  SalesOrder?         @relation(fields: [salesOrderId], references: [id])
-  items       QuotationItem[]
-  timeline    QuotationTimeline[]
+  customer   Customer            @relation(fields: [customerId], references: [id])
+  salesOrder SalesOrder?         @relation(fields: [salesOrderId], references: [id])
+  items      QuotationItem[]
+  timeline   QuotationTimeline[]
 
   @@index([customerId])
   @@index([status])
@@ -497,14 +521,14 @@ model QuotationItem {
   pricingRuleVersionId         String? @map("pricing_rule_version_id")
   materialRequirementVersionId String? @map("material_requirement_version_id")
 
-  systemPrice               Decimal @default(0) @map("system_price")                @db.Decimal(15, 0)
-  groupDiscount             Decimal @default(0) @map("group_discount")               @db.Decimal(5, 2)
-  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent")  @db.Decimal(5, 2)
-  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount")   @db.Decimal(15, 0)
+  systemPrice               Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
+  groupDiscount             Decimal @default(0) @map("group_discount") @db.Decimal(5, 2)
+  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
+  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
   discountReason            String? @map("discount_reason")
   discountBy                String? @map("discount_by")
-  finalPrice                Decimal @default(0) @map("final_price")                  @db.Decimal(15, 0)
-  subtotal                  Decimal @default(0)                                       @db.Decimal(15, 0)
+  finalPrice                Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
+  subtotal                  Decimal @default(0) @db.Decimal(15, 0)
 
   displayOrder Int      @default(0) @map("display_order")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -562,18 +586,32 @@ model SalesOrder {
   customerId    String           @map("customer_id")
   customerName  String           @map("customer_name")
   customerPhone String           @map("customer_phone")
-  status        SalesOrderStatus @default(DANG_SAN_XUAT)
+  status        SalesOrderStatus @default(IN_PRODUCTION)
   totalAmount   Decimal          @map("total_amount") @db.Decimal(15, 0)
-  note          String?
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  plannedCost   Decimal          @map("planned_cost") @db.Decimal(15, 0)
+  plannedProfit Decimal          @map("planned_profit") @db.Decimal(15, 0)
+  ownerName     String?          @map("owner_name")
+
+  totalProductionOrders     Int @map("total_production_orders")
+  completedProductionOrders Int @default(0) @map("completed_production_orders")
+
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  actualDeliveryDate   DateTime? @map("actual_delivery_date")
+
+  paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
+
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   quotation        Quotation?
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
+  timeline         SalesOrderTimeline[]
 
   @@index([customerId])
   @@index([status])
+  @@index([paymentStatus])
   @@map("sales_orders")
 }
 
@@ -587,23 +625,23 @@ model SalesOrderItem {
   productionCenterId   String @map("production_center_id")
   productionCenterName String @map("production_center_name")
 
-  pricingRuleVersionId         String? @map("pricing_rule_version_id")
-  systemPrice                  Decimal @map("system_price") @db.Decimal(15, 0)
-  groupDiscount                Decimal @map("group_discount") @db.Decimal(5, 2)
-  additionalDiscountPercent    Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
-  additionalDiscountAmount     Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
-  finalPrice                   Decimal @map("final_price") @db.Decimal(15, 0)
-  quantity                     Decimal @db.Decimal(15, 4)
-  subtotal                     Decimal @db.Decimal(15, 0)
+  pricingRuleVersionId      String? @map("pricing_rule_version_id")
+  systemPrice               Decimal @map("system_price") @db.Decimal(15, 0)
+  groupDiscount             Decimal @map("group_discount") @db.Decimal(5, 2)
+  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
+  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
+  finalPrice                Decimal @map("final_price") @db.Decimal(15, 0)
+  quantity                  Decimal @db.Decimal(15, 4)
+  subtotal                  Decimal @db.Decimal(15, 0)
 
   materialRequirementVersionId String? @map("material_requirement_version_id")
-  planCost                     Decimal @default(0) @map("plan_cost") @db.Decimal(15, 0)
+  plannedCost                  Decimal @default(0) @map("planned_cost") @db.Decimal(15, 0)
 
   displayOrder Int      @default(0) @map("display_order")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  salesOrder SalesOrder              @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   parameters SalesOrderItemParameter[]
   bom        OrderBOM?
 
@@ -612,13 +650,13 @@ model SalesOrderItem {
 }
 
 model SalesOrderItemParameter {
-  id               String @id @default(cuid())
-  salesOrderItemId String @map("sales_order_item_id")
+  id               String   @id @default(cuid())
+  salesOrderItemId String   @map("sales_order_item_id")
   name             String
   label            String
   value            String
   unit             String?
-  displayOrder     Int    @default(0) @map("display_order")
+  displayOrder     Int      @default(0) @map("display_order")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -637,7 +675,7 @@ model OrderBOM {
   salesOrderId                 String   @map("sales_order_id")
   salesOrderItemId             String   @unique @map("sales_order_item_id")
   materialRequirementVersionId String   @map("material_requirement_version_id")
-  planCost                     Decimal  @default(0) @map("plan_cost") @db.Decimal(15, 0)
+  plannedCost                  Decimal  @default(0) @map("planned_cost") @db.Decimal(15, 0)
   createdAt                    DateTime @default(now()) @map("created_at")
   updatedAt                    DateTime @updatedAt @map("updated_at")
 
@@ -649,24 +687,46 @@ model OrderBOM {
 }
 
 model OrderBOMItem {
-  id           String  @id @default(cuid())
-  orderBOMId   String  @map("order_bom_id")
-  materialId   String  @map("material_id")
-  materialCode String  @map("material_code")
-  materialName String  @map("material_name")
-  materialUnit String? @map("material_unit")
+  id           String    @id @default(cuid())
+  orderBOMId   String    @map("order_bom_id")
+  materialId   String    @map("material_id")
+  materialCode String    @map("material_code")
+  materialName String    @map("material_name")
+  materialUnit String?   @map("material_unit")
   expression   String
-  wastePercent Decimal @default(0) @map("waste_percent") @db.Decimal(5, 2)
-  quantity     Decimal @db.Decimal(15, 4)
-  unitPrice    Decimal @default(0) @map("unit_price") @db.Decimal(15, 2)
-  lineTotal    Decimal @default(0) @map("line_total") @db.Decimal(15, 0)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  wastePercent Decimal   @default(0) @map("waste_percent") @db.Decimal(5, 2)
+  roundType    RoundType @default(NONE) @map("round_type")
+  roundValue   Decimal?  @map("round_value") @db.Decimal(15, 4)
+  quantity     Decimal   @db.Decimal(15, 4)
+  unitPrice    Decimal   @default(0) @map("unit_price") @db.Decimal(15, 2)
+  lineTotal    Decimal   @default(0) @map("line_total") @db.Decimal(15, 0)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   orderBOM OrderBOM @relation(fields: [orderBOMId], references: [id], onDelete: Cascade)
 
   @@index([orderBOMId])
   @@map("order_bom_items")
+}
+
+// ──────────────────────────────────────
+// Sales Order Timeline (audit log)
+// ──────────────────────────────────────
+
+model SalesOrderTimeline {
+  id           String                      @id @default(cuid())
+  salesOrderId String                      @map("sales_order_id")
+  action       SalesOrderTimelineAction
+  actorType    SalesOrderTimelineActorType @map("actor_type")
+  payload      Json?
+  createdBy    String?                     @map("created_by")
+  createdAt    DateTime                    @default(now()) @map("created_at")
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id])
+
+  @@index([salesOrderId])
+  @@index([salesOrderId, createdAt])
+  @@map("sales_order_timelines")
 }
 
 // ──────────────────────────────────────
@@ -679,11 +739,11 @@ model ProductionOrder {
   salesOrderId         String                @map("sales_order_id")
   productionCenterId   String                @map("production_center_id")
   productionCenterName String                @map("production_center_name")
-  status               ProductionOrderStatus @default(CHO_SAN_XUAT)
+  status               ProductionOrderStatus @default(PENDING)
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
 
-  salesOrder SalesOrder           @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder            @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   items      ProductionOrderItem[]
 
   @@index([salesOrderId])
@@ -693,13 +753,13 @@ model ProductionOrder {
 }
 
 model ProductionOrderItem {
-  id                String  @id @default(cuid())
-  productionOrderId String  @map("production_order_id")
-  salesOrderItemId  String  @map("sales_order_item_id")
-  productId         String  @map("product_id")
-  productCode       String  @map("product_code")
-  productName       String  @map("product_name")
-  quantity          Decimal @db.Decimal(15, 4)
+  id                String   @id @default(cuid())
+  productionOrderId String   @map("production_order_id")
+  salesOrderItemId  String   @map("sales_order_item_id")
+  productId         String   @map("product_id")
+  productCode       String   @map("product_code")
+  productName       String   @map("product_name")
+  quantity          Decimal  @db.Decimal(15, 4)
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 

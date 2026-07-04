@@ -144,21 +144,41 @@ Timeline mới là lịch sử đầy đủ.
 
 ---
 
-## 7. Snapshot
+## 7. Snapshot & Document Design
 
-Các chứng từ sau khi xác nhận phải Snapshot.
+Mỗi chứng từ trong ERP là một Snapshot độc lập.
 
-Ví dụ:
+Khi tạo chứng từ, hệ thống đọc Master Data để tính toán và điền giá trị. Sau khi chứng từ được xác nhận, nó không còn phụ thuộc vào Master Data hay chứng từ gốc nữa.
 
-- Product
-- Pricing Rule
-- Material Requirement
-- Material Price
-- Giá bán
-- Giá vốn
-- Chiết khấu
+Chuỗi chứng từ:
 
-Không được đọc dữ liệu hiện tại để tính lại chứng từ cũ.
+```text
+Product (Master Data)
+    ↓ snapshot tại thời điểm tạo báo giá
+Quotation
+    ↓ snapshot tại thời điểm Approve
+Sales Order
+    ↓ snapshot tại thời điểm đưa vào sản xuất
+Production Order
+    ↓ snapshot tại thời điểm xuất kho
+Warehouse Transaction
+```
+
+Dữ liệu phải snapshot bao gồm:
+
+- Tên, mã sản phẩm
+- Pricing Rule Version đang ACTIVE
+- Material Requirement Version đang ACTIVE
+- Giá bán, giá vốn, chiết khấu
+- Production Center
+
+Nguyên tắc bắt buộc:
+
+- Mỗi chứng từ lưu đầy đủ dữ liệu cần thiết tại thời điểm tạo.
+- Sau khi xác nhận: không đọc lại Master Data để hiển thị hoặc tính toán.
+- Sau khi xác nhận: Master Data thay đổi không ảnh hưởng đến chứng từ cũ.
+- Chấp nhận Data Duplication để đảm bảo tính toàn vẹn của chứng từ.
+- Snapshot luôn ưu tiên hơn Reference sau khi chứng từ đã xác nhận.
 
 ---
 
@@ -189,7 +209,6 @@ Chỉ đọc tài liệu khi thật sự cần.
 
 Không đọc toàn bộ project nếu không cần.
 
-Giảm Context tối đa.
 
 ---
 
@@ -274,3 +293,49 @@ Không tối ưu sớm.
 Không thiết kế quá tổng quát nếu hiện tại chưa có nhu cầu.
 
 Ưu tiên giải pháp đơn giản nhưng dễ mở rộng.
+
+---
+
+## 13. Data Design Principles
+
+Ưu tiên lưu dữ liệu gốc (Source Data).
+
+Dữ liệu suy diễn (Derived Data) chỉ được lưu khi có lý do rõ ràng.
+
+### Khi nào được phép lưu Derived Data
+
+#### 1. Snapshot
+
+Giá trị cần được cố định tại thời điểm chứng từ được tạo và không được thay đổi khi dữ liệu nguồn thay đổi sau này.
+
+Ví dụ: `systemPrice`, `plannedCost`, `plannedProfit`, `subtotal`.
+
+#### 2. Hiệu năng đọc
+
+Dữ liệu được đọc thường xuyên trên Dashboard, danh sách hoặc báo cáo. Lưu để tránh JOIN, COUNT hoặc SUM nhiều lần.
+
+Ví dụ: `totalProductionOrders`, `completedProductionOrders`, `plannedProfit`.
+
+#### 3. Tính toán phức tạp
+
+Giá trị được tổng hợp từ nhiều bản ghi, nhiều bảng hoặc nhiều bước nghiệp vụ.
+
+Ví dụ: Dashboard statistics, Inventory summary.
+
+### Không lưu Derived Data nếu
+
+- Có thể tính trực tiếp từ Source Data với chi phí rất thấp.
+- Không phục vụ Snapshot.
+- Không mang lại lợi ích rõ ràng về hiệu năng.
+
+Ví dụ: `productionProgress (%)` → tính từ `completedProductionOrders / totalProductionOrders`, không lưu. `remainingAmount` → tính từ `totalAmount - paidAmount`, không lưu.
+
+### Yêu cầu khi lưu Derived Data
+
+Mỗi Derived Data phải ghi rõ trong thiết kế:
+
+- **Source Data là gì** — field nào được dùng để tính.
+- **Thời điểm cập nhật** — khi tạo, khi action xảy ra, hay realtime.
+- **Thành phần chịu trách nhiệm** — Engine, Service hay Workflow nào cập nhật.
+
+**Nguyên tắc cốt lõi:** Lưu Source Data. Hiển thị Derived Data.

@@ -38,8 +38,8 @@ async function main() {
 
   await prisma.runningNumber.upsert({
     where: { type: 'SALES_ORDER' },
-    update: {},
-    create: { type: 'SALES_ORDER', prefix: 'DH', lastNumber: 0, paddingLength: 6 },
+    update: { prefix: 'SO' },
+    create: { type: 'SALES_ORDER', prefix: 'SO', lastNumber: 0, paddingLength: 6 },
   });
 
   await prisma.runningNumber.upsert({

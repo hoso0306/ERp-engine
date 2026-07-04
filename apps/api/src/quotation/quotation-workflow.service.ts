@@ -12,6 +12,8 @@ import {
   ProductionOrderStatus,
   VersionStatus,
   RoundType,
+  SalesOrderTimelineAction,
+  SalesOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
@@ -641,6 +643,121 @@ export class QuotationWorkflowService {
 
     // All validations pass — execute in a single transaction
     return this.prisma.$transaction(async (tx) => {
+      // Snapshot Rule (knowledge/modules/order.md): OrderBOM must be computed from
+      // QuotationItem.materialRequirementVersionId — the exact version snapshotted when the
+      // quotation item was priced — NOT the version currently marked ACTIVE on the product.
+      // Fetch only those specific versions by id (no ACTIVE filter).
+      const materialRequirementVersionIds = Array.from(
+        new Set(
+          quotation.items
+            .map((i) => i.materialRequirementVersionId)
+            .filter((v): v is string => !!v),
+        ),
+      );
+
+      const materialRequirementVersions = materialRequirementVersionIds.length
+        ? await tx.materialRequirementVersion.findMany({
+            where: { id: { in: materialRequirementVersionIds } },
+            include: {
+              items: {
+                include: {
+                  material: {
+                    include: {
+                      unit: { select: { name: true } },
+                      prices: {
+                        where: { isDefault: true },
+                        orderBy: { effectiveFrom: 'desc' },
+                        take: 1,
+                      },
+                    },
+                  },
+                },
+                orderBy: { displayOrder: 'asc' },
+              },
+            },
+          })
+        : [];
+      const materialVersionMap = new Map(materialRequirementVersions.map((v) => [v.id, v]));
+
+      type BomItemData = {
+        materialId: string;
+        materialCode: string;
+        materialName: string;
+        materialUnit: string | null;
+        expression: string;
+        wastePercent: number;
+        roundType: RoundType;
+        roundValue: number | null;
+        quantity: number;
+        unitPrice: number;
+        lineTotal: number;
+      };
+
+      // Pre-compute BOM + plannedCost per item (pure calculation, no DB writes yet) so that
+      // SalesOrder-level plannedCost/plannedProfit/totalProductionOrders are known upfront.
+      const itemComputations = quotation.items.map((item) => {
+        const materialVersion = item.materialRequirementVersionId
+          ? materialVersionMap.get(item.materialRequirementVersionId)
+          : undefined;
+
+        // Build parameter map for expression evaluation
+        const paramMap: Record<string, number> = {};
+        for (const p of item.parameters) {
+          const n = parseFloat(p.value);
+          paramMap[p.name] = isNaN(n) ? 0 : n;
+        }
+        // Derived: area in m²
+        const w = paramMap['width'] ?? 0;
+        const h = paramMap['height'] ?? 0;
+        paramMap['area'] = (w * h) / 1_000_000;
+
+        let itemPlannedCost = 0;
+        const bomItemsData: BomItemData[] = [];
+
+        if (materialVersion) {
+          for (const matReqItem of materialVersion.items) {
+            let matQty = 0;
+            try {
+              matQty = this.evalExpression(matReqItem.expression, paramMap);
+              matQty = matQty * (1 + Number(matReqItem.wastePercent) / 100);
+              matQty = this.applyRounding(matQty, matReqItem.roundType, matReqItem.roundValue ? Number(matReqItem.roundValue) : 0);
+              matQty = matQty * Number(item.quantity);
+            } catch {
+              matQty = 0;
+            }
+
+            const defaultPrice = matReqItem.material.prices[0];
+            const unitPrice = defaultPrice ? Number(defaultPrice.price) : 0;
+            const lineTotal = Math.round(matQty * unitPrice);
+            itemPlannedCost += lineTotal;
+
+            bomItemsData.push({
+              materialId: matReqItem.materialId,
+              materialCode: matReqItem.material.code,
+              materialName: matReqItem.material.name,
+              materialUnit: matReqItem.material.unit?.name ?? null,
+              expression: matReqItem.expression,
+              wastePercent: Number(matReqItem.wastePercent),
+              roundType: matReqItem.roundType,
+              roundValue: matReqItem.roundValue ? Number(matReqItem.roundValue) : null,
+              quantity: matQty,
+              unitPrice,
+              lineTotal,
+            });
+          }
+        }
+
+        return { item, bomItemsData, itemPlannedCost };
+      });
+
+      // Planned Financials (order.md): computed once at creation, never re-derived later.
+      const totalAmount = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
+      const plannedCost = itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
+      const plannedProfit = totalAmount - plannedCost;
+      const totalProductionOrders = new Set(
+        quotation.items.map((i) => i.product.productionCenterId),
+      ).size;
+
       // Generate SalesOrder running number
       const salesRunning = await tx.runningNumber.update({
         where: { type: 'SALES_ORDER' },
@@ -648,9 +765,7 @@ export class QuotationWorkflowService {
       });
       const salesOrderCode = `${salesRunning.prefix}${String(salesRunning.lastNumber).padStart(salesRunning.paddingLength, '0')}`;
 
-      const totalAmount = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
-
-      // Create SalesOrder
+      // Create SalesOrder — Snapshot Customer + Planned Financials known upfront
       const salesOrder = await tx.salesOrder.create({
         data: {
           code: salesOrderCode,
@@ -658,8 +773,11 @@ export class QuotationWorkflowService {
           customerId: quotation.customerId,
           customerName: quotation.customer.name,
           customerPhone: quotation.customer.phone,
-          status: SalesOrderStatus.DANG_SAN_XUAT,
+          status: SalesOrderStatus.IN_PRODUCTION,
           totalAmount,
+          plannedCost,
+          plannedProfit,
+          totalProductionOrders,
           note: quotation.note,
         },
       });
@@ -680,67 +798,7 @@ export class QuotationWorkflowService {
       >();
 
       // Create SalesOrderItems + OrderBOMs
-      for (const item of quotation.items) {
-        const activeMaterialVersion = item.product.materialRequirement?.versions[0];
-
-        // Build parameter map for expression evaluation
-        const paramMap: Record<string, number> = {};
-        for (const p of item.parameters) {
-          const n = parseFloat(p.value);
-          paramMap[p.name] = isNaN(n) ? 0 : n;
-        }
-        // Derived: area in m²
-        const w = paramMap['width'] ?? 0;
-        const h = paramMap['height'] ?? 0;
-        paramMap['area'] = (w * h) / 1_000_000;
-
-        // Compute BOM and planCost
-        let planCost = 0;
-        type BomItemData = {
-          materialId: string;
-          materialCode: string;
-          materialName: string;
-          materialUnit: string | null;
-          expression: string;
-          wastePercent: number;
-          quantity: number;
-          unitPrice: number;
-          lineTotal: number;
-        };
-        const bomItemsData: BomItemData[] = [];
-
-        if (activeMaterialVersion) {
-          for (const matReqItem of activeMaterialVersion.items) {
-            let matQty = 0;
-            try {
-              matQty = this.evalExpression(matReqItem.expression, paramMap);
-              matQty = matQty * (1 + Number(matReqItem.wastePercent) / 100);
-              matQty = this.applyRounding(matQty, matReqItem.roundType, matReqItem.roundValue ? Number(matReqItem.roundValue) : 0);
-              matQty = matQty * Number(item.quantity);
-            } catch {
-              matQty = 0;
-            }
-
-            const defaultPrice = matReqItem.material.prices[0];
-            const unitPrice = defaultPrice ? Number(defaultPrice.price) : 0;
-            const lineTotal = Math.round(matQty * unitPrice);
-            planCost += lineTotal;
-
-            bomItemsData.push({
-              materialId: matReqItem.materialId,
-              materialCode: matReqItem.material.code,
-              materialName: matReqItem.material.name,
-              materialUnit: matReqItem.material.unit?.name ?? null,
-              expression: matReqItem.expression,
-              wastePercent: Number(matReqItem.wastePercent),
-              quantity: matQty,
-              unitPrice,
-              lineTotal,
-            });
-          }
-        }
-
-        // Create SalesOrderItem
+      for (const { item, bomItemsData, itemPlannedCost } of itemComputations) {
         const soItem = await tx.salesOrderItem.create({
           data: {
             salesOrderId: salesOrder.id,
@@ -757,8 +815,8 @@ export class QuotationWorkflowService {
             finalPrice: Number(item.finalPrice),
             quantity: Number(item.quantity),
             subtotal: Number(item.subtotal),
-            materialRequirementVersionId: activeMaterialVersion?.id ?? null,
-            planCost,
+            materialRequirementVersionId: item.materialRequirementVersionId,
+            plannedCost: itemPlannedCost,
             displayOrder: item.displayOrder,
             parameters: {
               create: item.parameters.map((p) => ({
@@ -772,14 +830,14 @@ export class QuotationWorkflowService {
           },
         });
 
-        // Create OrderBOM if material version exists
-        if (activeMaterialVersion && bomItemsData.length > 0) {
+        // Create OrderBOM if the quotation item had a material requirement version snapshotted
+        if (item.materialRequirementVersionId && bomItemsData.length > 0) {
           await tx.orderBOM.create({
             data: {
               salesOrderId: salesOrder.id,
               salesOrderItemId: soItem.id,
-              materialRequirementVersionId: activeMaterialVersion.id,
-              planCost,
+              materialRequirementVersionId: item.materialRequirementVersionId,
+              plannedCost: itemPlannedCost,
               items: { create: bomItemsData },
             },
           });
@@ -817,7 +875,7 @@ export class QuotationWorkflowService {
             salesOrderId: salesOrder.id,
             productionCenterId: centerId,
             productionCenterName: centerData.centerName,
-            status: ProductionOrderStatus.CHO_SAN_XUAT,
+            status: ProductionOrderStatus.PENDING,
             items: {
               create: centerData.items.map((i) => ({
                 salesOrderItemId: i.salesOrderItemId,
@@ -841,7 +899,7 @@ export class QuotationWorkflowService {
         include: QUOTATION_INCLUDE,
       });
 
-      // Write Timeline
+      // Write Timeline (Quotation)
       await tx.quotationTimeline.create({
         data: {
           quotationId: id,
@@ -852,6 +910,25 @@ export class QuotationWorkflowService {
             salesOrderCode,
             productionOrders: productionOrderCodes,
           },
+        },
+      });
+
+      // Write Timeline (SalesOrder) — Task 05
+      await tx.salesOrderTimeline.create({
+        data: {
+          salesOrderId: salesOrder.id,
+          action: SalesOrderTimelineAction.SALES_ORDER_CREATED,
+          actorType: SalesOrderTimelineActorType.SYSTEM,
+          payload: { quotationCode: quotation.code },
+        },
+      });
+
+      await tx.salesOrderTimeline.create({
+        data: {
+          salesOrderId: salesOrder.id,
+          action: SalesOrderTimelineAction.PRODUCTION_ORDERS_GENERATED,
+          actorType: SalesOrderTimelineActorType.SYSTEM,
+          payload: { productionOrderCodes },
         },
       });
 
