@@ -328,11 +328,11 @@ Manual Override bắt buộc: chọn trạng thái mới, nhập lý do, lưu ng
 
 Definition of Done
 
-- [ ] 5 Action chính đều có bản ghi Timeline: Tạo, Gửi, Khách đã duyệt, Huỷ, Manual Override.
-- [ ] Manual Override: nhập lý do bắt buộc, lưu đủ thông tin audit.
-- [ ] Timeline hiển thị trên UI theo thứ tự thời gian.
-- [ ] Timeline là Audit Log — không được sửa hay xoá.
-- [ ] Build thành công.
+- [x] 5 Action chính đều có bản ghi Timeline: Tạo, Gửi, Khách đã duyệt, Huỷ, Manual Override.
+- [x] Manual Override: nhập lý do bắt buộc, lưu đủ thông tin audit.
+- [x] Timeline hiển thị trên UI theo thứ tự thời gian.
+- [x] Timeline là Audit Log — không được sửa hay xoá.
+- [x] Build thành công.
 
 Commit
 
@@ -361,13 +361,13 @@ Flow chính phải chạy đúng đầu cuối:
 
 Definition of Done
 
-- [ ] Toàn bộ Acceptance Criteria pass.
-- [ ] Không còn lỗi TypeScript.
-- [ ] Không còn lỗi Runtime.
-- [ ] Build thành công.
-- [ ] Đã Self Review.
-- [ ] Đề xuất Commit Message.
-- [ ] Dừng.
+- [x] Toàn bộ Acceptance Criteria pass.
+- [x] Không còn lỗi TypeScript.
+- [x] Không còn lỗi Runtime.
+- [x] Build thành công.
+- [x] Đã Self Review.
+- [x] Đề xuất Commit Message.
+- [x] Dừng.
 
 Commit
 
@@ -381,10 +381,10 @@ chore(quotation): complete quotation module
 
 Module được xem là hoàn thành khi:
 
-- [ ] Hoàn thành toàn bộ Task.
-- [ ] Đã Commit.
-- [ ] Đã Push GitHub.
-- [ ] Sẵn sàng cho Module tiếp theo.
+- [ X] Hoàn thành toàn bộ Task.
+- [ X] Đã Commit.
+- [ X] Đã Push GitHub.
+- [ X] Sẵn sàng cho Module tiếp theo.
 
 ---
 

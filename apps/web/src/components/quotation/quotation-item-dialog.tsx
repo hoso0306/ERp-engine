@@ -89,7 +89,7 @@ export function QuotationItemDialog({
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load active products
+  // Load active products (lightweight list, no parameters)
   useEffect(() => {
     if (!open) return;
     fetch(`${API_URL}/api/products?status=ACTIVE&limit=200`)
@@ -97,6 +97,21 @@ export function QuotationItemDialog({
       .then((json) => setProducts(json.data ?? []))
       .catch(() => {});
   }, [open]);
+
+  // Fetch parameters for a given productId and update selectedProduct
+  const loadProductParameters = useCallback(async (id: string) => {
+    const base = products.find((p) => p.id === id);
+    if (!base) return;
+    try {
+      const res = await fetch(`${API_URL}/api/products/${id}/parameters`);
+      const params: ProductParam[] = res.ok ? await res.json() : [];
+      setSelectedProduct({ ...base, parameters: params });
+      return params;
+    } catch {
+      setSelectedProduct({ ...base, parameters: [] });
+      return [];
+    }
+  }, [products]);
 
   // Populate form when editing
   useEffect(() => {
@@ -125,18 +140,18 @@ export function QuotationItemDialog({
     }
   }, [open, item]);
 
-  // Sync selectedProduct when products load
+  // Sync selectedProduct (with parameters) when products load or productId changes
   useEffect(() => {
     if (productId && products.length > 0) {
-      const found = products.find((p) => p.id === productId) ?? null;
-      setSelectedProduct(found);
-      if (found && !item) {
-        const defaults: Record<string, string> = {};
-        for (const p of found.parameters) defaults[p.name] = p.defaultValue ?? "";
-        setParamValues(defaults);
-      }
+      loadProductParameters(productId).then((params) => {
+        if (!item && params) {
+          const defaults: Record<string, string> = {};
+          for (const p of params) defaults[p.name] = p.defaultValue ?? "";
+          setParamValues(defaults);
+        }
+      });
     }
-  }, [productId, products, item]);
+  }, [productId, products]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const calculatePrice = useCallback(async () => {
     if (!productId || !selectedProduct) return;
@@ -169,18 +184,18 @@ export function QuotationItemDialog({
     return () => clearTimeout(timer);
   }, [open, productId, paramValues, calculatePrice]);
 
-  function handleProductChange(id: string | null) {
+  async function handleProductChange(id: string | null) {
     setProductId(id ?? "");
     setSystemPrice(null);
-    const found = products.find((p) => p.id === id) ?? null;
-    setSelectedProduct(found);
-    if (found) {
-      const defaults: Record<string, string> = {};
-      for (const p of found.parameters) defaults[p.name] = p.defaultValue ?? "";
-      setParamValues(defaults);
-    } else {
+    if (!id) {
+      setSelectedProduct(null);
       setParamValues({});
+      return;
     }
+    const params = await loadProductParameters(id);
+    const defaults: Record<string, string> = {};
+    for (const p of params ?? []) defaults[p.name] = p.defaultValue ?? "";
+    setParamValues(defaults);
   }
 
   // Price preview calculation

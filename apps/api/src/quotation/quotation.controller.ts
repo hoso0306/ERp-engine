@@ -17,6 +17,7 @@ import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
+import { OverrideQuotationDto } from './dto/override-quotation.dto';
 
 @Controller('quotations')
 export class QuotationController {
@@ -60,6 +61,12 @@ export class QuotationController {
   @HttpCode(HttpStatus.OK)
   cancel(@Param('id') id: string, @Body() dto: CancelQuotationDto) {
     return this.workflow.cancel(id, dto);
+  }
+
+  @Post(':id/override')
+  @HttpCode(HttpStatus.OK)
+  override(@Param('id') id: string, @Body() dto: OverrideQuotationDto) {
+    return this.workflow.override(id, dto);
   }
 
   // ── QuotationItem CRUD ──

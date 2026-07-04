@@ -12,7 +12,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown } from "lucide-react";
+import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { QuotationStatusBadge } from "@/components/quotation/quotation-status-badge";
 import { QuotationItemDialog } from "@/components/quotation/quotation-item-dialog";
@@ -43,6 +46,14 @@ interface QuotationItem {
   parameters: QuotationItemParam[];
 }
 
+interface QuotationTimeline {
+  id: string;
+  action: string;
+  payload: Record<string, unknown> | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
 interface Quotation {
   id: string;
   code: string;
@@ -60,7 +71,23 @@ interface Quotation {
     customerGroup: { id: string; name: string; discountPercent: number } | null;
   };
   items: QuotationItem[];
+  timeline: QuotationTimeline[];
 }
+
+const TIMELINE_LABEL: Record<string, string> = {
+  QUOTATION_CREATED: "Tạo báo giá",
+  QUOTATION_SENT: "Gửi báo giá",
+  QUOTATION_APPROVED: "Khách đã duyệt",
+  QUOTATION_CANCELLED: "Huỷ báo giá",
+  QUOTATION_MANUAL_OVERRIDE: "Điều chỉnh thủ công",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Nháp",
+  SENT: "Đã gửi",
+  APPROVED: "Đã duyệt",
+  CANCELLED: "Đã huỷ",
+};
 
 function isExpired(expiryDate: string | null): boolean {
   if (!expiryDate) return false;
@@ -98,6 +125,13 @@ export default function QuotationDetailPage() {
 
   // Approve action (Task 06)
   const [approving, setApproving] = useState(false);
+
+  // Manual Override dialog (Task 08)
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideStatus, setOverrideStatus] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideBy, setOverrideBy] = useState("");
+  const [overrideSaving, setOverrideSaving] = useState(false);
 
   const fetchQuotation = useCallback(async () => {
     setLoading(true);
@@ -213,6 +247,38 @@ export default function QuotationDetailPage() {
     }
   }
 
+  async function handleOverride(e: React.FormEvent) {
+    e.preventDefault();
+    if (!overrideStatus) { toast.error("Vui lòng chọn trạng thái mới."); return; }
+    if (!overrideReason.trim()) { toast.error("Vui lòng nhập lý do điều chỉnh."); return; }
+    setOverrideSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/quotations/${id}/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newStatus: overrideStatus,
+          reason: overrideReason.trim(),
+          overrideBy: overrideBy.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể điều chỉnh.");
+        return;
+      }
+      toast.success("Đã điều chỉnh trạng thái.");
+      setOverrideOpen(false);
+      setOverrideReason("");
+      setOverrideBy("");
+      fetchQuotation();
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setOverrideSaving(false);
+    }
+  }
+
   async function deleteItem(itemId: string) {
     if (!confirm("Xoá sản phẩm này khỏi báo giá?")) return;
     try {
@@ -289,6 +355,21 @@ export default function QuotationDetailPage() {
                 Huỷ báo giá
               </Button>
             )}
+            {/* Task 08: Manual Override */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => {
+                setOverrideStatus("");
+                setOverrideReason("");
+                setOverrideBy("");
+                setOverrideOpen(true);
+              }}
+            >
+              <Settings2 className="mr-2 h-4 w-4" />
+              Override
+            </Button>
           </div>
         }
       />
@@ -448,6 +529,70 @@ export default function QuotationDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Manual Override Dialog (Task 08) */}
+      <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Điều chỉnh thủ công — {quotation.code}</DialogTitle>
+          </DialogHeader>
+          <form id="override-form" onSubmit={handleOverride} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Trạng thái hiện tại:{" "}
+              <strong>{STATUS_LABEL[quotation.status] ?? quotation.status}</strong>
+            </p>
+            <div className="space-y-2">
+              <Label>Trạng thái mới *</Label>
+              <Select
+                value={overrideStatus}
+                onValueChange={(v) => setOverrideStatus(v ?? "")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn trạng thái..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(STATUS_LABEL)
+                    .filter(([k]) => k !== quotation.status)
+                    .map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="override-reason">Lý do *</Label>
+              <Textarea
+                id="override-reason"
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                rows={3}
+                placeholder="Mô tả lý do điều chỉnh thủ công..."
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="override-by">Người thực hiện</Label>
+              <Input
+                id="override-by"
+                value={overrideBy}
+                onChange={(e) => setOverrideBy(e.target.value)}
+                placeholder="Tên người duyệt override..."
+              />
+            </div>
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverrideOpen(false)}>Đóng</Button>
+            <Button
+              type="submit"
+              form="override-form"
+              variant="destructive"
+              disabled={overrideSaving || !overrideStatus || !overrideReason.trim()}
+            >
+              {overrideSaving ? "Đang lưu..." : "Xác nhận Override"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Item Add/Edit Dialog */}
       <QuotationItemDialog
         open={itemDialogOpen}
@@ -457,6 +602,63 @@ export default function QuotationDetailPage() {
         item={editingItem}
         onSaved={fetchQuotation}
       />
+
+      {/* Timeline Section (Task 08) */}
+      {quotation.timeline && quotation.timeline.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Lịch sử hoạt động
+            </h3>
+            <ol className="relative border-l border-muted-foreground/20 ml-3 space-y-4">
+              {quotation.timeline.map((entry) => {
+                const payload = entry.payload as Record<string, unknown> | null;
+                return (
+                  <li key={entry.id} className="ml-4">
+                    <span className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-background bg-muted-foreground/40" />
+                    <div className="text-sm font-medium">
+                      {TIMELINE_LABEL[entry.action] ?? entry.action}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(entry.createdAt).toLocaleString("vi-VN")}
+                      {entry.createdBy && ` — ${entry.createdBy}`}
+                    </div>
+                    {payload && (
+                      <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
+                        {!!payload.reason && (
+                          <div>Lý do: <span className="text-foreground">{String(payload.reason)}</span></div>
+                        )}
+                        {!!payload.salesOrderCode && (
+                          <div>Đơn hàng: <span className="text-foreground font-mono">{String(payload.salesOrderCode)}</span></div>
+                        )}
+                        {Array.isArray(payload.productionOrders) && payload.productionOrders.length > 0 && (
+                          <div>Phiếu sản xuất: <span className="text-foreground font-mono">{(payload.productionOrders as string[]).join(", ")}</span></div>
+                        )}
+                        {!!payload.oldStatus && !!payload.newStatus && (
+                          <div>
+                            Trạng thái: <span className="text-foreground">
+                              {STATUS_LABEL[String(payload.oldStatus)] ?? String(payload.oldStatus)}
+                            </span>
+                            {" → "}
+                            <span className="text-foreground">
+                              {STATUS_LABEL[String(payload.newStatus)] ?? String(payload.newStatus)}
+                            </span>
+                          </div>
+                        )}
+                        {!!payload.overrideBy && (
+                          <div>Người thực hiện: <span className="text-foreground">{String(payload.overrideBy)}</span></div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </>
+      )}
     </div>
   );
 }

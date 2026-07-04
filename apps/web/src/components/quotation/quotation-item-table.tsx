@@ -79,8 +79,17 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
                 <div className="font-medium">{item.product.name}</div>
                 <div className="text-xs text-muted-foreground font-mono">{item.product.code}</div>
               </TableCell>
-              <TableCell className="text-xs text-muted-foreground max-w-[200px]">
-                {formatParams(item.parameters) || "—"}
+                <TableCell className="text-xs text-muted-foreground w-48">
+                <div className="space-y-0.5">
+                  {item.parameters.length > 0
+                    ? item.parameters.map((p) => (
+                        <div key={p.name} className="truncate max-w-[180px]">
+                          <span className="text-muted-foreground/70">{p.label}:</span>{" "}
+                          {p.value}{p.unit ? ` ${p.unit}` : ""}
+                        </div>
+                      ))
+                    : "—"}
+                </div>
               </TableCell>
               <TableCell className="text-right font-mono text-sm">
                 {formatMoney(Number(item.systemPrice))}

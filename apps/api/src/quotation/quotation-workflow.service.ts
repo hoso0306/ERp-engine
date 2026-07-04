@@ -21,6 +21,7 @@ import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
+import { OverrideQuotationDto } from './dto/override-quotation.dto';
 
 const EDITABLE_STATUSES: QuotationStatus[] = [QuotationStatus.DRAFT, QuotationStatus.SENT];
 
@@ -483,6 +484,52 @@ export class QuotationWorkflowService {
             reason: dto.reason.trim(),
             previousStatus: quotation.status,
           },
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Workflow: Manual Override (Task 08)
+  // ─────────────────────────────────────────────────────
+
+  async override(id: string, dto: OverrideQuotationDto) {
+    if (!dto.reason?.trim()) {
+      throw new BadRequestException('Lý do điều chỉnh là bắt buộc.');
+    }
+
+    const validStatuses = Object.values(QuotationStatus) as string[];
+    if (!dto.newStatus || !validStatuses.includes(dto.newStatus)) {
+      throw new BadRequestException(`Trạng thái "${dto.newStatus}" không hợp lệ.`);
+    }
+
+    const quotation = await this.findOne(id);
+
+    if (quotation.status === (dto.newStatus as QuotationStatus)) {
+      throw new BadRequestException('Trạng thái mới phải khác trạng thái hiện tại.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quotation.update({
+        where: { id },
+        data: { status: dto.newStatus as QuotationStatus },
+        include: QUOTATION_INCLUDE,
+      });
+
+      await tx.quotationTimeline.create({
+        data: {
+          quotationId: id,
+          action: QuotationTimelineAction.QUOTATION_MANUAL_OVERRIDE,
+          payload: {
+            code: quotation.code,
+            oldStatus: quotation.status,
+            newStatus: dto.newStatus,
+            reason: dto.reason.trim(),
+            overrideBy: dto.overrideBy?.trim() || null,
+          },
+          createdBy: dto.overrideBy?.trim() || null,
         },
       });
 
