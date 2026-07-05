@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
+import { WarehouseService } from '../warehouse/warehouse.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
 
 const PRODUCTION_ORDER_INCLUDE = {
@@ -32,6 +33,7 @@ export class ProductionOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly salesOrderService: SalesOrderService,
+    private readonly warehouseService: WarehouseService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -117,6 +119,12 @@ export class ProductionOrderService {
 
     return this.prisma.$transaction(async (tx) => {
       const startedAt = new Date();
+
+      // Task 03 (Warehouse module) — xuất kho nguyên liệu trước khi chuyển
+      // trạng thái. Nếu thiếu tồn kho, ném lỗi và toàn bộ transaction rollback
+      // — ProductionOrder giữ nguyên PENDING (xem warehouse.md "Transaction
+      // Boundary khi Start Production").
+      await this.warehouseService.issueForProductionOrder(id, tx);
 
       await tx.productionOrder.update({
         where: { id },

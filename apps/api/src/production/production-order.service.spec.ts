@@ -3,6 +3,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProductionOrderService } from './production-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
+import { WarehouseService } from '../warehouse/warehouse.service';
 
 function makeProductionOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -31,6 +32,7 @@ describe('ProductionOrderService', () => {
     $transaction: jest.Mock;
   };
   let salesOrderService: { syncProductionProgress: jest.Mock };
+  let warehouseService: { issueForProductionOrder: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -45,12 +47,14 @@ describe('ProductionOrderService', () => {
       $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     };
     salesOrderService = { syncProductionProgress: jest.fn() };
+    warehouseService = { issueForProductionOrder: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductionOrderService,
         { provide: PrismaService, useValue: prisma },
         { provide: SalesOrderService, useValue: salesOrderService },
+        { provide: WarehouseService, useValue: warehouseService },
       ],
     }).compile();
 
@@ -87,6 +91,7 @@ describe('ProductionOrderService', () => {
 
       await service.start('po-1');
 
+      expect(warehouseService.issueForProductionOrder).toHaveBeenCalledWith('po-1', prisma);
       expect(prisma.productionOrder.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'po-1' },
@@ -98,6 +103,17 @@ describe('ProductionOrderService', () => {
           data: expect.objectContaining({ action: 'STARTED', actorType: 'USER' }),
         }),
       );
+    });
+
+    it('rolls back the whole transaction (no status change) when Warehouse issue fails (insufficient stock)', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(makeProductionOrder());
+      warehouseService.issueForProductionOrder.mockRejectedValue(
+        new Error('Không đủ tồn kho'),
+      );
+
+      await expect(service.start('po-1')).rejects.toThrow('Không đủ tồn kho');
+      expect(prisma.productionOrder.update).not.toHaveBeenCalled();
+      expect(prisma.productionOrderTimeline.create).not.toHaveBeenCalled();
     });
   });
 

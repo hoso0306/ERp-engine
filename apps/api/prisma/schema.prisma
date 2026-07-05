@@ -121,6 +121,16 @@ enum ProductionOrderTimelineAction {
   CANCELLED
 }
 
+enum WarehouseDirection {
+  IN
+  OUT
+}
+
+enum WarehouseTransactionType {
+  MATERIAL_RECEIPT
+  MATERIAL_ISSUE
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -229,18 +239,21 @@ model ProductType {
 // ──────────────────────────────────────
 
 model Material {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  unitId    String   @map("unit_id")
-  isActive  Boolean  @default(true) @map("is_active")
-  note      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  unitId       String   @map("unit_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  note         String?
+  currentStock Decimal  @default(0) @map("current_stock") @db.Decimal(15, 4)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   unit             Unit                      @relation(fields: [unitId], references: [id])
   prices           MaterialPrice[]
   requirementItems MaterialRequirementItem[]
+  receipts         MaterialReceipt[]
+  transactions     WarehouseTransaction[]
 
   @@index([isActive])
   @@map("materials")
@@ -759,9 +772,10 @@ model ProductionOrder {
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
 
-  salesOrder SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
-  items      ProductionOrderItem[]
-  timeline   ProductionOrderTimeline[]
+  salesOrder            SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  items                 ProductionOrderItem[]
+  timeline              ProductionOrderTimeline[]
+  warehouseTransactions WarehouseTransaction[]
 
   @@index([salesOrderId])
   @@index([productionCenterId])
@@ -804,4 +818,54 @@ model ProductionOrderTimeline {
   @@index([productionOrderId])
   @@index([productionOrderId, createdAt])
   @@map("production_order_timelines")
+}
+
+// ──────────────────────────────────────
+// Warehouse (Material Receipt / Warehouse Transaction)
+// ──────────────────────────────────────
+
+model MaterialReceipt {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  materialId   String   @map("material_id")
+  materialCode String   @map("material_code")
+  materialName String   @map("material_name")
+  unit         String
+  quantity     Decimal  @db.Decimal(15, 4)
+  supplierName String?  @map("supplier_name")
+  note         String?
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  material    Material              @relation(fields: [materialId], references: [id])
+  transaction WarehouseTransaction?
+
+  @@index([materialId])
+  @@map("material_receipts")
+}
+
+model WarehouseTransaction {
+  id                String                   @id @default(cuid())
+  direction         WarehouseDirection
+  transactionType   WarehouseTransactionType @map("transaction_type")
+  materialId        String                   @map("material_id")
+  materialCode      String                   @map("material_code")
+  materialName      String                   @map("material_name")
+  unit              String
+  quantity          Decimal                  @db.Decimal(15, 4)
+  materialReceiptId String?                  @unique @map("material_receipt_id")
+  productionOrderId String?                  @map("production_order_id")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+
+  material        Material         @relation(fields: [materialId], references: [id])
+  materialReceipt MaterialReceipt? @relation(fields: [materialReceiptId], references: [id])
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+
+  // Idempotency (Task 03/07): một Production Order chỉ xuất kho đúng một lần cho mỗi vật tư —
+  // enforce ở DB, không chỉ dựa vào validate status = PENDING ở tầng application.
+  @@unique([productionOrderId, materialId])
+  @@index([materialId])
+  @@index([productionOrderId])
+  @@map("warehouse_transactions")
 }

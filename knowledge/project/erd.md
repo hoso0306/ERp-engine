@@ -54,6 +54,7 @@ erDiagram
         string name
         string unitId FK
         boolean isActive
+        decimal currentStock
     }
 
     MaterialPrice {
@@ -65,6 +66,37 @@ erDiagram
         datetime effectiveFrom
         datetime effectiveTo
         boolean isDefault
+    }
+
+    %% ─────────────────────────────────────
+    %% WAREHOUSE
+    %% ─────────────────────────────────────
+
+    MaterialReceipt {
+        string id PK
+        string code UK
+        string materialId FK
+        string materialCode
+        string materialName
+        string unit
+        decimal quantity
+        string supplierName
+        string note
+        string createdBy
+    }
+
+    WarehouseTransaction {
+        string id PK
+        enum direction
+        enum transactionType
+        string materialId FK
+        string materialCode
+        string materialName
+        string unit
+        decimal quantity
+        string materialReceiptId FK_UK
+        string productionOrderId FK
+        datetime createdAt
     }
 
     %% ─────────────────────────────────────
@@ -307,15 +339,6 @@ erDiagram
     }
 
     %% ─────────────────────────────────────
-    %% WAREHOUSE (TBD - chưa thiết kế)
-    %% ─────────────────────────────────────
-
-    Warehouse_TBD {
-        string id PK
-        string note "Chưa thiết kế"
-    }
-
-    %% ─────────────────────────────────────
     %% RELATIONSHIPS
     %% ─────────────────────────────────────
 
@@ -330,6 +353,8 @@ erDiagram
     %% Material
     Material                   ||--|{ MaterialPrice               : "giá NVL"
     Material                   ||--o{ MaterialRequirementItem     : "dùng trong BOM"
+    Material                   ||--o{ MaterialReceipt              : "nhập kho"
+    Material                   ||--o{ WarehouseTransaction         : "biến động kho"
 
     %% Product
     Product                    ||--|{ ProductParameter            : "thông số"
@@ -367,8 +392,9 @@ erDiagram
     %% Sales Order → Timeline
     SalesOrder                 ||--o{ SalesOrderTimeline          : "lịch sử (audit log)"
 
-    %% Production Order → Warehouse (TBD)
-    ProductionOrder            ||--o{ Warehouse_TBD              : "xuất kho (TBD)"
+    %% Warehouse
+    MaterialReceipt            ||--o| WarehouseTransaction         : "sinh (IN)"
+    ProductionOrder            ||--o{ WarehouseTransaction         : "xuất kho (OUT)"
 ```
 
 ---
@@ -501,6 +527,19 @@ Field `payload Json?` không được Postgres enforce schema, nên quy ước c
 - `ProductionOrderTimeline` (`production_order_timelines`) — model mới, cùng pattern `SalesOrderTimeline`: `action` (`ProductionOrderTimelineAction`: `PRODUCTION_ORDER_CREATED`/`STARTED`/`COMPLETED`/`CANCELLED`), `actorType` (**enum riêng** `ProductionOrderTimelineActorType`, không tái sử dụng `SalesOrderTimelineActorType` — xem lý do ở `production.md`), `payload Json?`, `createdBy`, `createdAt`.
 - Quan hệ `ProductionOrder ||--o{ ProductionOrderTimeline`.
 - `RunningNumber` cho `type: 'PRODUCTION_ORDER'` đổi `prefix: 'SX' → 'PO'` (migration + seed), nhất quán với `SO`/`BG` toàn ERP.
+
+---
+
+### 12. Warehouse module — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `007-kho.md`)
+
+Thay thế placeholder `Warehouse_TBD` (mục 7) bằng schema thật:
+
+- `Material` — thêm `currentStock` (`Decimal`, cache tồn kho, cập nhật theo Delta — xem `warehouse.md` mục "Current Stock").
+- `MaterialReceipt` (`material_receipts`) — chứng từ nhập kho, Create API duy nhất của module này. Snapshot `materialCode`/`materialName`/`unit`/`supplierName`. Running Number `MATERIAL_RECEIPT` → prefix `PN`.
+- `WarehouseTransaction` (`warehouse_transactions`) — **bảng Ledger duy nhất** cho mọi biến động kho (không có `StockLedger`/`MaterialIssue` riêng). Tách `direction` (`IN`/`OUT`, cố định) và `transactionType` (`MATERIAL_RECEIPT`/`MATERIAL_ISSUE`, mở rộng được). Đúng một trong `materialReceiptId`/`productionOrderId` được set tuỳ `transactionType`.
+- **Idempotency constraint:** `@@unique([productionOrderId, materialId])` trên `WarehouseTransaction` — đảm bảo một Production Order chỉ xuất kho đúng một lần cho mỗi vật tư ở tầng DB, không chỉ dựa vào validate status ở application (xem `warehouse.md` mục "Transaction Boundary").
+- Quan hệ: `MaterialReceipt ||--o| WarehouseTransaction`, `ProductionOrder ||--o{ WarehouseTransaction`.
+- Không có `runningBalance` trên từng dòng — tồn kho hiện tại chỉ có một nguồn duy nhất: `Material.currentStock`.
 
 ---
 

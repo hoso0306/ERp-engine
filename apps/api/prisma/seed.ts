@@ -48,6 +48,12 @@ async function main() {
     create: { type: 'PRODUCTION_ORDER', prefix: 'PO', lastNumber: 0, paddingLength: 6 },
   });
 
+  await prisma.runningNumber.upsert({
+    where: { type: 'MATERIAL_RECEIPT' },
+    update: {},
+    create: { type: 'MATERIAL_RECEIPT', prefix: 'PN', lastNumber: 0, paddingLength: 6 },
+  });
+
   // Customer Groups
   const groups = ['Khách lẻ', 'Đại lý', 'Doanh nghiệp'];
   for (const name of groups) {
