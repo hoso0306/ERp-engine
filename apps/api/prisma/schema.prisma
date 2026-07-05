@@ -136,6 +136,13 @@ enum PaymentMethod {
   BANK_TRANSFER
 }
 
+enum SettingValueType {
+  BOOLEAN
+  NUMBER
+  STRING
+  TEXT
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -160,6 +167,8 @@ model RunningNumber {
   prefix        String
   lastNumber    Int      @default(0) @map("last_number")
   paddingLength Int      @default(6) @map("padding_length")
+  // Chỉ ẩn/hiện loại chứng từ khỏi menu — không chặn tạo chứng từ (xem setting.md).
+  enabled       Boolean  @default(true)
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("running_numbers")
@@ -942,4 +951,48 @@ model Payment {
   @@index([salesOrderId])
   @@index([receivableId])
   @@map("payments")
+}
+
+// ──────────────────────────────────────
+// Settings
+// ──────────────────────────────────────
+
+// Singleton — chỉ đúng một bản ghi, seed sẵn ở migration/seed. Không có
+// Create/Delete API (xem setting.md mục "Company Settings").
+model Company {
+  id             String   @id @default(cuid())
+  companyName    String   @map("company_name")
+  logo           String?
+  address        String?
+  phone          String?
+  email          String?
+  website        String?
+  taxCode        String?  @map("tax_code")
+  // Chỉ là nhãn hiển thị, không phải công tắc đa tiền tệ — xem setting.md.
+  currency       String   @default("VND")
+  currencySymbol String   @default("₫") @map("currency_symbol")
+  timezone       String   @default("Asia/Ho_Chi_Minh")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("companies")
+}
+
+// Key-value dùng chung cho Dashboard/Notification/Document/Security/Backup
+// Settings — chỉ giá trị Loại 1 (xem setting.md mục "Phân loại cấu hình").
+// value/defaultValue lưu dạng String, FE/BE tự parse theo valueType.
+model Setting {
+  id           String           @id @default(cuid())
+  module       String
+  key          String
+  value        String
+  defaultValue String           @map("default_value")
+  valueType    SettingValueType @map("value_type")
+  description  String?
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@unique([module, key])
+  @@index([module])
+  @@map("settings")
 }

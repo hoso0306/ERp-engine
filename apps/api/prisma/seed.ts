@@ -117,6 +117,66 @@ async function main() {
     data: { lastNumber: customers.length },
   });
 
+  // Company Settings — Singleton, seed sẵn 1 bản ghi (không để FE tự tạo lần đầu).
+  const existingCompany = await prisma.company.findFirst();
+  if (!existingCompany) {
+    await prisma.company.create({
+      data: {
+        companyName: 'CÔNG TY TNHH ERP ENGINE',
+        phone: '0900 000 000',
+        address: 'Hà Nội, Việt Nam',
+        currency: 'VND',
+        currencySymbol: '₫',
+        timezone: 'Asia/Ho_Chi_Minh',
+      },
+    });
+  }
+
+  // Settings (key-value) — Dashboard / Notification / Document / Security / Backup
+  const settings: {
+    module: string;
+    key: string;
+    value: string;
+    defaultValue: string;
+    valueType: 'BOOLEAN' | 'NUMBER' | 'STRING' | 'TEXT';
+    description: string;
+  }[] = [
+    // Dashboard Settings
+    { module: 'Dashboard', key: 'topCustomers', value: '10', defaultValue: '10', valueType: 'NUMBER', description: 'Số lượng khách hàng hiển thị ở Top khách nợ nhiều nhất' },
+    { module: 'Dashboard', key: 'topProducts', value: '10', defaultValue: '10', valueType: 'NUMBER', description: 'Số lượng sản phẩm hiển thị ở Top bán chạy' },
+    { module: 'Dashboard', key: 'topMaterials', value: '10', defaultValue: '10', valueType: 'NUMBER', description: 'Số lượng vật tư hiển thị ở Top tiêu thụ' },
+    { module: 'Dashboard', key: 'defaultDashboardPeriod', value: '30', defaultValue: '30', valueType: 'NUMBER', description: 'Khoảng thời gian mặc định (số ngày) khi mở Dashboard' },
+    { module: 'Dashboard', key: 'upcomingDueDays', value: '7', defaultValue: '7', valueType: 'NUMBER', description: 'Số ngày sắp đến hạn công nợ — dùng chung cho Dashboard và DebtService' },
+
+    // Notification Settings (V1 chỉ bật/tắt, chưa gửi thật)
+    { module: 'Notification', key: 'notifyOverdueDebt', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo công nợ quá hạn' },
+    { module: 'Notification', key: 'notifyCreditLimitExceeded', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo khách vượt hạn mức công nợ' },
+    { module: 'Notification', key: 'notifyLowStock', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo vật tư sắp hết/hết hàng' },
+    { module: 'Notification', key: 'notifyProductionCompleted', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Thông báo khi Production Order hoàn thành' },
+    { module: 'Notification', key: 'notifyOrderDelivered', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Thông báo khi đơn hàng đã giao cho khách' },
+
+    // Document Settings (in ấn)
+    { module: 'Document', key: 'quotationDefaultTerms', value: '', defaultValue: '', valueType: 'TEXT', description: 'Điều khoản mặc định in cuối Báo giá' },
+
+    // Security Settings
+    { module: 'Security', key: 'sessionTimeout', value: '60', defaultValue: '60', valueType: 'NUMBER', description: 'Thời gian hết phiên đăng nhập (phút)' },
+    { module: 'Security', key: 'forceChangePasswordOnFirstLogin', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên' },
+
+    // Backup Settings (chuẩn bị cấu trúc cho V2)
+    { module: 'Backup', key: 'autoBackup', value: 'false', defaultValue: 'false', valueType: 'BOOLEAN', description: 'Bật/tắt tự động sao lưu' },
+    { module: 'Backup', key: 'backupSchedule', value: 'daily', defaultValue: 'daily', valueType: 'STRING', description: 'Lịch sao lưu (vd daily/weekly)' },
+    { module: 'Backup', key: 'retentionDays', value: '30', defaultValue: '30', valueType: 'NUMBER', description: 'Số ngày giữ lại bản sao lưu' },
+    { module: 'Backup', key: 'backupProvider', value: '', defaultValue: '', valueType: 'STRING', description: 'Nhà cung cấp lưu trữ sao lưu (Google Drive/NAS/S3)' },
+  ];
+
+  for (const s of settings) {
+    await prisma.setting.upsert({
+      where: { module_key: { module: s.module, key: s.key } },
+      update: {},
+      create: s,
+    });
+  }
+
   console.log('Seed completed.');
 }
 

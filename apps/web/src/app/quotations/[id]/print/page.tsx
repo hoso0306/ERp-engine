@@ -49,6 +49,19 @@ interface Quotation {
   items: QuotationItem[];
 }
 
+interface Company {
+  companyName: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+}
+
+interface Setting {
+  key: string;
+  value: string;
+}
+
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
@@ -71,6 +84,8 @@ const STATUS_LABEL: Record<string, string> = {
 export default function QuotationPrintPage() {
   const { id } = useParams<{ id: string }>();
   const [quotation, setQuotation] = useState<Quotation | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [quotationDefaultTerms, setQuotationDefaultTerms] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,6 +99,21 @@ export default function QuotationPrintPage() {
         document.title = `${data.code} - ${data.customer.name}`;
       })
       .catch((e: Error) => setError(e.message));
+
+    // Company info + điều khoản mặc định — đọc qua Settings module, không hard-code
+    // (xem knowledge/modules/setting.md mục "Document Settings").
+    fetch(`${API_URL}/api/settings/company`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: Company | null) => setCompany(data))
+      .catch(() => setCompany(null));
+
+    fetch(`${API_URL}/api/settings/Document`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Setting[]) => {
+        const terms = data.find((s) => s.key === "quotationDefaultTerms")?.value ?? "";
+        setQuotationDefaultTerms(terms);
+      })
+      .catch(() => setQuotationDefaultTerms(""));
   }, [id]);
 
   if (error) {
@@ -164,8 +194,15 @@ export default function QuotationPrintPage() {
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>
-            {/* Company info placeholder */}
-            CÔNG TY TNHH ERP ENGINE &nbsp;|&nbsp; Tel: 0900 000 000
+            {company ? (
+              <>
+                {company.companyName}
+                {company.phone && <>&nbsp;|&nbsp;Tel: {company.phone}</>}
+                {company.address && <>&nbsp;|&nbsp;{company.address}</>}
+              </>
+            ) : (
+              "..."
+            )}
           </div>
           <div style={{ fontSize: 22, fontWeight: "bold", textTransform: "uppercase", letterSpacing: 2 }}>
             Báo Giá
@@ -299,6 +336,13 @@ export default function QuotationPrintPage() {
         {quotation.note && (
           <div style={{ marginBottom: 16, borderTop: "1px solid #ccc", paddingTop: 8 }}>
             <strong>Ghi chú:</strong> {quotation.note}
+          </div>
+        )}
+
+        {/* Điều khoản mặc định — Settings.Document.quotationDefaultTerms */}
+        {quotationDefaultTerms && (
+          <div style={{ marginBottom: 16, borderTop: "1px solid #ccc", paddingTop: 8, fontSize: 11, whiteSpace: "pre-line" }}>
+            <strong>Điều khoản:</strong> {quotationDefaultTerms}
           </div>
         )}
 

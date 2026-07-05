@@ -12,6 +12,7 @@ import { ProductionModule } from './production/production.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { DebtModule } from './debt/debt.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SettingModule } from './setting/setting.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     WarehouseModule,
     DebtModule,
     DashboardModule,
+    SettingModule,
   ],
 })
 export class AppModule {}

@@ -13,6 +13,7 @@ import {
   SalesOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
 
@@ -49,7 +50,10 @@ const RECEIVABLE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class DebtService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingService: SettingService,
+  ) {}
 
   // ─────────────────────────────────────────────────────
   // Payment (Task 03) — document Create API duy nhất của module này
@@ -376,22 +380,29 @@ export class DebtService {
     };
   }
 
-  async getOverdueCustomers(limit = 10) {
+  // limit mặc định đọc Settings.Dashboard.topCustomers (Task 04, 010-cai-dat.md)
+  // nếu caller không truyền — không hard-code.
+  async getOverdueCustomers(limit?: number) {
+    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
     const grouped = await this.prisma.receivable.groupBy({
       by: ['customerId'],
       where: { ...this.notCancelledFilter(), dueDate: this.overdueWhere() },
       _sum: { remainingAmount: true },
       _count: { _all: true },
       orderBy: { _sum: { remainingAmount: 'desc' } },
-      take: limit,
+      take,
     });
 
     return this.attachCustomerInfo(grouped);
   }
 
-  async getUpcomingDueReceivables(days = 7) {
+  // Task 04 (Settings module) — không dùng tham số mặc định cứng nữa; nếu
+  // caller không truyền `days`, đọc Settings.Dashboard.upcomingDueDays qua
+  // SettingService (dùng chung một nơi khai báo duy nhất — xem setting.md).
+  async getUpcomingDueReceivables(days?: number) {
+    const windowDays = days ?? (await this.settingService.getNumberValue('Dashboard', 'upcomingDueDays'));
     const now = new Date();
-    const until = new Date(now.getTime() + days * MS_PER_DAY);
+    const until = new Date(now.getTime() + windowDays * MS_PER_DAY);
 
     return this.prisma.receivable.findMany({
       where: {
@@ -408,13 +419,15 @@ export class DebtService {
     return Array.from(exceededMap.values());
   }
 
-  async getTopDebtors(limit = 10) {
+  // limit mặc định đọc Settings.Dashboard.topCustomers nếu không truyền.
+  async getTopDebtors(limit?: number) {
+    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
     const grouped = await this.prisma.receivable.groupBy({
       by: ['customerId'],
       where: this.notCancelledFilter(),
       _sum: { remainingAmount: true },
       orderBy: { _sum: { remainingAmount: 'desc' } },
-      take: limit,
+      take,
     });
 
     return this.attachCustomerInfo(grouped);

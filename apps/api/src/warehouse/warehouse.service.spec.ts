@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 
 function makeMaterial(overrides: Record<string, unknown> = {}) {
   return {
@@ -43,7 +44,11 @@ describe('WarehouseService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [WarehouseService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        WarehouseService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettingService, useValue: { getNumberValue: jest.fn().mockResolvedValue(10) } },
+      ],
     }).compile();
 
     service = module.get<WarehouseService>(WarehouseService);

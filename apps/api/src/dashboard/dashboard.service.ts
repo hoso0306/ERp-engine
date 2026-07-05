@@ -62,7 +62,9 @@ export class DashboardService {
     };
   }
 
-  async getDebtDashboard(upcomingDueDays = 7) {
+  // upcomingDueDays: nếu không truyền, DebtService tự đọc Settings.Dashboard.upcomingDueDays
+  // — Dashboard không hard-code giá trị mặc định (Task 04, 010-cai-dat.md).
+  async getDebtDashboard(upcomingDueDays?: number) {
     const [summary, overdueCustomers, upcomingDue, creditExceeded, topDebtors] =
       await Promise.all([
         this.debtService.getDashboardSummary(),

@@ -29,8 +29,11 @@ export class DashboardController {
 
   @Get('debt')
   getDebt(@Query() query: DashboardDebtQueryDto) {
-    const days = query.upcomingDueDays ? parseInt(query.upcomingDueDays, 10) : 7;
-    return this.dashboardService.getDebtDashboard(Number.isFinite(days) ? days : 7);
+    // Không truyền query -> DebtService tự đọc Settings.Dashboard.upcomingDueDays.
+    const days = query.upcomingDueDays ? parseInt(query.upcomingDueDays, 10) : undefined;
+    return this.dashboardService.getDebtDashboard(
+      days !== undefined && Number.isFinite(days) ? days : undefined,
+    );
   }
 
   @Get('alerts')

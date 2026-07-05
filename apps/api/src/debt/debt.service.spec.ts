@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DebtService } from './debt.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 
 function makeSalesOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -50,7 +51,11 @@ describe('DebtService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [DebtService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        DebtService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettingService, useValue: { getNumberValue: jest.fn().mockResolvedValue(7) } },
+      ],
     }).compile();
 
     service = module.get<DebtService>(DebtService);

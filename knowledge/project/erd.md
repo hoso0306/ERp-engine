@@ -370,6 +370,34 @@ erDiagram
     }
 
     %% ─────────────────────────────────────
+    %% SETTINGS (không có FK — module cấu hình độc lập)
+    %% ─────────────────────────────────────
+
+    Company {
+        string id PK "Singleton"
+        string companyName
+        string logo
+        string address
+        string phone
+        string email
+        string website
+        string taxCode
+        string currency
+        string currencySymbol
+        string timezone
+    }
+
+    Setting {
+        string id PK
+        string module "UK (module, key)"
+        string key "UK (module, key)"
+        string value
+        string defaultValue
+        enum valueType
+        string description
+    }
+
+    %% ─────────────────────────────────────
     %% RELATIONSHIPS
     %% ─────────────────────────────────────
 
@@ -605,6 +633,16 @@ Thay đổi Data Model duy nhất chạm vào module khác:
   - `SalesOrder @@index([expectedDeliveryDate])` — cho `getDelayedOrders()` (Alerts).
 
 Mỗi Service hiện có được bổ sung method đọc riêng cho Dashboard (không tạo `XxxQueryService` song song) — xem `dashboard.md` mục "Module Ownership".
+
+---
+
+### 15. Settings module — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `010-cai-dat.md`)
+
+- `Company` (`companies`) — **model mới hoàn toàn**, Singleton (seed sẵn 1 bản ghi trong migration/seed, không có Create/Delete API). `currency`/`currencySymbol` chỉ là nhãn hiển thị, không phải công tắc đa tiền tệ.
+- `Setting` (`settings`) — bảng key-value dùng chung cho Dashboard/Notification/Document/Security/Backup Settings. `@@unique([module, key])`. Không Create key mới qua API (chỉ seed), không Delete — chỉ Update giá trị.
+- `RunningNumber` — thêm field `enabled` (`Boolean @default(true)`) — chỉ ẩn/hiện chứng từ khỏi menu, không chặn tạo chứng từ. `lastNumber` không được sửa qua Settings API (đã verify: request PUT có `lastNumber` trong body bị bỏ qua).
+- Không có quan hệ FK nào giữa `Company`/`Setting` với các model khác — module cấu hình độc lập, các module khác chỉ đọc qua `SettingService` (Module Ownership, cùng nguyên tắc đã áp dụng cho Dashboard).
+- Đã refactor các nơi từng hard-code giá trị Loại 1: `DebtService.getUpcomingDueReceivables()`/`getOverdueCustomers()`/`getTopDebtors()` đọc `Settings.Dashboard.upcomingDueDays`/`topCustomers`; `WarehouseService.getTopConsumedMaterials()` đọc `Settings.Dashboard.defaultDashboardPeriod`/`topMaterials`; trang in Báo giá (`apps/web/.../quotations/[id]/print/page.tsx`) đọc `Settings.Company.*` + `Settings.Document.quotationDefaultTerms` thay vì placeholder hard-code.
 
 ---
 

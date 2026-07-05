@@ -9,6 +9,7 @@ import {
   WarehouseTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 import { CreateMaterialReceiptDto } from './dto/create-material-receipt.dto';
 import { MaterialReceiptQueryDto } from './dto/material-receipt-query.dto';
 import { WarehouseTransactionQueryDto } from './dto/warehouse-transaction-query.dto';
@@ -20,7 +21,10 @@ const MATERIAL_RECEIPT_INCLUDE = {
 
 @Injectable()
 export class WarehouseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingService: SettingService,
+  ) {}
 
   // ─────────────────────────────────────────────────────
   // Material Receipt (Task 02) — document Create API duy nhất của module này
@@ -309,13 +313,19 @@ export class WarehouseService {
   // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
   // ─────────────────────────────────────────────────────
 
-  async getTopConsumedMaterials(days?: number, limit = 10) {
+  // days/limit mặc định đọc Settings.Dashboard.defaultDashboardPeriod/topMaterials
+  // (Task 04, 010-cai-dat.md) nếu caller không truyền — không hard-code.
+  async getTopConsumedMaterials(days?: number, limit?: number) {
+    const windowDays =
+      days ?? (await this.settingService.getNumberValue('Dashboard', 'defaultDashboardPeriod'));
+    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topMaterials'));
+
     const where: Prisma.WarehouseTransactionWhereInput = {
       direction: WarehouseDirection.OUT,
       transactionType: WarehouseTransactionType.MATERIAL_ISSUE,
     };
-    if (days && days > 0) {
-      where.createdAt = { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
+    if (windowDays > 0) {
+      where.createdAt = { gte: new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000) };
     }
 
     const grouped = await this.prisma.warehouseTransaction.groupBy({
@@ -323,7 +333,7 @@ export class WarehouseService {
       where,
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
-      take: limit,
+      take,
     });
 
     return grouped.map((g) => ({
