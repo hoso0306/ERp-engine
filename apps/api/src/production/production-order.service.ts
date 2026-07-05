@@ -8,6 +8,7 @@ import {
   ProductionOrderStatus,
   ProductionOrderTimelineAction,
   ProductionOrderTimelineActorType,
+  SalesOrderStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
@@ -193,5 +194,76 @@ export class ProductionOrderService {
         include: PRODUCTION_ORDER_INCLUDE,
       });
     });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
+  // ─────────────────────────────────────────────────────
+
+  async getDashboardSummary() {
+    const grouped = await this.prisma.productionOrder.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+    const countByStatus = new Map(grouped.map((g) => [g.status, g._count._all]));
+
+    return {
+      pending: countByStatus.get(ProductionOrderStatus.PENDING) ?? 0,
+      inProduction: countByStatus.get(ProductionOrderStatus.IN_PRODUCTION) ?? 0,
+      completed: countByStatus.get(ProductionOrderStatus.PRODUCTION_COMPLETED) ?? 0,
+      cancelled: countByStatus.get(ProductionOrderStatus.CANCELLED) ?? 0,
+    };
+  }
+
+  // Trả về toàn bộ xưởng đã sắp xếp theo số lượng Phiếu sản xuất (không huỷ) giảm dần
+  // — Dashboard tự lấy đầu danh sách cho "nhiều việc nhất", cuối danh sách cho
+  // "ít việc nhất" từ cùng một query, tránh N+1 (xem 009-dashboard.md Task 07).
+  async getBusyCenters() {
+    const grouped = await this.prisma.productionOrder.groupBy({
+      by: ['productionCenterId', 'productionCenterName'],
+      where: { status: { not: ProductionOrderStatus.CANCELLED } },
+      _count: { _all: true },
+      orderBy: { _count: { productionCenterId: 'desc' } },
+    });
+
+    return grouped.map((g) => ({
+      productionCenterId: g.productionCenterId,
+      productionCenterName: g.productionCenterName,
+      orderCount: g._count._all,
+    }));
+  }
+
+  // Tiến độ sản xuất theo từng Sales Order đang IN_PRODUCTION — đọc trực tiếp
+  // completedProductionOrders/totalProductionOrders (Summary Field có sẵn trên
+  // SalesOrder), không tính lại Workflow. Phép chia chỉ để hiển thị %.
+  async getProgressSummary() {
+    const orders = await this.prisma.salesOrder.findMany({
+      where: { status: SalesOrderStatus.IN_PRODUCTION },
+      select: {
+        id: true,
+        code: true,
+        completedProductionOrders: true,
+        totalProductionOrders: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const totalCompleted = orders.reduce((s, o) => s + o.completedProductionOrders, 0);
+    const totalPlanned = orders.reduce((s, o) => s + o.totalProductionOrders, 0);
+
+    return {
+      overallProgressPercent:
+        totalPlanned > 0 ? Math.round((totalCompleted / totalPlanned) * 100) : 0,
+      orders: orders.map((o) => ({
+        salesOrderId: o.id,
+        salesOrderCode: o.code,
+        completed: o.completedProductionOrders,
+        total: o.totalProductionOrders,
+        progressPercent:
+          o.totalProductionOrders > 0
+            ? Math.round((o.completedProductionOrders / o.totalProductionOrders) * 100)
+            : 0,
+      })),
+    };
   }
 }

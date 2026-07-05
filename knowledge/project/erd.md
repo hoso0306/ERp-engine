@@ -55,6 +55,7 @@ erDiagram
         string unitId FK
         boolean isActive
         decimal currentStock
+        decimal minimumStock
     }
 
     MaterialPrice {
@@ -305,6 +306,36 @@ erDiagram
     }
 
     %% ─────────────────────────────────────
+    %% DEBT (Accounts Receivable)
+    %% ─────────────────────────────────────
+
+    Receivable {
+        string id PK
+        string salesOrderId FK_UK
+        string customerId
+        decimal totalAmount
+        decimal paidAmount
+        decimal remainingAmount "CHECK >= 0"
+        decimal debtLimitSnapshot
+        int debtTermDaysSnapshot
+        datetime dueDate
+    }
+
+    Payment {
+        string id PK
+        string code UK
+        string salesOrderId
+        string receivableId FK
+        datetime paymentDate
+        decimal amount
+        enum paymentMethod
+        string referenceNumber
+        string note
+        string createdBy
+        datetime createdAt
+    }
+
+    %% ─────────────────────────────────────
     %% PRODUCTION ORDER
     %% ─────────────────────────────────────
 
@@ -395,6 +426,10 @@ erDiagram
     %% Warehouse
     MaterialReceipt            ||--o| WarehouseTransaction         : "sinh (IN)"
     ProductionOrder            ||--o{ WarehouseTransaction         : "xuất kho (OUT)"
+
+    %% Debt (Accounts Receivable)
+    SalesOrder                 ||--o| Receivable                  : "approve() → sinh đồng thời"
+    Receivable                 ||--|{ Payment                     : "lịch sử thu tiền"
 ```
 
 ---
@@ -540,6 +575,36 @@ Thay thế placeholder `Warehouse_TBD` (mục 7) bằng schema thật:
 - **Idempotency constraint:** `@@unique([productionOrderId, materialId])` trên `WarehouseTransaction` — đảm bảo một Production Order chỉ xuất kho đúng một lần cho mỗi vật tư ở tầng DB, không chỉ dựa vào validate status ở application (xem `warehouse.md` mục "Transaction Boundary").
 - Quan hệ: `MaterialReceipt ||--o| WarehouseTransaction`, `ProductionOrder ||--o{ WarehouseTransaction`.
 - Không có `runningBalance` trên từng dòng — tồn kho hiện tại chỉ có một nguồn duy nhất: `Material.currentStock`.
+
+---
+
+### 13. Debt module (Accounts Receivable) — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `008-cong-no.md`)
+
+- `Receivable` (`receivables`) — 1-1 với `SalesOrder` (`salesOrderId` unique), sinh **đồng thời** với `SalesOrder` trong transaction `Quotation.approve()`, không đợi `Delivered`. Snapshot Credit Policy (`debtLimitSnapshot`/`debtTermDaysSnapshot` copy từ `Customer.debtLimit`/`debtTermDays` tại thời điểm tạo). `customerId` là **Redundant Reference** (copy ID bất biến, không `@relation` — cùng convention với `SalesOrder.customerId`), không phải Derived Data. **Không có field `status`** — `SalesOrder.status` là nguồn sự thật duy nhất quyết định hiệu lực công nợ.
+- `remainingAmount` là Derived Data được phép lưu (lý do hiệu năng đọc cho Dashboard/Debt Monitoring), cập nhật atomic (`increment`/`decrement`) trong `PaymentService.create()`. **`CHECK (remaining_amount >= 0)`** khai báo tay trong migration (Prisma không model được CHECK constraint) — enforce ở DB, không chỉ validate ở application.
+- `dueDate` — `NULL` lúc tạo, set khi `SalesOrder.deliver()` (`actualDeliveryDate + debtTermDaysSnapshot`, dùng snapshot chứ không đọc lại `Customer.debtTermDays`).
+- `Payment` (`payments`) — lịch sử thu tiền, append-only (không Update/Delete). `salesOrderId` là Redundant Reference giữ cùng `receivableId` (tránh join, không `@relation`). Running Number `PAYMENT` → prefix `PT`.
+- Enum `PaymentMethod` (`CASH`/`BANK_TRANSFER`).
+- **Không có `PaymentTimeline`/`ReceivableTimeline` riêng** — tái sử dụng `SalesOrderTimeline` action `PAYMENT_STATUS_CHANGED` đã có sẵn, ghi mỗi lần tạo Payment (kể cả khi `paymentStatus` không đổi). Việc sinh `Receivable` cũng không tạo Timeline riêng — gộp vào payload có sẵn của `SALES_ORDER_CREATED` (`receivableCreated: true`).
+- `daysOverdue`/`riskLevel`/`creditExceeded` — Derived, **không lưu DB**, tính runtime.
+- Quan hệ: `SalesOrder ||--o| Receivable`, `Receivable ||--|{ Payment`.
+- API cũ `POST /sales-orders/:id/record-payment` + `RecordPaymentDto` bị xoá hoàn toàn, thay bằng `POST /payments`.
+
+---
+
+### 14. Dashboard module — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `009-dashboard.md`)
+
+Dashboard **không có model/bảng riêng** — chỉ tổng hợp qua Service của module sở hữu dữ liệu (`SalesOrderService`/`ProductionOrderService`/`WarehouseService`/`DebtService`), không query trực tiếp Prisma của module khác (Module Ownership).
+
+Thay đổi Data Model duy nhất chạm vào module khác:
+
+- `Material` — thêm `minimumStock` (`Decimal?`, ngưỡng tồn kho tối thiểu, thuộc **Product module**) — phục vụ "Sắp hết hàng"/"Hết hàng" ở Warehouse Overview. `NULL` = chưa cấu hình ngưỡng, không tính cảnh báo.
+- Thêm index phục vụ các query Dashboard hay dùng (không đổi Business Rule):
+  - `WarehouseTransaction @@index([transactionType, direction, createdAt])` — cho `getTopConsumedMaterials()`.
+  - `Receivable @@index([dueDate])` — cho overdue/risk/upcoming-due.
+  - `SalesOrder @@index([expectedDeliveryDate])` — cho `getDelayedOrders()` (Alerts).
+
+Mỗi Service hiện có được bổ sung method đọc riêng cho Dashboard (không tạo `XxxQueryService` song song) — xem `dashboard.md` mục "Module Ownership".
 
 ---
 

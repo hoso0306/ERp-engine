@@ -245,6 +245,7 @@ export class ProductService {
         name: dto.name.trim(),
         unitId: dto.unitId,
         note: dto.note?.trim() || null,
+        minimumStock: dto.minimumStock ?? null,
       },
       include: { unit: { select: { id: true, name: true } } },
     });
@@ -270,6 +271,7 @@ export class ProductService {
     if (dto.unitId !== undefined) data.unit = { connect: { id: dto.unitId } };
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
+    if (dto.minimumStock !== undefined) data.minimumStock = dto.minimumStock;
 
     return this.prisma.material.update({
       where: { id },

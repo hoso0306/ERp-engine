@@ -784,6 +784,20 @@ export class QuotationWorkflowService {
         },
       });
 
+      // Task 02 (Debt module) — Receivable sinh đồng thời với SalesOrder, cùng
+      // transaction — snapshot Credit Policy (debtLimitSnapshot/debtTermDaysSnapshot)
+      // từ Customer tại thời điểm này. dueDate = NULL cho tới khi Delivered.
+      await tx.receivable.create({
+        data: {
+          salesOrderId: salesOrder.id,
+          customerId: quotation.customerId,
+          totalAmount,
+          remainingAmount: totalAmount,
+          debtLimitSnapshot: Number(quotation.customer.debtLimit),
+          debtTermDaysSnapshot: quotation.customer.debtTermDays,
+        },
+      });
+
       // Group items by productionCenterId for ProductionOrder creation
       const centerMap = new Map<
         string,
@@ -932,7 +946,9 @@ export class QuotationWorkflowService {
           salesOrderId: salesOrder.id,
           action: SalesOrderTimelineAction.SALES_ORDER_CREATED,
           actorType: SalesOrderTimelineActorType.SYSTEM,
-          payload: { quotationCode: quotation.code },
+          // Task 02 (Debt module) — không tạo action Timeline riêng cho việc
+          // sinh Receivable, gộp vào payload có sẵn của SALES_ORDER_CREATED.
+          payload: { quotationCode: quotation.code, receivableCreated: true },
         },
       });
 

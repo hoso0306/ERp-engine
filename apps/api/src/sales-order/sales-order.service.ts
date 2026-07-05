@@ -18,17 +18,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
-import { RecordPaymentDto } from './dto/record-payment.dto';
 
 const STARTED_PRODUCTION_STATUSES: ProductionOrderStatus[] = [
   ProductionOrderStatus.IN_PRODUCTION,
   ProductionOrderStatus.PRODUCTION_COMPLETED,
-];
-
-const PAYMENT_STATUS_ORDER: PaymentStatus[] = [
-  PaymentStatus.UNPAID,
-  PaymentStatus.PARTIALLY_PAID,
-  PaymentStatus.PAID,
 ];
 
 const SALES_ORDER_INCLUDE = {
@@ -44,6 +37,7 @@ const SALES_ORDER_INCLUDE = {
     orderBy: { createdAt: 'asc' as const },
   },
   timeline: { orderBy: { createdAt: 'asc' as const } },
+  receivable: true,
 } satisfies Prisma.SalesOrderInclude;
 
 @Injectable()
@@ -168,13 +162,28 @@ export class SalesOrderService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const actualDeliveryDate = new Date();
+
       await tx.salesOrder.update({
         where: { id },
         data: {
           status: SalesOrderStatus.DELIVERED,
-          actualDeliveryDate: new Date(),
+          actualDeliveryDate,
         },
       });
+
+      // Task 08 (Debt module) — kích hoạt dueDate, dùng debtTermDaysSnapshot đã
+      // snapshot tại thời điểm tạo Receivable, không đọc lại Customer.debtTermDays.
+      if (salesOrder.receivable) {
+        const dueDate = new Date(actualDeliveryDate);
+        dueDate.setDate(
+          dueDate.getDate() + salesOrder.receivable.debtTermDaysSnapshot,
+        );
+        await tx.receivable.update({
+          where: { id: salesOrder.receivable.id },
+          data: { dueDate },
+        });
+      }
 
       await tx.salesOrderTimeline.create({
         data: {
@@ -329,6 +338,15 @@ export class SalesOrderService {
       throw new ForbiddenException('Không thể huỷ đơn hàng đã giao cho khách.');
     }
 
+    // Task 06 (Debt module) — không cho Cancel nếu đã thu tiền. Refund không
+    // thuộc phạm vi Sprint 01 (xem debt.md mục "Receivable không tự quyết
+    // định hiệu lực công nợ").
+    if (salesOrder.receivable && Number(salesOrder.receivable.paidAmount) > 0) {
+      throw new ForbiddenException(
+        'Không thể huỷ đơn hàng đã thu tiền. Vui lòng liên hệ kế toán để xử lý.',
+      );
+    }
+
     const startedProductionOrders = salesOrder.productionOrders.filter((po) =>
       STARTED_PRODUCTION_STATUSES.includes(po.status),
     );
@@ -385,52 +403,85 @@ export class SalesOrderService {
   }
 
   // ─────────────────────────────────────────────────────
-  // Payment (Task 08)
+  // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
   // ─────────────────────────────────────────────────────
 
-  async recordPayment(id: string, dto: RecordPaymentDto) {
-    const validStatuses = Object.values(PaymentStatus) as string[];
-    if (!dto.paymentStatus || !validStatuses.includes(dto.paymentStatus)) {
-      throw new BadRequestException(
-        `Trạng thái thanh toán "${dto.paymentStatus}" không hợp lệ.`,
-      );
-    }
+  async getDashboardSummary() {
+    const notCancelled: Prisma.SalesOrderWhereInput = {
+      status: { not: SalesOrderStatus.CANCELLED },
+    };
 
-    const salesOrder = await this.findOne(id);
-    const newPaymentStatus = dto.paymentStatus as PaymentStatus;
+    const [totals, statusCounts] = await Promise.all([
+      this.prisma.salesOrder.aggregate({
+        where: notCancelled,
+        _sum: { totalAmount: true, plannedCost: true, plannedProfit: true },
+      }),
+      this.prisma.salesOrder.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+    ]);
 
-    const currentIndex = PAYMENT_STATUS_ORDER.indexOf(salesOrder.paymentStatus);
-    const newIndex = PAYMENT_STATUS_ORDER.indexOf(newPaymentStatus);
+    const countByStatus = new Map(statusCounts.map((s) => [s.status, s._count._all]));
 
-    if (newIndex <= currentIndex) {
-      throw new ForbiddenException(
-        `Không thể chuyển trạng thái thanh toán từ ${salesOrder.paymentStatus} sang ${newPaymentStatus}. Chỉ được đi một chiều: UNPAID → PARTIALLY_PAID → PAID.`,
-      );
-    }
+    return {
+      totalRevenue: Number(totals._sum.totalAmount ?? 0),
+      totalPlannedCost: Number(totals._sum.plannedCost ?? 0),
+      totalPlannedProfit: Number(totals._sum.plannedProfit ?? 0),
+      inProduction: countByStatus.get(SalesOrderStatus.IN_PRODUCTION) ?? 0,
+      productionCompleted: countByStatus.get(SalesOrderStatus.PRODUCTION_COMPLETED) ?? 0,
+      delivered: countByStatus.get(SalesOrderStatus.DELIVERED) ?? 0,
+    };
+  }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.salesOrder.update({
-        where: { id },
-        data: { paymentStatus: newPaymentStatus },
-      });
+  async getStatistics() {
+    const [byStatus, byPaymentStatus] = await Promise.all([
+      this.prisma.salesOrder.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.salesOrder.groupBy({ by: ['paymentStatus'], _count: { _all: true } }),
+    ]);
 
-      await tx.salesOrderTimeline.create({
-        data: {
-          salesOrderId: id,
-          action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
-          actorType: SalesOrderTimelineActorType.USER,
-          payload: {
-            fromStatus: salesOrder.paymentStatus,
-            toStatus: newPaymentStatus,
-          },
-          createdBy: dto.recordedBy?.trim() || null,
-        },
-      });
+    return {
+      byStatus: byStatus.map((s) => ({ status: s.status, count: s._count._all })),
+      byPaymentStatus: byPaymentStatus.map((s) => ({
+        paymentStatus: s.paymentStatus,
+        count: s._count._all,
+      })),
+    };
+  }
 
-      return tx.salesOrder.findUniqueOrThrow({
-        where: { id },
-        include: SALES_ORDER_INCLUDE,
-      });
+  async getRecentOrders(limit = 10) {
+    return this.prisma.salesOrder.findMany({
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        code: true,
+        customerName: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  // Đơn trễ tiến độ (Dashboard Alerts, 009-dashboard.md Task 06) — đọc trực
+  // tiếp expectedDeliveryDate đã có sẵn trên SalesOrder, không thêm field/rule
+  // mới: đã qua ngày giao dự kiến mà đơn chưa DELIVERED/CANCELLED.
+  async getDelayedOrders() {
+    return this.prisma.salesOrder.findMany({
+      where: {
+        expectedDeliveryDate: { not: null, lt: new Date() },
+        status: { notIn: [SalesOrderStatus.DELIVERED, SalesOrderStatus.CANCELLED] },
+      },
+      select: {
+        id: true,
+        code: true,
+        customerName: true,
+        status: true,
+        expectedDeliveryDate: true,
+      },
+      orderBy: { expectedDeliveryDate: 'asc' },
     });
   }
 }

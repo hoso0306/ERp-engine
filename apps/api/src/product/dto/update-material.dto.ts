@@ -4,4 +4,5 @@ export class UpdateMaterialDto {
   unitId?: string;
   isActive?: boolean;
   note?: string;
+  minimumStock?: number;
 }

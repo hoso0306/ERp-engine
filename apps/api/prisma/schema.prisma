@@ -131,6 +131,11 @@ enum WarehouseTransactionType {
   MATERIAL_ISSUE
 }
 
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -246,6 +251,7 @@ model Material {
   isActive     Boolean  @default(true) @map("is_active")
   note         String?
   currentStock Decimal  @default(0) @map("current_stock") @db.Decimal(15, 4)
+  minimumStock Decimal? @map("minimum_stock") @db.Decimal(15, 4)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -635,10 +641,13 @@ model SalesOrder {
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
   timeline         SalesOrderTimeline[]
+  receivable       Receivable?
 
   @@index([customerId])
   @@index([status])
   @@index([paymentStatus])
+  // Dashboard (009-dashboard.md Task 06) — getDelayedOrders() lọc theo expectedDeliveryDate.
+  @@index([expectedDeliveryDate])
   @@map("sales_orders")
 }
 
@@ -867,5 +876,70 @@ model WarehouseTransaction {
   @@unique([productionOrderId, materialId])
   @@index([materialId])
   @@index([productionOrderId])
+  // Dashboard (009-dashboard.md Task 07) — WarehouseService.getTopConsumedMaterials()
+  // lọc theo direction/transactionType/createdAt trước khi GROUP BY materialId.
+  @@index([transactionType, direction, createdAt])
   @@map("warehouse_transactions")
+}
+
+// ──────────────────────────────────────
+// Debt (Accounts Receivable)
+// ──────────────────────────────────────
+
+model Receivable {
+  id           String @id @default(cuid())
+  salesOrderId String @unique @map("sales_order_id")
+  // Redundant reference (copy ID bất biến, không phải Derived Data) — tránh
+  // join qua SalesOrder cho các query tổng hợp theo khách hàng (Debt Monitoring).
+  // Không dùng @relation, cùng convention với SalesOrder.customerId.
+  customerId   String @map("customer_id")
+
+  totalAmount     Decimal @map("total_amount") @db.Decimal(15, 0)
+  paidAmount      Decimal @default(0) @map("paid_amount") @db.Decimal(15, 0)
+  // Derived (totalAmount - paidAmount) nhưng được phép lưu — lý do hiệu năng đọc
+  // (Dashboard/Debt Monitoring), cập nhật atomic trong PaymentService.create().
+  // CHECK (remaining_amount >= 0) khai báo tay trong migration.sql.
+  remainingAmount Decimal @map("remaining_amount") @db.Decimal(15, 0)
+
+  // Credit Policy Snapshot — copy từ Customer.debtLimit/debtTermDays tại thời điểm tạo.
+  debtLimitSnapshot    Decimal @map("debt_limit_snapshot") @db.Decimal(15, 0)
+  debtTermDaysSnapshot Int     @map("debt_term_days_snapshot")
+
+  // NULL lúc tạo, set = actualDeliveryDate + debtTermDaysSnapshot khi SalesOrder Delivered.
+  dueDate DateTime? @map("due_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id])
+  payments   Payment[]
+
+  @@index([customerId])
+  // Dashboard (009-dashboard.md Task 07) — overdue/risk/upcoming-due đều lọc theo dueDate.
+  @@index([dueDate])
+  @@map("receivables")
+}
+
+model Payment {
+  id           String @id @default(cuid())
+  code         String @unique
+  // Redundant reference giữ cùng receivableId — lý do hiệu năng, tránh join
+  // qua Receivable mỗi lần cần salesOrderId. Không dùng @relation (cùng
+  // convention với các field redundant reference khác trong schema).
+  salesOrderId String @map("sales_order_id")
+  receivableId String @map("receivable_id")
+
+  paymentDate     DateTime      @map("payment_date")
+  amount          Decimal       @db.Decimal(15, 0)
+  paymentMethod   PaymentMethod @map("payment_method")
+  referenceNumber String?       @map("reference_number")
+  note            String?
+  createdBy       String?       @map("created_by")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  receivable Receivable @relation(fields: [receivableId], references: [id])
+
+  @@index([salesOrderId])
+  @@index([receivableId])
+  @@map("payments")
 }

@@ -304,4 +304,79 @@ export class WarehouseService {
       });
     }
   }
+
+  // ─────────────────────────────────────────────────────
+  // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
+  // ─────────────────────────────────────────────────────
+
+  async getTopConsumedMaterials(days?: number, limit = 10) {
+    const where: Prisma.WarehouseTransactionWhereInput = {
+      direction: WarehouseDirection.OUT,
+      transactionType: WarehouseTransactionType.MATERIAL_ISSUE,
+    };
+    if (days && days > 0) {
+      where.createdAt = { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
+    }
+
+    const grouped = await this.prisma.warehouseTransaction.groupBy({
+      by: ['materialId', 'materialCode', 'materialName', 'unit'],
+      where,
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: limit,
+    });
+
+    return grouped.map((g) => ({
+      materialId: g.materialId,
+      materialCode: g.materialCode,
+      materialName: g.materialName,
+      unit: g.unit,
+      totalConsumed: Number(g._sum.quantity ?? 0),
+    }));
+  }
+
+  // So sánh currentStock với minimumStock (Task 00 — field bổ sung ở Product
+  // module). Chỉ áp dụng cho Material đã cấu hình minimumStock.
+  async getLowStockMaterials() {
+    const materials = await this.prisma.material.findMany({
+      where: { isActive: true, minimumStock: { not: null } },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        currentStock: true,
+        minimumStock: true,
+        unit: { select: { id: true, name: true } },
+      },
+      orderBy: { code: 'asc' },
+    });
+
+    return materials
+      .filter((m) => Number(m.currentStock) <= Number(m.minimumStock))
+      .map((m) => ({ ...m, outOfStock: Number(m.currentStock) <= 0 }));
+  }
+
+  // "Giá trị tồn kho" ở đây là tổng SỐ LƯỢNG (quantity), không phải giá trị
+  // tiền tệ — Warehouse không tính giá vốn (xem warehouse.md mục "Cost Rule").
+  //
+  // Nhận sẵn `lowStockMaterials` nếu caller (vd DashboardService) đã gọi
+  // getLowStockMaterials() trước đó — tránh lặp lại cùng một query
+  // (009-dashboard.md Task 07 — không N+1 / không query trùng lặp).
+  async getInventorySummary(lowStockMaterials?: Awaited<ReturnType<WarehouseService['getLowStockMaterials']>>) {
+    const [totalMaterials, aggregate, lowStock] = await Promise.all([
+      this.prisma.material.count({ where: { isActive: true } }),
+      this.prisma.material.aggregate({
+        where: { isActive: true },
+        _sum: { currentStock: true },
+      }),
+      lowStockMaterials ?? this.getLowStockMaterials(),
+    ]);
+
+    return {
+      totalMaterials,
+      totalCurrentStock: Number(aggregate._sum.currentStock ?? 0),
+      lowStockCount: lowStock.filter((m) => !m.outOfStock).length,
+      outOfStockCount: lowStock.filter((m) => m.outOfStock).length,
+    };
+  }
 }

@@ -12,7 +12,6 @@ import { SalesOrderService } from './sales-order.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
-import { RecordPaymentDto } from './dto/record-payment.dto';
 
 @Controller('sales-orders')
 export class SalesOrderController {
@@ -59,11 +58,6 @@ export class SalesOrderController {
     return this.salesOrderService.cancel(id, dto);
   }
 
-  // ── Payment (Task 08) ──
-
-  @Post(':id/record-payment')
-  @HttpCode(HttpStatus.OK)
-  recordPayment(@Param('id') id: string, @Body() dto: RecordPaymentDto) {
-    return this.salesOrderService.recordPayment(id, dto);
-  }
+  // Payment: xem POST /payments (Module Công nợ) — record-payment đã bị xoá,
+  // xem knowledge/modules/debt.md mục "Workflow".
 }
