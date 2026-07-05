@@ -556,9 +556,13 @@ id
 
 roleId
 
-permissionId
+permissionId  // nullable — null khi action là ROLE_CREATED/ROLE_DISABLED/USER_*
 
-action        // vd GRANT, REVOKE, ROLE_CREATED, ROLE_DISABLED
+userId        // nullable — target User cho USER_CREATED/USER_DISABLED/USER_ROLE_CHANGED,
+              // bắt buộc có vì roleId một mình không định danh được User nào
+              // (nhiều User có thể cùng Role). Redundant reference, không @relation.
+
+action        // GRANT, REVOKE, ROLE_CREATED, ROLE_DISABLED, USER_CREATED, USER_DISABLED, USER_ROLE_CHANGED
 
 changedBy
 

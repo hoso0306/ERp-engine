@@ -42,7 +42,7 @@ export class AuthService {
       throw invalidCredentials();
     }
 
-    const accessToken = await this.issueToken(user.id);
+    const accessToken = await this.issueToken(user.id, user.roleId);
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -58,8 +58,8 @@ export class AuthService {
 
   // ─────────────────────────────────────────────────────
   // Token (Task 02) — thời hạn đọc từ Settings.Security.sessionTimeout (phút),
-  // không hard-code. roleId sẽ được thêm vào payload khi 013-permission.md
-  // hoàn thành User.roleId — chưa có thì bỏ qua, không chặn tiến độ.
+  // không hard-code. roleId nằm trong payload để PermissionGuard đọc thẳng từ
+  // req.user, không phải query lại DB mỗi request (013-permission.md).
   // ─────────────────────────────────────────────────────
 
   private async issueToken(userId: string, roleId?: string) {
@@ -157,6 +157,7 @@ export class AuthService {
     email: string;
     name: string | null;
     isActive: boolean;
+    roleId: string;
     mustChangePassword: boolean;
     lastLoginAt: Date | null;
     createdAt: Date;
@@ -166,6 +167,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       isActive: user.isActive,
+      roleId: user.roleId,
       mustChangePassword: user.mustChangePassword,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,

@@ -1,8 +1,82 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 const adapter = new PrismaPg(process.env.DATABASE_URL!);
 const prisma = new PrismaClient({ adapter });
+
+// Cùng số vòng salt với AuthService (xem src/auth/auth.service.ts) — seed.ts
+// chạy ngoài Nest DI container (ts-node độc lập) nên không gọi trực tiếp
+// AuthService.setTemporaryPassword(), chỉ lặp lại đúng thuật toán của nó.
+const BCRYPT_SALT_ROUNDS = 10;
+
+// Permission catalog (013-permission.md Task 00) — khớp knowledge/modules/permission.md.
+const PERMISSION_CATALOG: Record<string, string[]> = {
+  customer: ['view', 'create', 'update', 'delete', 'export'],
+  quotation: ['view', 'create', 'update', 'approve', 'cancel', 'override', 'print'],
+  'sales-order': ['view', 'ship', 'deliver', 'cancel', 'override'],
+  production: ['view', 'start', 'complete'],
+  warehouse: ['view', 'receipt'],
+  debt: ['view', 'create-payment'],
+  return: ['view', 'create', 'mark-used', 'dispose'],
+  dashboard: ['view'],
+  settings: ['view', 'update'],
+  user: ['view', 'create', 'update'],
+  role: ['view', 'create', 'update', 'disable'],
+};
+
+function keysForResource(resource: string): string[] {
+  return PERMISSION_CATALOG[resource].map((action) => `${resource}.${action}`);
+}
+
+function allKeys(): string[] {
+  return Object.keys(PERMISSION_CATALOG).flatMap(keysForResource);
+}
+
+function viewKeys(): string[] {
+  return Object.keys(PERMISSION_CATALOG).map((resource) => `${resource}.view`);
+}
+
+// Default Roles + Role↔Permission mặc định (013-permission.md Task 00) — có
+// thể chỉnh sửa sau qua Task 04 (Quản lý Role).
+const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] = [
+  { code: 'OWNER', name: 'Chủ doanh nghiệp', permissionKeys: allKeys() },
+  { code: 'ADMIN', name: 'Quản trị hệ thống', permissionKeys: allKeys() },
+  {
+    code: 'MANAGER',
+    name: 'Quản lý',
+    permissionKeys: [
+      ...new Set([
+        ...viewKeys(),
+        ...allKeys().filter((key) =>
+          ['approve', 'override', 'cancel'].includes(key.split('.').slice(1).join('.')),
+        ),
+      ]),
+    ],
+  },
+  {
+    code: 'SALES',
+    name: 'Kinh doanh',
+    permissionKeys: [
+      ...keysForResource('customer'),
+      ...keysForResource('quotation'),
+      'sales-order.view',
+    ],
+  },
+  {
+    code: 'PRODUCTION',
+    name: 'Sản xuất',
+    permissionKeys: [...keysForResource('production'), 'warehouse.view'],
+  },
+  { code: 'WAREHOUSE', name: 'Kho', permissionKeys: keysForResource('warehouse') },
+  {
+    code: 'ACCOUNTANT',
+    name: 'Kế toán',
+    permissionKeys: [...keysForResource('debt'), 'settings.view'],
+  },
+  { code: 'VIEWER', name: 'Chỉ xem', permissionKeys: viewKeys() },
+];
 
 async function main() {
   // Running Numbers
@@ -181,6 +255,70 @@ async function main() {
       update: {},
       create: s,
     });
+  }
+
+  // Permission catalog — chỉ seed theo release, không có Create/Update API
+  // (xem permission.md mục "Permission").
+  for (const [resource, actions] of Object.entries(PERMISSION_CATALOG)) {
+    for (const action of actions) {
+      const key = `${resource}.${action}`;
+      await prisma.permission.upsert({
+        where: { key },
+        update: {},
+        create: { resource, action, key },
+      });
+    }
+  }
+  const allPermissions = await prisma.permission.findMany();
+  const permissionIdByKey = new Map(allPermissions.map((p) => [p.key, p.id]));
+
+  // Default Roles + Role↔Permission mặc định.
+  for (const roleDef of DEFAULT_ROLES) {
+    const role = await prisma.role.upsert({
+      where: { code: roleDef.code },
+      update: {},
+      create: { code: roleDef.code, name: roleDef.name },
+    });
+
+    for (const key of roleDef.permissionKeys) {
+      const permissionId = permissionIdByKey.get(key);
+      if (!permissionId) continue;
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId } },
+        update: {},
+        create: { roleId: role.id, permissionId },
+      });
+    }
+  }
+
+  // Bootstrap 1 User Owner — để có thể đăng nhập lần đầu tiên vào hệ thống.
+  const userCount = await prisma.user.count();
+  if (userCount === 0) {
+    const ownerRole = await prisma.role.findUniqueOrThrow({ where: { code: 'OWNER' } });
+    const email = process.env.BOOTSTRAP_OWNER_EMAIL || 'owner@erp.local';
+    const name = process.env.BOOTSTRAP_OWNER_NAME || 'Owner';
+    const temporaryPassword = crypto.randomBytes(9).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_SALT_ROUNDS);
+    const forceChangePasswordOnFirstLogin =
+      settings.find(
+        (s) => s.module === 'Security' && s.key === 'forceChangePasswordOnFirstLogin',
+      )?.value === 'true';
+
+    await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash,
+        roleId: ownerRole.id,
+        mustChangePassword: forceChangePasswordOnFirstLogin,
+      },
+    });
+
+    console.log('=====================================');
+    console.log('Bootstrap Owner account created:');
+    console.log(`  Email: ${email}`);
+    console.log(`  Temporary password: ${temporaryPassword}`);
+    console.log('=====================================');
   }
 
   console.log('Seed completed.');

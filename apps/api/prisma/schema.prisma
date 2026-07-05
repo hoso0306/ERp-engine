@@ -159,6 +159,16 @@ enum RecoveryInventoryStatus {
   DISPOSED
 }
 
+enum PermissionAuditAction {
+  GRANT
+  REVOKE
+  ROLE_CREATED
+  ROLE_DISABLED
+  USER_CREATED
+  USER_DISABLED
+  USER_ROLE_CHANGED
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -176,14 +186,98 @@ model User {
   // Field theo từng User — khác với Settings.Security.forceChangePasswordOnFirstLogin
   // (công tắc chung toàn hệ thống, chỉ quyết định giá trị ban đầu của field này).
   mustChangePassword Boolean   @default(false) @map("must_change_password")
+  // Bắt buộc, gán khi tạo User (013-permission.md) — Authentication chỉ đọc để
+  // đưa vào payload JWT, không sở hữu field này (xem permission.md).
+  roleId             String    @map("role_id")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  role Role @relation(fields: [roleId], references: [id])
 
   saleCustomers    Customer[] @relation("CustomerSale")
   createdCustomers Customer[] @relation("CustomerCreatedBy")
   updatedCustomers Customer[] @relation("CustomerUpdatedBy")
 
+  @@index([roleId])
   @@map("users")
+}
+
+// ──────────────────────────────────────
+// Permission (Authorization)
+// ──────────────────────────────────────
+
+model Role {
+  id        String   @id @default(cuid())
+  // Bất biến sau khi tạo — dùng để so sánh cứng trong Business Rule (vd
+  // "Owner cuối cùng" so sánh role.code == 'OWNER', không so sánh name).
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users           User[]
+  rolePermissions RolePermission[]
+  audits          PermissionAudit[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(cuid())
+  resource  String
+  action    String
+  // Derived Data được phép lưu — lý do Hiệu năng đọc, PermissionGuard chạy
+  // trên gần như mọi request (xem permission.md mục "Permission").
+  key       String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  audits          PermissionAudit[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// Append-only — không có Update/Delete (xem permission.md mục "Audit").
+model PermissionAudit {
+  id           String                @id @default(cuid())
+  roleId       String                @map("role_id")
+  permissionId String?               @map("permission_id")
+  // Target user cho USER_CREATED/USER_DISABLED/USER_ROLE_CHANGED — không có
+  // trong bảng field gốc ở Task 00 nhưng bắt buộc phải có để biết audit đang
+  // nói về User nào (roleId một mình không đủ định danh). Redundant reference
+  // (không @relation), cùng convention các field điều hướng khác trong schema.
+  userId       String?               @map("user_id")
+  action       PermissionAuditAction
+  // changedBy — userId thực hiện thay đổi. Scalar, không @relation, cùng
+  // convention với SalesOrderTimeline.createdBy/QuotationTimeline.createdBy.
+  changedBy    String?               @map("changed_by")
+  // Chỉ lưu phần thay đổi (delta), không snapshot toàn bộ object.
+  payload      Json?
+  createdAt    DateTime              @default(now()) @map("created_at")
+
+  role       Role        @relation(fields: [roleId], references: [id])
+  permission Permission? @relation(fields: [permissionId], references: [id])
+
+  @@index([roleId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("permission_audits")
 }
 
 model RunningNumber {

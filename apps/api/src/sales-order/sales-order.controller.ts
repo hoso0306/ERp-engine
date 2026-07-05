@@ -7,13 +7,18 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SalesOrderService } from './sales-order.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequirePermission } from '../permission/require-permission.decorator';
 
 @Controller('sales-orders')
+@UseGuards(AuthGuard, PermissionGuard)
 export class SalesOrderController {
   constructor(private readonly salesOrderService: SalesOrderService) {}
 
@@ -21,11 +26,13 @@ export class SalesOrderController {
   // POST /quotations/:id/approve.
 
   @Get()
+  @RequirePermission('sales-order.view')
   findAll(@Query() query: SalesOrderQueryDto) {
     return this.salesOrderService.findAll(query);
   }
 
   @Get(':id')
+  @RequirePermission('sales-order.view')
   findOne(@Param('id') id: string) {
     return this.salesOrderService.findOne(id);
   }
@@ -34,12 +41,14 @@ export class SalesOrderController {
 
   @Post(':id/ship')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.ship')
   ship(@Param('id') id: string) {
     return this.salesOrderService.ship(id);
   }
 
   @Post(':id/deliver')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.deliver')
   deliver(@Param('id') id: string) {
     return this.salesOrderService.deliver(id);
   }
@@ -48,12 +57,14 @@ export class SalesOrderController {
 
   @Post(':id/override')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.override')
   override(@Param('id') id: string, @Body() dto: OverrideSalesOrderDto) {
     return this.salesOrderService.override(id, dto);
   }
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.cancel')
   cancel(@Param('id') id: string, @Body() dto: CancelSalesOrderDto) {
     return this.salesOrderService.cancel(id, dto);
   }

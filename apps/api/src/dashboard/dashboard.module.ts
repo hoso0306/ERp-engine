@@ -4,11 +4,19 @@ import { ProductionModule } from '../production/production.module';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 import { DebtModule } from '../debt/debt.module';
 import { ReturnModule } from '../return/return.module';
+import { PermissionModule } from '../permission/permission.module';
 import { DashboardService } from './dashboard.service';
 import { DashboardController } from './dashboard.controller';
 
 @Module({
-  imports: [SalesOrderModule, ProductionModule, WarehouseModule, DebtModule, ReturnModule],
+  imports: [
+    SalesOrderModule,
+    ProductionModule,
+    WarehouseModule,
+    DebtModule,
+    ReturnModule,
+    PermissionModule,
+  ],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

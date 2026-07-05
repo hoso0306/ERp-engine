@@ -736,6 +736,50 @@ User
 
 ---
 
+### 18. Permission module (Authorization) — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `013-permission.md`)
+
+Model mới (không hiển thị trong sơ đồ mermaid ở trên — cùng cách xử lý đã áp dụng cho `User`/`RunningNumber`, ERD chỉ hiển thị model nghiệp vụ):
+
+```text
+Role
+  code        String   UK   // bất biến — OWNER, ADMIN, MANAGER, SALES, PRODUCTION, WAREHOUSE, ACCOUNTANT, VIEWER (+ Role tự tạo qua Task 04)
+  name        String        // hiển thị, sửa được
+  isActive    Boolean  @default(true)
+
+Permission
+  resource    String
+  action      String
+  key         String   UK   // "{resource}.{action}" — Derived Data, lý do Hiệu năng đọc
+
+RolePermission
+  roleId        String
+  permissionId  String
+  @@unique([roleId, permissionId])
+
+PermissionAudit          // append-only
+  roleId        String
+  permissionId  String?      // null khi ROLE_CREATED/ROLE_DISABLED/USER_*
+  userId        String?      // xem ghi chú bên dưới
+  action        GRANT | REVOKE | ROLE_CREATED | ROLE_DISABLED | USER_CREATED | USER_DISABLED | USER_ROLE_CHANGED
+  changedBy     String?
+  payload       Json?        // delta, vd { fromRole, toRole }
+
+User (bổ sung)
+  roleId        String    // FK Role, bắt buộc
+```
+
+- **Bổ sung `PermissionAudit.userId`** (không có trong bảng field gốc ở Task 00 của `013-permission.md`, chỉ liệt `roleId`/`permissionId`/`action`/`changedBy`/`payload`/`createdAt`) — bắt buộc phải có để biết audit USER_CREATED/USER_DISABLED/USER_ROLE_CHANGED đang nói về User nào; `roleId` một mình không định danh được User (nhiều User có thể cùng Role). Redundant reference, không `@relation`, cùng convention các field điều hướng khác trong schema (vd `ReturnItem.salesOrderItemId`). Cần người dùng xác nhận lại bổ sung này.
+- `User.roleId` — FK bắt buộc tới `Role`. Trước đây (`012-authentication.md`) JWT chỉ chứa `sub`; nay `AuthService.issueToken()` đưa thêm `roleId` vào payload để `PermissionGuard` đọc thẳng từ `req.user`, không phải query DB mỗi request.
+- `PermissionGuard` (`src/permission/permission.guard.ts`) đọc metadata từ `@RequirePermission(key)` (đặt ở method, không đặt ở class — `Reflector.get()` chỉ đọc `context.getHandler()`, đã phát hiện và sửa bug này khi verify sống trên `DashboardController`), tra `Role → RolePermission → Permission.key`, throw `ForbiddenException` nếu thiếu quyền.
+- Bootstrap Owner (seed) dùng `crypto.randomBytes` + `bcrypt` trực tiếp trong `prisma/seed.ts` (cùng thuật toán `AuthService.setTemporaryPassword()`) thay vì gọi qua Nest DI — seed chạy độc lập bằng `ts-node`, ngoài Nest application context.
+- **`PUT /recovery-inventory/:id`** (Management, `011-hang-hoan.md` Task 06) không có action riêng trong Permission catalog (chỉ `return.view/create/mark-used/dispose`) — tạm gán `return.dispose` (quyền mạnh nhất trong catalog Return, vì endpoint này đổi `status` tự do không qua ràng buộc `AVAILABLE`). Cần người dùng xác nhận lại lựa chọn này.
+- `CompanyController`/`RunningNumberController` (thuộc `SettingModule`, không nằm trong danh sách liệt kê gốc ở Task 02 của `013-permission.md` — chỉ ghi "SettingController") cũng được gắn `settings.view`/`settings.update` — cùng permission với `SettingController` vì cùng thuộc Settings module, không có permission riêng.
+- `PermissionModule` phụ thuộc 2 chiều với `AuthModule` (`forwardRef`): `PermissionModule` gọi `AuthService.setTemporaryPassword()` khi tạo User; `AuthModule` gọi `PermissionService.getPermissionKeysForRole()` để mở rộng `GET /auth/me` với field `permissions`. `SettingModule` cũng dùng `forwardRef` khi import `PermissionModule` vì tạo thành chu trình `Setting → Permission → Auth → Setting` (do `AuthModule` đã import `SettingModule` sẵn từ `012-authentication.md`).
+- Dashboard KPI Permission (Task 06): `DashboardController.getOverview()`/`getAlerts()` ẩn từng field con (`production`/`warehouse`/`debt`/`returns`, và tương ứng bên trong `alerts`) thành `null` nếu Role thiếu đúng quyền `view` của module sở hữu — không tạo permission `dashboard.xxx` riêng, không ẩn toàn bộ Dashboard. `sales`/`delayedOrders` không bị ẩn (Task 06 gốc không liệt Sales Overview).
+- Đã verify sống (chạy API thật + PostgreSQL thật): login → JWT chứa `roleId` → `GET /auth/me` trả 38 permission keys đúng theo Role OWNER; tạo User Role SALES → 403 đúng ở `warehouse.view`/`dashboard.view`/`user.view`, 200 đúng ở `customer.view`; chặn tự vô hiệu hoá chính mình; chặn Disable Role còn User đang dùng; `PermissionAudit` ghi đúng `USER_CREATED`.
+
+---
+
 ## Tóm tắt luồng dữ liệu chính
 
 ```text

@@ -15,6 +15,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { SettingModule } from './setting/setting.module';
 import { ReturnModule } from './return/return.module';
 import { AuthModule } from './auth/auth.module';
+import { PermissionModule } from './permission/permission.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AuthModule } from './auth/auth.module';
     SettingModule,
     ReturnModule,
     AuthModule,
+    PermissionModule,
   ],
 })
 export class AppModule {}

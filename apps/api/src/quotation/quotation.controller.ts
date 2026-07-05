@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { QuotationWorkflowService } from './quotation-workflow.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
@@ -18,27 +19,35 @@ import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequirePermission } from '../permission/require-permission.decorator';
 
 @Controller('quotations')
+@UseGuards(AuthGuard, PermissionGuard)
 export class QuotationController {
   constructor(private readonly workflow: QuotationWorkflowService) {}
 
   @Get()
+  @RequirePermission('quotation.view')
   findAll(@Query() query: QuotationQueryDto) {
     return this.workflow.findAll(query);
   }
 
   @Get(':id')
+  @RequirePermission('quotation.view')
   findOne(@Param('id') id: string) {
     return this.workflow.findOne(id);
   }
 
   @Post()
+  @RequirePermission('quotation.create')
   create(@Body() dto: CreateQuotationDto) {
     return this.workflow.create(dto);
   }
 
   @Patch(':id')
+  @RequirePermission('quotation.update')
   update(@Param('id') id: string, @Body() dto: UpdateQuotationDto) {
     return this.workflow.update(id, dto);
   }
@@ -47,24 +56,28 @@ export class QuotationController {
 
   @Post(':id/send')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.update')
   send(@Param('id') id: string) {
     return this.workflow.send(id);
   }
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.approve')
   approve(@Param('id') id: string) {
     return this.workflow.approve(id);
   }
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.cancel')
   cancel(@Param('id') id: string, @Body() dto: CancelQuotationDto) {
     return this.workflow.cancel(id, dto);
   }
 
   @Post(':id/override')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.override')
   override(@Param('id') id: string, @Body() dto: OverrideQuotationDto) {
     return this.workflow.override(id, dto);
   }
@@ -72,11 +85,13 @@ export class QuotationController {
   // ── QuotationItem CRUD ──
 
   @Post(':id/items')
+  @RequirePermission('quotation.update')
   addItem(@Param('id') id: string, @Body() dto: CreateQuotationItemDto) {
     return this.workflow.addItem(id, dto);
   }
 
   @Patch(':id/items/:itemId')
+  @RequirePermission('quotation.update')
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
@@ -86,6 +101,7 @@ export class QuotationController {
   }
 
   @Delete(':id/items/:itemId')
+  @RequirePermission('quotation.update')
   removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.workflow.removeItem(id, itemId);
   }

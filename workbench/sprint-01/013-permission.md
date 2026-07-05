@@ -135,14 +135,14 @@ Gọi AuthService.setTemporaryPassword(userId) — lấy mật khẩu tạm in r
 
 ## Definition of Done
 
-- [ ] `User.roleId` đã thêm (FK bắt buộc).
-- [ ] `Role`, `Permission`, `RolePermission`, `PermissionAudit` đã tạo.
-- [ ] Permission catalog seed đầy đủ (đúng danh sách ở trên, khớp `permission.md`).
-- [ ] Default Roles + Role↔Permission mặc định seed đầy đủ.
-- [ ] Bootstrap 1 User Owner — đăng nhập được ngay sau khi seed.
-- [ ] Migration chạy thành công.
-- [ ] Prisma Schema đồng bộ.
-- [ ] ERD đồng bộ.
+- [x] `User.roleId` đã thêm (FK bắt buộc).
+- [x] `Role`, `Permission`, `RolePermission`, `PermissionAudit` đã tạo.
+- [x] Permission catalog seed đầy đủ (đúng danh sách ở trên, khớp `permission.md`).
+- [x] Default Roles + Role↔Permission mặc định seed đầy đủ.
+- [x] Bootstrap 1 User Owner — đăng nhập được ngay sau khi seed.
+- [x] Migration chạy thành công.
+- [x] Prisma Schema đồng bộ.
+- [x] ERD đồng bộ.
 
 ---
 
@@ -168,10 +168,10 @@ Chạy ngay sau `AuthGuard` (Authentication) trong pipeline.
 
 ## Definition of Done
 
-- [ ] Decorator `@RequirePermission(key)` hoạt động.
-- [ ] `PermissionGuard` kiểm tra đúng Role → RolePermission → Permission.
-- [ ] Không có quyền → 403, có quyền → cho qua.
-- [ ] Chạy đúng sau `AuthGuard`.
+- [x] Decorator `@RequirePermission(key)` hoạt động.
+- [x] `PermissionGuard` kiểm tra đúng Role → RolePermission → Permission.
+- [x] Không có quyền → 403, có quyền → cho qua.
+- [x] Chạy đúng sau `AuthGuard`.
 
 ---
 
@@ -217,10 +217,10 @@ GET  /auth/me                 → chỉ AuthGuard, không PermissionGuard
 
 ## Definition of Done
 
-- [ ] Toàn bộ Controller ở trên đã gắn đúng `@RequirePermission`.
-- [ ] Test: Role không có quyền tương ứng → 403 khi gọi đúng endpoint đó.
-- [ ] Test: Role có quyền → gọi thành công như trước (không phá hành vi cũ).
-- [ ] Xác nhận 4 endpoint của Authentication không bị gắn `PermissionGuard` (chỉ `AuthGuard` hoặc không Guard nào, theo đúng danh sách ở trên).
+- [x] Toàn bộ Controller ở trên đã gắn đúng `@RequirePermission`.
+- [x] Test: Role không có quyền tương ứng → 403 khi gọi đúng endpoint đó.
+- [x] Test: Role có quyền → gọi thành công như trước (không phá hành vi cũ).
+- [x] Xác nhận 4 endpoint của Authentication không bị gắn `PermissionGuard` (chỉ `AuthGuard` hoặc không Guard nào, theo đúng danh sách ở trên).
 
 ---
 
@@ -251,13 +251,13 @@ PATCH /users/:id
 
 ## Definition of Done
 
-- [ ] Tạo User mới, tự động gọi `AuthService.setTemporaryPassword()`.
-- [ ] List/Detail User.
-- [ ] Sửa `name`/`isActive`/`roleId`.
-- [ ] Không có Delete User.
-- [ ] Chặn vô hiệu hoá Owner cuối cùng.
-- [ ] Chặn User tự vô hiệu hoá chính mình.
-- [ ] Ghi `PermissionAudit` (`USER_CREATED`/`USER_DISABLED`/`USER_ROLE_CHANGED`).
+- [x] Tạo User mới, tự động gọi `AuthService.setTemporaryPassword()`.
+- [x] List/Detail User.
+- [x] Sửa `name`/`isActive`/`roleId`.
+- [x] Không có Delete User.
+- [x] Chặn vô hiệu hoá Owner cuối cùng.
+- [x] Chặn User tự vô hiệu hoá chính mình.
+- [x] Ghi `PermissionAudit` (`USER_CREATED`/`USER_DISABLED`/`USER_ROLE_CHANGED`).
 
 ---
 
@@ -282,10 +282,10 @@ POST /roles/:id/disable
 
 ## Definition of Done
 
-- [ ] Tạo/sửa Role, gán/gỡ Permission.
-- [ ] Không có Delete Role.
-- [ ] Chặn Disable khi còn User đang dùng.
-- [ ] Ghi `PermissionAudit` (`ROLE_CREATED`/`ROLE_DISABLED`/`GRANT`/`REVOKE`).
+- [x] Tạo/sửa Role, gán/gỡ Permission.
+- [x] Không có Delete Role.
+- [x] Chặn Disable khi còn User đang dùng.
+- [x] Ghi `PermissionAudit` (`ROLE_CREATED`/`ROLE_DISABLED`/`GRANT`/`REVOKE`).
 
 ---
 
@@ -307,8 +307,8 @@ Menu ẩn nếu User không có bất kỳ Permission `view` nào thuộc module
 
 ## Definition of Done
 
-- [ ] `GET /auth/me` trả về đủ danh sách quyền của Role hiện tại.
-- [ ] FE có đủ dữ liệu để ẩn/hiện Menu tương ứng.
+- [x] `GET /auth/me` trả về đủ danh sách quyền của Role hiện tại.
+- [x] FE có đủ dữ liệu để ẩn/hiện Menu tương ứng.
 
 ---
 
@@ -331,9 +331,9 @@ Không có quyền tương ứng → ẩn đúng phần KPI đó, không ẩn to
 
 ## Definition of Done
 
-- [ ] Từng KPI section kiểm tra đúng quyền `view` của module sở hữu.
-- [ ] Không tạo permission `dashboard.sales`/`dashboard.debt`/`dashboard.warehouse` nào.
-- [ ] Thiếu quyền → ẩn đúng phần đó, Dashboard tổng thể vẫn hoạt động.
+- [x] Từng KPI section kiểm tra đúng quyền `view` của module sở hữu.
+- [x] Không tạo permission `dashboard.sales`/`dashboard.debt`/`dashboard.warehouse` nào.
+- [x] Thiếu quyền → ẩn đúng phần đó, Dashboard tổng thể vẫn hoạt động.
 
 ---
 
@@ -349,8 +349,8 @@ Append-only, không cho xoá.
 
 ## Definition of Done
 
-- [ ] Mọi hành động ở Task 03/04 đều ghi đúng `PermissionAudit`.
-- [ ] Không có API xoá `PermissionAudit`.
+- [x] Mọi hành động ở Task 03/04 đều ghi đúng `PermissionAudit`.
+- [x] Không có API xoá `PermissionAudit`.
 
 ---
 
@@ -372,8 +372,8 @@ Bao gồm:
 
 ## Definition of Done
 
-- [ ] Validation đầy đủ.
-- [ ] Pass Review.
+- [x] Validation đầy đủ.
+- [x] Pass Review.
 
 ---
 
@@ -406,11 +406,11 @@ Kiểm tra:
 
 ## Definition of Done
 
-- [ ] Không còn TODO.
-- [ ] Đồng bộ Knowledge.
-- [ ] Đồng bộ Prisma.
-- [ ] Đồng bộ ERD.
-- [ ] Pass Review.
+- [x] Không còn TODO.
+- [x] Đồng bộ Knowledge.
+- [x] Đồng bộ Prisma.
+- [x] Đồng bộ ERD.
+- [x] Pass Review.
 
 ---
 
