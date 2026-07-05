@@ -712,6 +712,30 @@ Mỗi Service hiện có được bổ sung method đọc riêng cho Dashboard (
 
 ---
 
+### 17. Authentication module — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `012-authentication.md`)
+
+Không tạo model mới — chỉ bổ sung field vào `User` đã có sẵn (từ đầu dự án, chưa từng dùng tới cho đến module này):
+
+```text
+User
+  passwordHash        String    // bcrypt, không bao giờ lưu/trả plaintext
+  isActive             Boolean   @default(true)   // vô hiệu hoá, không xoá
+  lastLoginAt          DateTime?
+  lastLoginIp          String?
+  mustChangePassword   Boolean   @default(false)  // theo từng User — xem authentication.md
+```
+
+- `User` không xuất hiện trong sơ đồ mermaid ở trên (ERD chỉ hiển thị model nghiệp vụ — cùng cách xử lý đã áp dụng cho `RunningNumber`), nhưng field đã có đầy đủ trong `schema.prisma`.
+- **Chưa thêm `roleId`** — thuộc phạm vi `013-permission.md`, Authentication chỉ đọc field này (khi đã tồn tại) để đưa vào payload JWT, không sở hữu.
+- JWT chỉ chứa `sub` (userId) ở giai đoạn này — `roleId` sẽ được thêm vào payload khi Permission module hoàn thành, không cần regenerate token cũ (yêu cầu đăng nhập lại là đủ).
+- Thời hạn JWT đọc từ `Settings.Security.sessionTimeout` (phút) qua `SettingService` — không hard-code.
+- **Không tạo bảng `RefreshToken`/session/blacklist** — V1 stateless, đúng theo `authentication.md` mục "Không làm trong V1".
+- Thêm biến môi trường `JWT_SECRET` (`.env`, `.env.example`) — dùng cho `JwtModule`.
+- **Phát hiện + sửa một bug tiềm ẩn khi triển khai:** `AuthModule` gọi `JwtModule.register({ secret: process.env.JWT_SECRET })` như một static argument, được evaluate ngay lúc `import` (trước khi `ConfigModule.forRoot()` kịp chạy `dotenv.config()`), nên `JWT_SECRET` có thể `undefined` khi app khởi động qua đường import thông thường. Đã sửa bằng cách thêm `import 'dotenv/config'` làm dòng đầu tiên của `main.ts` — đảm bảo biến môi trường được nạp trước khi bất kỳ module nào (kể cả `AuthModule`) được import.
+- `AuthService.setTemporaryPassword(userId)` — method nội bộ (không có HTTP endpoint), export cho `013-permission.md` gọi khi tạo/reset User. Đã verify sống: trả plaintext đúng một lần, `passwordHash` lưu đúng hash, `mustChangePassword` set theo `Settings.Security.forceChangePasswordOnFirstLogin`.
+
+---
+
 ## Tóm tắt luồng dữ liệu chính
 
 ```text

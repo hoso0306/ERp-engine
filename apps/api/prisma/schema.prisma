@@ -164,11 +164,20 @@ enum RecoveryInventoryStatus {
 // ──────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String?
+  // bcrypt hash — không bao giờ lưu/trả về plaintext (xem authentication.md).
+  passwordHash       String    @map("password_hash")
+  isActive           Boolean   @default(true) @map("is_active")
+  lastLoginAt        DateTime? @map("last_login_at")
+  lastLoginIp        String?   @map("last_login_ip")
+  // Bật khi setTemporaryPassword() chạy, tắt khi tự đổi mật khẩu thành công.
+  // Field theo từng User — khác với Settings.Security.forceChangePasswordOnFirstLogin
+  // (công tắc chung toàn hệ thống, chỉ quyết định giá trị ban đầu của field này).
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   saleCustomers    Customer[] @relation("CustomerSale")
   createdCustomers Customer[] @relation("CustomerCreatedBy")

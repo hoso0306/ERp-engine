@@ -14,6 +14,7 @@ import { DebtModule } from './debt/debt.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SettingModule } from './setting/setting.module';
 import { ReturnModule } from './return/return.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ReturnModule } from './return/return.module';
     DashboardModule,
     SettingModule,
     ReturnModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
