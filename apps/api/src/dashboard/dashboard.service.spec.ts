@@ -4,6 +4,7 @@ import { SalesOrderService } from '../sales-order/sales-order.service';
 import { ProductionOrderService } from '../production/production-order.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { DebtService } from '../debt/debt.service';
+import { ReturnService } from '../return/return.service';
 
 describe('DashboardService', () => {
   let service: DashboardService;
@@ -11,6 +12,7 @@ describe('DashboardService', () => {
   let productionOrderService: Record<string, jest.Mock>;
   let warehouseService: Record<string, jest.Mock>;
   let debtService: Record<string, jest.Mock>;
+  let returnService: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     salesOrderService = {
@@ -38,6 +40,12 @@ describe('DashboardService', () => {
       getCreditLimitExceededCustomers: jest.fn().mockResolvedValue([]),
       getTopDebtors: jest.fn().mockResolvedValue([]),
     };
+    returnService = {
+      getDashboardSummary: jest.fn().mockResolvedValue({ returnsThisMonth: 0 }),
+      getAgingRecoveryInventory: jest.fn().mockResolvedValue({ over30Days: 0, over90Days: 0 }),
+      getTopReturnReasons: jest.fn().mockResolvedValue([]),
+      getReturnsByCustomer: jest.fn().mockResolvedValue([]),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -46,6 +54,7 @@ describe('DashboardService', () => {
         { provide: ProductionOrderService, useValue: productionOrderService },
         { provide: WarehouseService, useValue: warehouseService },
         { provide: DebtService, useValue: debtService },
+        { provide: ReturnService, useValue: returnService },
       ],
     }).compile();
 

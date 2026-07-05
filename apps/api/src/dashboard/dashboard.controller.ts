@@ -36,6 +36,11 @@ export class DashboardController {
     );
   }
 
+  @Get('returns')
+  getReturns() {
+    return this.dashboardService.getReturnDashboard();
+  }
+
   @Get('alerts')
   getAlerts() {
     return this.dashboardService.getAlerts();

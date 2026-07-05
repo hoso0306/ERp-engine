@@ -398,6 +398,52 @@ erDiagram
     }
 
     %% ─────────────────────────────────────
+    %% RETURN (Recovery Management)
+    %% ─────────────────────────────────────
+
+    Return {
+        string id PK
+        string code UK
+        string salesOrderId FK
+        string salesOrderCode
+        string customerId
+        string customerName
+        datetime returnDate
+        string receivedBy
+        string note
+    }
+
+    ReturnItem {
+        string id PK
+        string returnId FK
+        string salesOrderItemId
+        string productCode
+        string productName
+        json productParameters
+        decimal orderedQuantity
+        decimal returnedQuantity
+        decimal unitPriceSnapshot
+        enum reason
+        string note
+    }
+
+    RecoveryInventory {
+        string id PK
+        string code UK
+        string returnItemId FK_UK
+        string createdFromReturnCode
+        string productCode
+        string productName
+        json productParameters
+        decimal quantity
+        string location
+        enum status
+        string imageUrl
+        string usedForNote
+        datetime createdAt
+    }
+
+    %% ─────────────────────────────────────
     %% RELATIONSHIPS
     %% ─────────────────────────────────────
 
@@ -458,6 +504,11 @@ erDiagram
     %% Debt (Accounts Receivable)
     SalesOrder                 ||--o| Receivable                  : "approve() → sinh đồng thời"
     Receivable                 ||--|{ Payment                     : "lịch sử thu tiền"
+
+    %% Return (Recovery Management)
+    SalesOrder                 ||--o{ Return                      : "khách trả hàng (đã DELIVERED)"
+    Return                     ||--|{ ReturnItem                  : "dòng SP trả (snapshot)"
+    ReturnItem                 ||--o| RecoveryInventory            : "sinh tự động"
 ```
 
 ---
@@ -643,6 +694,21 @@ Mỗi Service hiện có được bổ sung method đọc riêng cho Dashboard (
 - `RunningNumber` — thêm field `enabled` (`Boolean @default(true)`) — chỉ ẩn/hiện chứng từ khỏi menu, không chặn tạo chứng từ. `lastNumber` không được sửa qua Settings API (đã verify: request PUT có `lastNumber` trong body bị bỏ qua).
 - Không có quan hệ FK nào giữa `Company`/`Setting` với các model khác — module cấu hình độc lập, các module khác chỉ đọc qua `SettingService` (Module Ownership, cùng nguyên tắc đã áp dụng cho Dashboard).
 - Đã refactor các nơi từng hard-code giá trị Loại 1: `DebtService.getUpcomingDueReceivables()`/`getOverdueCustomers()`/`getTopDebtors()` đọc `Settings.Dashboard.upcomingDueDays`/`topCustomers`; `WarehouseService.getTopConsumedMaterials()` đọc `Settings.Dashboard.defaultDashboardPeriod`/`topMaterials`; trang in Báo giá (`apps/web/.../quotations/[id]/print/page.tsx`) đọc `Settings.Company.*` + `Settings.Document.quotationDefaultTerms` thay vì placeholder hard-code.
+
+---
+
+### 16. Return module (Recovery Management) — thiết kế xong ✅ Đã xử lý (Task 00 — sprint-01, `011-hang-hoan.md`)
+
+- `Return` (`returns`) — chỉ tạo được khi `SalesOrder.status = DELIVERED`. `customerId`/`customerName` copy trực tiếp từ `SalesOrder` (đã tự là snapshot), không đọc `Customer`. `salesOrderId` là relation thật (quan hệ cấu trúc chính); `customerId` là Redundant Reference (không `@relation`, cùng convention `Receivable.customerId`).
+- `ReturnItem` (`return_items`) — snapshot từ `SalesOrderItem` tại thời điểm tạo (`productCode`/`productName`/`productParameters` dạng `Json?`/`orderedQuantity`/`unitPriceSnapshot` từ `finalPrice`). `salesOrderItemId` chỉ dùng điều hướng (navigation), không `@relation` — cùng convention `ProductionOrderItem.salesOrderItemId`. Không có `subtotalSnapshot`/`condition` (Derived Data không cần thiết, xem return.md).
+- **Validate cộng dồn qua nhiều Return** (Task 03): `SUM(ReturnItem.returnedQuantity)` theo cùng `salesOrderItemId` — tính trên **toàn bộ** `ReturnItem` từng tạo trước đó (không giới hạn theo Return nào) — không được vượt `SalesOrderItem.quantity`. Đã verify sống: return lần 2 cộng dồn đúng, lần 3 bị chặn chính xác.
+- `RecoveryInventory` (`recovery_inventories`) — sinh tự động 1-1 từ mỗi `ReturnItem`, độc lập hoàn toàn với Warehouse. `createdFromReturnCode` là Redundant Reference tới `Return.code`. **`code` không có Running Number riêng** (tài liệu không định nghĩa) — dùng `{returnCode}-{số thứ tự dòng}` (vd `RT000001-1`), vẫn đảm bảo duy nhất + truy vết được nguồn gốc mà không cần thêm loại chứng từ mới.
+- Thêm field `usedForNote` (không có trong bảng field Task 00 nhưng Task 05 — mark-used — yêu cầu rõ) — String tự do, không FK, không automation.
+- Enum `ReturnReason` (7 giá trị), `RecoveryInventoryStatus` (`AVAILABLE`/`USED`/`DISPOSED`) — workflow một chiều, mọi Action chỉ chạy được từ `AVAILABLE`.
+- **Quyết định đã xác nhận với người dùng:** endpoint Management (Task 06, `PUT /recovery-inventory/:id`) được phép sửa `status` trực tiếp — khác với Action `mark-used`/`dispose` (Task 05) vốn bắt buộc `status` hiện tại phải là `AVAILABLE`. Đây là 2 con đường thay đổi status cùng tồn tại theo yêu cầu, không phải xung đột thiết kế.
+- Đã xác nhận với người dùng bổ sung `GET /returns` + `GET /returns/:id` (không có trong Task 02 gốc) để tra cứu lịch sử Return.
+- Dashboard: `ReturnService` bổ sung `getDashboardSummary()`/`getAgingRecoveryInventory()`/`getTopReturnReasons()`/`getReturnsByCustomer()` — `DashboardModule` gọi qua các method này (`GET /dashboard/returns`), không tự viết Prisma query (Module Ownership).
+- Quan hệ: `SalesOrder ||--o{ Return`, `Return ||--|{ ReturnItem`, `ReturnItem ||--o| RecoveryInventory`.
 
 ---
 

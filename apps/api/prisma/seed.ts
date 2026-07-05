@@ -60,6 +60,12 @@ async function main() {
     create: { type: 'PAYMENT', prefix: 'PT', lastNumber: 0, paddingLength: 6 },
   });
 
+  await prisma.runningNumber.upsert({
+    where: { type: 'RETURN' },
+    update: {},
+    create: { type: 'RETURN', prefix: 'RT', lastNumber: 0, paddingLength: 6 },
+  });
+
   // Customer Groups
   const groups = ['Khách lẻ', 'Đại lý', 'Doanh nghiệp'];
   for (const name of groups) {

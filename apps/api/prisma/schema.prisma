@@ -143,6 +143,22 @@ enum SettingValueType {
   TEXT
 }
 
+enum ReturnReason {
+  WRONG_SIZE
+  WRONG_COLOR
+  WRONG_MODEL
+  PRODUCTION_DEFECT
+  INSTALLATION_DEFECT
+  CUSTOMER_CHANGED_MIND
+  OTHER
+}
+
+enum RecoveryInventoryStatus {
+  AVAILABLE
+  USED
+  DISPOSED
+}
+
 // ──────────────────────────────────────
 // System
 // ──────────────────────────────────────
@@ -651,6 +667,7 @@ model SalesOrder {
   productionOrders ProductionOrder[]
   timeline         SalesOrderTimeline[]
   receivable       Receivable?
+  returns          Return[]
 
   @@index([customerId])
   @@index([status])
@@ -995,4 +1012,91 @@ model Setting {
   @@unique([module, key])
   @@index([module])
   @@map("settings")
+}
+
+// ──────────────────────────────────────
+// Return (Recovery Management)
+// ──────────────────────────────────────
+
+model Return {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  salesOrderId   String   @map("sales_order_id")
+  salesOrderCode String   @map("sales_order_code")
+  // Redundant reference (copy ID bất biến, không phải Derived Data) — tránh
+  // join qua SalesOrder cho thống kê "Return theo khách hàng". Không dùng
+  // @relation, cùng convention với SalesOrder.customerId/Receivable.customerId.
+  customerId     String   @map("customer_id")
+  customerName   String   @map("customer_name")
+  returnDate     DateTime @map("return_date")
+  receivedBy     String?  @map("received_by")
+  note           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  salesOrder SalesOrder   @relation(fields: [salesOrderId], references: [id])
+  items      ReturnItem[]
+
+  @@index([salesOrderId])
+  @@index([customerId])
+  @@map("returns")
+}
+
+model ReturnItem {
+  id               String @id @default(cuid())
+  returnId         String @map("return_id")
+  // Chỉ dùng để điều hướng dữ liệu (navigation) — không đọc lại SalesOrderItem
+  // sau khi tạo. Không dùng @relation, cùng convention với
+  // ProductionOrderItem.salesOrderItemId (xem production.md).
+  salesOrderItemId String @map("sales_order_item_id")
+
+  productCode       String       @map("product_code")
+  productName       String       @map("product_name")
+  productParameters Json?        @map("product_parameters")
+  orderedQuantity   Decimal      @map("ordered_quantity") @db.Decimal(15, 4)
+  returnedQuantity  Decimal      @map("returned_quantity") @db.Decimal(15, 4)
+  // Snapshot từ SalesOrderItem.finalPrice — không đọc lại sau khi tạo.
+  unitPriceSnapshot Decimal      @map("unit_price_snapshot") @db.Decimal(15, 0)
+  reason            ReturnReason
+  note              String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  return            Return             @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  recoveryInventory RecoveryInventory?
+
+  @@index([returnId])
+  @@index([salesOrderItemId])
+  @@map("return_items")
+}
+
+model RecoveryInventory {
+  id                    String @id @default(cuid())
+  code                  String @unique
+  returnItemId          String @unique @map("return_item_id")
+  // Redundant reference tới Return.code tại thời điểm tạo — tránh join
+  // returnItemId → ReturnItem → Return mỗi lần hiển thị (xem return.md).
+  createdFromReturnCode String @map("created_from_return_code")
+
+  productCode       String                  @map("product_code")
+  productName       String                  @map("product_name")
+  productParameters Json?                   @map("product_parameters")
+  quantity          Decimal                 @db.Decimal(15, 4)
+  location          String?
+  status            RecoveryInventoryStatus @default(AVAILABLE)
+  // Chỉ lưu URL, không xây hạ tầng upload ở V1 (xem setting.md "Future Policies").
+  imageUrl          String?                 @map("image_url")
+  // Ghi kèm khi mark-used (Task 05) — không FK, chỉ để thống kê tự do.
+  usedForNote       String?                 @map("used_for_note")
+
+  // Dùng làm mốc tính "Hàng tồn lâu" — không có receivedDate riêng (xem return.md).
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  returnItem ReturnItem @relation(fields: [returnItemId], references: [id])
+
+  @@index([status])
+  @@index([status, createdAt])
+  @@map("recovery_inventories")
 }

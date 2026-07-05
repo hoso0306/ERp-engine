@@ -3,6 +3,7 @@ import { SalesOrderService } from '../sales-order/sales-order.service';
 import { ProductionOrderService } from '../production/production-order.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { DebtService } from '../debt/debt.service';
+import { ReturnService } from '../return/return.service';
 
 // Dashboard không truy cập Prisma/Repository — chỉ gọi Service của module sở
 // hữu dữ liệu (Module Ownership, xem knowledge/modules/dashboard.md).
@@ -13,18 +14,20 @@ export class DashboardService {
     private readonly productionOrderService: ProductionOrderService,
     private readonly warehouseService: WarehouseService,
     private readonly debtService: DebtService,
+    private readonly returnService: ReturnService,
   ) {}
 
   async getOverview() {
-    const [sales, production, warehouse, debt, alerts] = await Promise.all([
+    const [sales, production, warehouse, debt, returns, alerts] = await Promise.all([
       this.getSalesDashboard(),
       this.getProductionDashboard(),
       this.getWarehouseDashboard(),
       this.getDebtDashboard(),
+      this.getReturnDashboard(),
       this.getAlerts(),
     ]);
 
-    return { sales, production, warehouse, debt, alerts };
+    return { sales, production, warehouse, debt, returns, alerts };
   }
 
   async getSalesDashboard() {
@@ -75,6 +78,17 @@ export class DashboardService {
       ]);
 
     return { summary, overdueCustomers, upcomingDue, creditExceeded, topDebtors };
+  }
+
+  async getReturnDashboard() {
+    const [summary, aging, topReasons, byCustomer] = await Promise.all([
+      this.returnService.getDashboardSummary(),
+      this.returnService.getAgingRecoveryInventory(),
+      this.returnService.getTopReturnReasons(),
+      this.returnService.getReturnsByCustomer(),
+    ]);
+
+    return { summary, aging, topReasons, byCustomer };
   }
 
   async getAlerts() {
