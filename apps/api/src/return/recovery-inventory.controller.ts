@@ -54,14 +54,10 @@ export class RecoveryInventoryController {
     return this.returnService.dispose(id);
   }
 
-  // ── Management (Task 06) — location/status/imageUrl ──
-  // Permission catalog (013-permission.md Task 00) không có action riêng cho
-  // endpoint Management này (chỉ view/create/mark-used/dispose). Tạm gán
-  // return.dispose — quyền "mạnh" nhất trong catalog, vì endpoint này cho phép
-  // đổi status tự do (kể cả sang DISPOSED) mà không qua ràng buộc AVAILABLE
-  // của mark-used/dispose. Cần người dùng xác nhận lại lựa chọn này.
+  // ── Management (Task 06) — sửa location/imageUrl/status thủ công, khác với
+  // Business Action mark-used/dispose (Task 05) nên dùng permission riêng.
   @Put(':id')
-  @RequirePermission('return.dispose')
+  @RequirePermission('return.update')
   update(@Param('id') id: string, @Body() dto: UpdateRecoveryInventoryDto) {
     return this.returnService.updateRecoveryInventory(id, dto);
   }

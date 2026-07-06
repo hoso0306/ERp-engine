@@ -19,7 +19,10 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   production: ['view', 'start', 'complete'],
   warehouse: ['view', 'receipt'],
   debt: ['view', 'create-payment'],
-  return: ['view', 'create', 'mark-used', 'dispose'],
+  // update — dùng riêng cho PUT /recovery-inventory/:id (Management, sửa
+  // location/imageUrl/status thủ công), khác với Business Action dispose
+  // (xem knowledge/modules/return.md mục "Management").
+  return: ['view', 'create', 'update', 'mark-used', 'dispose'],
   dashboard: ['view'],
   settings: ['view', 'update'],
   user: ['view', 'create', 'update'],
