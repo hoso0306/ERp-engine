@@ -100,12 +100,14 @@ sales-order: view, ship, deliver, cancel, override
 production: view, start, complete
 warehouse: view, receipt
 debt: view, create-payment
-return: view, create, mark-used, dispose
+return: view, create, update, mark-used, dispose
 dashboard: view
 settings: view, update
 user: view, create, update
 role: view, create, update, disable
 ```
+
+**Bổ sung `return.update`** (đã xác nhận với người dùng, khác quyết định ban đầu) — dùng riêng cho `PUT /recovery-inventory/:id` (Management, sửa `location`/`imageUrl`/`status` thủ công). Tách biệt với `return.dispose` vì `dispose` là Business Action (Task 05, chỉ chạy được khi `status = AVAILABLE`), còn endpoint Management sửa tự do không qua ràng buộc đó — gộp chung sẽ cấp nhầm quyền dispose cho người chỉ cần sửa vị trí lưu kho.
 
 **Default Roles** + **Role↔Permission mặc định** (có thể chỉnh sửa sau qua Task 04):
 
@@ -195,7 +197,7 @@ MaterialReceiptController  → warehouse.view / .receipt
 DebtController /
 PaymentController          → debt.view / .create-payment
 ReturnController /
-RecoveryInventoryController → return.view / .create / .mark-used / .dispose
+RecoveryInventoryController → return.view / .create / .update / .mark-used / .dispose
 DashboardController        → dashboard.view
 SettingController          → settings.view / .update
 ```

@@ -102,8 +102,8 @@ Draft → Sent → Approved
 **Ghi chú:**
 
 - Không có trạng thái `Converted To Order`. Thay vào đó dùng field `salesOrderId`. Khi `salesOrderId` có giá trị, báo giá đã được chuyển thành đơn hàng.
-- Cancelled có thể đạt được từ Draft, Sent hoặc Approved (qua Manual Override).
-- Approved là readonly — muốn sửa phải huỷ và tạo báo giá mới.
+- Cancelled chỉ đạt được từ **Draft hoặc Sent**. **Không Cancel báo giá Approved** — vì Approve luôn sinh Sales Order + gán `salesOrderId` trong cùng transaction, mọi báo giá Approved đều đã có đơn hàng kèm theo; huỷ báo giá lúc này sẽ để lại SalesOrder/ProductionOrder/Receivable không có nguồn gốc rõ ràng. Muốn dừng thương vụ → huỷ **Sales Order** theo rule của `order.md`; báo giá giữ nguyên Approved + `salesOrderId` để phục vụ lịch sử.
+- Approved là readonly — muốn thay đổi nội dung, tạo báo giá mới (sau khi đã huỷ Sales Order, nếu `order.md` còn cho phép huỷ).
 
 ---
 
@@ -127,7 +127,9 @@ Chỉnh sửa ở trạng thái `Sent` **không làm thay đổi trạng thái**
 
 Readonly hoàn toàn.
 
-Muốn thay đổi → huỷ báo giá → tạo mới.
+Không huỷ trực tiếp báo giá Approved (đã có Sales Order kèm theo — xem Ghi chú ở mục "Trạng thái Báo giá").
+
+Muốn thay đổi → huỷ Sales Order (theo rule của `order.md`, nếu còn được phép) → tạo báo giá mới.
 
 ---
 
@@ -148,6 +150,7 @@ Muốn thay đổi → huỷ báo giá → tạo mới.
 Mỗi dòng (QuotationItem) bao gồm:
 
 - Sản phẩm
+- Mã, tên sản phẩm — **snapshot** (`productCode`, `productName`) tại thời điểm thêm/sửa dòng. Sau khi Approve, hiển thị báo giá đọc từ snapshot này, **không đọc lại Product** — đúng CLAUDE.md mục 7 ("snapshot Tên, mã sản phẩm tại thời điểm tạo báo giá"). `productId` giữ lại làm reference điều hướng.
 - Số lượng
 - **QuotationItemParameter** — snapshot giá trị thông số tại thời điểm nhập (không phải FK)
 - Giá hệ thống (tính từ Pricing Engine, lưu tại thời điểm thêm/sửa)
@@ -325,11 +328,21 @@ Bắt buộc:
 
 Mọi thay đổi đều xuất hiện trong Timeline. Không cần bảng audit riêng.
 
+**Giới hạn:** Manual Override không được dùng để Cancel báo giá đã có `salesOrderId` (tức mọi báo giá Approved) — xem Ghi chú ở mục "Trạng thái Báo giá". Muốn dừng thương vụ, xử lý ở Sales Order.
+
 ---
 
 # Snapshot Rule
 
-Thực hiện tại thời điểm Approve (trong cùng transaction):
+Có **hai thời điểm snapshot**, không gộp làm một:
+
+**1. Tại thời điểm thêm/sửa dòng (Draft/Sent):**
+
+- `productCode`, `productName` (danh tính sản phẩm trên chứng từ gửi khách)
+- QuotationItemParameter (giá trị thông số)
+- `systemPrice` (kèm `pricingRuleVersionId` đã dùng để tính)
+
+**2. Thực hiện tại thời điểm Approve (trong cùng transaction):**
 
 - Product
 - Product Parameters
@@ -443,8 +456,36 @@ Status chỉ phản ánh trạng thái hiện tại.
 - Product phải còn hoạt động (ACTIVE)
 - Product phải có Pricing Rule Version ACTIVE
 - Product phải có Material Requirement Version ACTIVE
+- **Pricing Version còn khớp:** `QuotationItem.pricingRuleVersionId` của từng dòng phải đúng là Pricing Rule Version đang ACTIVE của Product tại thời điểm Approve — xem mục "Khi Pricing Rule đổi version giữa chừng"
 - `finalPrice` ≥ 0 cho tất cả các dòng
 - Chưa có `salesOrderId` (chưa từng được approve)
+
+## Khi Pricing Rule đổi version giữa chừng
+
+Kịch bản: giá được tính bằng version 3 lúc soạn báo giá → gửi khách → Product kích hoạt version 4 → khách xác nhận → kế toán bấm Approve.
+
+Xử lý: **chặn Approve, không tính lại âm thầm.**
+
+```text
+Approve
+    ↓
+So sánh pricingRuleVersionId từng dòng với version ACTIVE hiện tại
+    ↓ khớp                          ↓ lệch
+Tiếp tục Approve            Chặn + báo rõ dòng nào tính bằng version cũ
+                                    ↓
+                            Người dùng bấm "Tính lại giá" (Action)
+                                    ↓
+                            systemPrice tính lại bằng version ACTIVE,
+                            pricingRuleVersionId cập nhật theo
+                                    ↓
+                            Nếu giá đổi so với bản đã gửi → gửi lại khách xác nhận
+                                    ↓
+                            Approve lại
+```
+
+Lý do không tự tính lại: giá đã gửi khách là cam kết thương mại — hệ thống không được lặng lẽ đổi con số khách đã đồng ý. Người dùng phải nhìn thấy chênh lệch và tự quyết định.
+
+**Không cần kiểm tra tương tự cho Material Requirement Version:** giá vốn/BOM luôn được tính **tại Approve** bằng version ACTIVE hiện tại (chưa từng gửi khách, chưa chốt trước đó) — không tồn tại trạng thái "đã tính bằng version cũ" để mà lệch.
 
 ---
 
@@ -455,6 +496,8 @@ Status chỉ phản ánh trạng thái hiện tại.
 - Một dòng sản phẩm sử dụng đúng một Product.
 - Giá bán luôn được tính từ Pricing Engine. Không nhập giá bán thủ công.
 - Giá tính lại mỗi khi thông số thay đổi (Draft/Sent). Khóa cứng khi Approve.
+- QuotationItem snapshot `productCode`/`productName` tại thời điểm thêm/sửa dòng — sau Approve không đọc lại Product để hiển thị.
+- Approve bị chặn nếu `pricingRuleVersionId` của bất kỳ dòng nào không còn là version ACTIVE — người dùng phải chủ động "Tính lại giá", không tính lại âm thầm.
 - Chiết khấu nhóm khách áp dụng tự động.
 - Cho phép giảm thêm (% và/hoặc số tiền) nhưng phải lưu lý do.
 - `finalPrice` không được âm.
@@ -463,7 +506,8 @@ Status chỉ phản ánh trạng thái hiện tại.
 - ERP tự sinh Phiếu sản xuất. Người dùng không tạo thủ công.
 - Dashboard lấy dữ liệu từ Đơn hàng đã chuyển sang "Đang sản xuất".
 - Draft và Sent có thể chỉnh sửa. Approved là readonly.
-- Muốn sửa sau Approved → huỷ → tạo mới.
+- Không Cancel báo giá đã có `salesOrderId` (mọi báo giá Approved) — kể cả qua Manual Override. Muốn dừng thương vụ, huỷ Sales Order; báo giá giữ Approved phục vụ lịch sử.
+- Muốn sửa sau Approved → huỷ Sales Order (nếu còn được phép) → tạo báo giá mới.
 
 ---
 

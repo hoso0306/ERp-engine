@@ -385,10 +385,14 @@ view
 
 create
 
+update
+
 mark-used
 
 dispose
 ```
+
+**`update`** — dùng riêng cho endpoint Management (`PUT /recovery-inventory/:id`, sửa `location`/`imageUrl`/`status` thủ công — xem `return.md`). Tách biệt với `dispose` vì `dispose` là Business Action một chiều (chỉ chạy được khi `status = AVAILABLE`), còn Management sửa tự do không qua ràng buộc đó.
 
 ---
 

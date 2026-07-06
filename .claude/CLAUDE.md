@@ -328,7 +328,9 @@ Ví dụ: Dashboard statistics, Inventory summary.
 - Không phục vụ Snapshot.
 - Không mang lại lợi ích rõ ràng về hiệu năng.
 
-Ví dụ: `productionProgress (%)` → tính từ `completedProductionOrders / totalProductionOrders`, không lưu. `remainingAmount` → tính từ `totalAmount - paidAmount`, không lưu.
+Ví dụ: `productionProgress (%)` → tính từ `completedProductionOrders / totalProductionOrders`, không lưu. `daysOverdue` → tính từ `today - dueDate`, không lưu.
+
+**Ngoại lệ đã duyệt:** `Receivable.remainingAmount` **được lưu** — vừa theo lý do Hiệu năng đọc, vừa vì CHECK constraint `remaining_amount >= 0` ở DB chính là cơ chế chống thu vượt khi có request đồng thời (xem `knowledge/modules/debt.md` mục Concurrency Rule). Không được "sửa lại cho đúng nguyên tắc" field này — bỏ lưu là phá cơ chế concurrency.
 
 ### Yêu cầu khi lưu Derived Data
 

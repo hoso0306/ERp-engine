@@ -60,6 +60,8 @@ Sales Order vẫn giữ nguyên
 
 Return chỉ phục vụ thống kê và quản lý tài sản thu hồi.
 
+**Nếu doanh nghiệp quyết định giảm công nợ cho khách sau khi nhận hàng hoàn** (khách sẽ không trả tiền phần đã hoàn), nghiệp vụ đó là **Điều chỉnh công nợ thủ công (Manual Adjustment) — thuộc Debt module** (V2, xem `debt.md` mục Ghi chú), do kế toán thực hiện có chủ đích, kèm lý do và người thực hiện. Return không tự động làm việc này, không gợi ý số tiền, không gọi sang Debt.
+
 ---
 
 # Business Flow
@@ -163,6 +165,8 @@ returnDate
 
 receivedBy
 
+status          // ReturnStatus: PROCESSING | COMPLETED — xem "Trạng thái Return"
+
 note
 
 createdAt
@@ -171,6 +175,26 @@ updatedAt
 ```
 
 Một Return có thể có nhiều ReturnItem.
+
+## Trạng thái Return
+
+Đây là **trạng thái xử lý của phiếu hoàn** — đã cam kết ở `03-danh-sach-module.md` (Hàng hoàn: "Trạng thái xử lý") và `02-quy-trinh-nghiep-vu.md` (Hàng hoàn → Đang xử lý → Hoàn tất). Khác hoàn toàn với `RecoveryInventoryStatus` (trạng thái của **tài sản** thu hồi).
+
+```text
+PROCESSING → COMPLETED
+```
+
+- **PROCESSING** (mặc định khi tạo): đang xử lý với khách — kiểm tra hàng, thương lượng, quyết định hướng giải quyết.
+- **COMPLETED**: vụ việc đã chốt xong với khách. Chỉ mang ý nghĩa quản lý vụ việc — **không ảnh hưởng** RecoveryInventory (tài sản thu hồi vẫn theo dõi độc lập bằng `AVAILABLE/USED/DISPOSED`), không ảnh hưởng tài chính.
+
+Action:
+
+```http
+POST /returns/:id/complete
+```
+
+- Chỉ chạy được khi `status = PROCESSING`. Workflow một chiều — không có Action quay lại `PROCESSING`, không có Cancel (phiếu tạo nhầm xử lý theo tiền lệ chung của dự án).
+- Ghi nhận người thực hiện + thời gian (V1 chưa có Timeline riêng cho Return — dùng `updatedAt` + `completedBy` nếu cần tối giản, hoặc bổ sung khi có nhu cầu thật).
 
 **Chỉ được tạo Return khi `SalesOrder.status = DELIVERED`** — khớp đúng với "Mục đích" (hàng trả về sau khi đã giao hàng). Không tạo Return cho đơn còn đang sản xuất/vận chuyển/chưa giao.
 
@@ -528,6 +552,7 @@ Không đánh giá khách hàng.
 
 - Một SalesOrder có thể có nhiều Return.
 - Chỉ tạo Return khi `SalesOrder.status = DELIVERED`.
+- Return có trạng thái xử lý `PROCESSING → COMPLETED` (một chiều, Action `complete`, chỉ chạy từ `PROCESSING`). Trạng thái này độc lập với `RecoveryInventoryStatus` và không ảnh hưởng tài chính.
 - Một Return có nhiều ReturnItem.
 - Một ReturnItem chỉ thuộc đúng một SalesOrderItem.
 - Cho phép trả một phần số lượng (`returnedQuantity <= orderedQuantity`).
@@ -540,7 +565,7 @@ Không đánh giá khách hàng.
 - Action `mark-used`/`dispose` chỉ thực hiện được khi `status = AVAILABLE`.
 - Return không làm thay đổi doanh thu.
 - Return không làm thay đổi lợi nhuận.
-- Return không làm thay đổi công nợ.
+- Return không làm thay đổi công nợ. Giảm công nợ sau Return (nếu doanh nghiệp quyết định) thực hiện qua Manual Adjustment của Debt module (V2) — không thuộc Return.
 - Return không làm thay đổi Payment.
 - Return không làm thay đổi Dashboard tài chính.
 

@@ -368,19 +368,15 @@ PT000001
 
 # Snapshot Rule
 
-Payment snapshot:
+Payment **không snapshot thêm field hiển thị nào**:
 
-```text
-customerName
+- `amount`, `paymentMethod`, `paymentDate`, `referenceNumber` là dữ liệu gốc (Source Data) của chính Payment.
+- `salesOrderId`, `receivableId` là Redundant Reference (copy ID bất biến).
+- Khi cần hiển thị tên khách hàng / mã đơn hàng, đọc qua `salesOrderId → SalesOrder.customerName/code` — bản thân `SalesOrder` đã là snapshot bất biến, không cần lưu bản sao thứ hai trên Payment.
 
-salesOrderCode
+> Ghi chú lịch sử: bản trước của tài liệu từng ghi Payment snapshot `customerName`/`salesOrderCode` — đã bỏ vì schema không có 2 field này và không cần (SalesOrder đã bất biến).
 
-amount
-
-paymentMethod
-```
-
-Sau khi tạo. Không đọc lại Sales Order.
+Payment sau khi tạo là append-only — không sửa, không xoá (xem Business Rule).
 
 Receivable snapshot (Credit Policy — xem mục riêng ở trên):
 
@@ -516,7 +512,30 @@ Nếu `SalesOrder.status = CANCELLED`:
 - `Receivable` **vẫn được giữ nguyên** để phục vụ lịch sử — không xoá.
 - `Receivable` **không còn được tính vào công nợ đang mở** (xem "Dashboard Rule").
 
-**Sales Order không được phép Cancel nếu đã thu tiền** (`Receivable.paidAmount > 0`) — chặn ngay ở `SalesOrderService.cancel()`. Quyết định có chủ đích để tránh mở luồng Refund trong Sprint 1. Nếu chưa thu đồng nào (`paidAmount = 0`), Cancel vẫn diễn ra bình thường.
+**Sales Order được phép Cancel kể cả khi đã thu tiền cọc** (`Receivable.paidAmount > 0`) — quyết định đã chốt với người dùng 05/07/2026 (thay thế rule cũ "chặn Cancel nếu đã thu tiền", vốn tạo deadlock: đơn đã cọc không bao giờ huỷ được vì Refund không có trong V1).
+
+Điều kiện huỷ vẫn theo `order.md` (mọi Production Order còn `PENDING`). Khi `paidAmount > 0`, luồng như sau:
+
+```text
+Cancel (đơn đã có tiền cọc)
+    ↓
+UI hiển thị cảnh báo bắt buộc xác nhận:
+"Đơn hàng đã thu cọc. ERP sẽ đóng công nợ.
+ Việc hoàn tiền thực hiện ngoài hệ thống."
+    ↓
+SalesOrder → CANCELLED (cascade PO như production.md)
+    ↓
+Receivable giữ nguyên bản ghi — tự động ra khỏi công nợ mở
+(theo rule sẵn có: chỉ tính Receivable của SalesOrder.status != CANCELLED)
+    ↓
+Payment giữ nguyên (append-only, không xoá, không sửa)
+    ↓
+Timeline (CANCELLED) payload: { reason, paidAmount, refundNote: "Refund handled outside ERP" }
+```
+
+- **Không thêm field/status mới** — "đóng công nợ" chính là hệ quả của rule lọc theo `SalesOrder.status` đã có, không cần cơ chế riêng.
+- Hoàn hay giữ cọc là quyết định của Owner **ngoài hệ thống** — ERP chỉ giữ dấu vết đầy đủ (Payment + Timeline) để đối chiếu.
+- Báo cáo/Dashboard cần chú ý: tiền đã thu của đơn CANCELLED vẫn nằm trong "Tiền mặt về" (Payment là sự kiện tiền thật, không xoá) — nếu cần, Report hiển thị dòng chú thích riêng, không tự trừ.
 
 ---
 
@@ -537,7 +556,7 @@ Nếu `SalesOrder.status = CANCELLED`:
 - Update Receivable phải atomic (increment/decrement), không đọc-tính-ghi.
 - Một Payment chỉ cập nhật Receivable đúng một lần.
 - Create Payment chỉ bị chặn khi Sales Order đã `CANCELLED`.
-- Sales Order không được Cancel nếu Receivable.paidAmount > 0.
+- Sales Order được Cancel kể cả khi đã thu cọc (điều kiện PO theo order.md) — kèm cảnh báo bắt buộc xác nhận; Receivable ra khỏi công nợ mở theo rule lọc status sẵn có; Payment giữ nguyên; hoàn tiền xử lý ngoài ERP; Timeline ghi `paidAmount` + refundNote.
 - Receivable không tự quyết định hiệu lực công nợ — SalesOrder.status là nguồn sự thật. Receivable của đơn đã Cancel vẫn giữ để phục vụ lịch sử, không tính vào công nợ đang mở.
 - referenceNumber bắt buộc khi paymentMethod = BANK_TRANSFER.
 - Mỗi Payment đều ghi SalesOrderTimeline (PAYMENT_STATUS_CHANGED), kể cả khi paymentStatus không đổi.
@@ -620,6 +639,7 @@ Nếu sau này cần:
 - Kế toán
 - Sổ cái
 - Hoàn tiền (Refund) khi Cancel đơn đã thu tiền
+- Điều chỉnh giảm công nợ thủ công (Manual Adjustment) — vd doanh nghiệp quyết định giảm nợ sau khi nhận hàng hoàn (xem `return.md`): giảm `Receivable.totalAmount`, bắt buộc lý do + người thực hiện + ghi Timeline, theo đúng khuôn Manual Override (CLAUDE.md mục 5)
 - Chặn bán hàng khi vượt hạn mức (Company Setting Debt Policy)
 - Báo cáo/đối soát Payment cắt ngang (theo ngày, theo phương thức thanh toán)
 
@@ -639,7 +659,7 @@ sẽ phát triển thành Accounting Module / Report Module (V2).
 
 - Sales Order:
   - bỏ API `record-payment`
-  - `cancel()` cần kiểm tra thêm `Receivable.paidAmount`
+  - `cancel()` không chặn theo `Receivable.paidAmount` — nhưng phải trả về thông tin cọc đã thu để UI hiển thị cảnh báo xác nhận, và ghi `paidAmount` + refundNote vào Timeline payload
   - `deliver()` cần set thêm `Receivable.dueDate`
 - Dashboard
 

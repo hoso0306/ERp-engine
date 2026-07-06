@@ -322,6 +322,19 @@ Chỉ Admin được dùng Manual Override kèm lý do bắt buộc.
 
 Không xử lý rollback Production trong V1.
 
+## Huỷ đơn đã thu cọc
+
+**Được phép huỷ** (quyết định đã chốt 05/07/2026 — thay thế rule cũ chặn Cancel khi `Receivable.paidAmount > 0`, vốn tạo deadlock vì V1 không có Refund).
+
+Điều kiện huỷ không đổi: mọi Production Order còn `PENDING`. Khi đơn đã có tiền cọc:
+
+- UI hiển thị cảnh báo bắt buộc xác nhận: *"Đơn hàng đã thu cọc. ERP sẽ đóng công nợ. Việc hoàn tiền thực hiện ngoài hệ thống."*
+- Receivable giữ nguyên bản ghi, tự ra khỏi công nợ mở (rule lọc `SalesOrder.status != CANCELLED` sẵn có).
+- Payment giữ nguyên (append-only).
+- Timeline (`CANCELLED`) payload: `{ reason, paidAmount, refundNote: "Refund handled outside ERP" }`.
+
+Chi tiết phía công nợ xem `debt.md` mục "Receivable không tự quyết định hiệu lực công nợ".
+
 ---
 
 # Immutable Document
