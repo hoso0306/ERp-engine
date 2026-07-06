@@ -415,6 +415,8 @@ erDiagram
         string customerId
         string customerName
         enum status
+        string completedBy
+        datetime completedAt
         datetime returnDate
         string receivedBy
         string note

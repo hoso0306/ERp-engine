@@ -8,6 +8,7 @@ import {
   Prisma,
   SalesOrderStatus,
   ReturnReason,
+  ReturnStatus,
   RecoveryInventoryStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +53,11 @@ export class ReturnService {
       where.customerId = query.customerId;
     }
 
+    const validStatuses = Object.values(ReturnStatus) as string[];
+    if (query.status && validStatuses.includes(query.status)) {
+      where.status = query.status as ReturnStatus;
+    }
+
     const [data, total] = await Promise.all([
       this.prisma.return.findMany({
         where,
@@ -78,6 +84,33 @@ export class ReturnService {
       throw new NotFoundException('Phiếu trả hàng không tồn tại.');
     }
     return ret;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Action: Complete (Sprint 02 — return.md "Trạng thái Return")
+  // ─────────────────────────────────────────────────────
+
+  // Workflow một chiều PROCESSING → COMPLETED: chốt xong vụ việc với khách.
+  // Không ảnh hưởng RecoveryInventory (tài sản thu hồi theo dõi độc lập),
+  // không ảnh hưởng tài chính. Không có Action quay lại PROCESSING.
+  async complete(id: string, userId?: string | null) {
+    const ret = await this.findOne(id);
+
+    if (ret.status !== ReturnStatus.PROCESSING) {
+      throw new ForbiddenException(
+        'Phiếu trả hàng đã hoàn tất xử lý — không thể thực hiện lại.',
+      );
+    }
+
+    return this.prisma.return.update({
+      where: { id },
+      data: {
+        status: ReturnStatus.COMPLETED,
+        completedBy: userId ?? null,
+        completedAt: new Date(),
+      },
+      include: RETURN_INCLUDE,
+    });
   }
 
   // ─────────────────────────────────────────────────────

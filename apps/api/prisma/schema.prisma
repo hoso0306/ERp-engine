@@ -1169,6 +1169,10 @@ model Return {
   // Một chiều PROCESSING → COMPLETED qua POST /returns/:id/complete
   // (return.md mục "Trạng thái Return").
   status         ReturnStatus @default(PROCESSING)
+  // Ghi nhận Action complete (đã chốt 06/07/2026): người thực hiện + thời điểm.
+  // NULL với bản ghi backfill COMPLETED trước khi có trạng thái.
+  completedBy    String?   @map("completed_by")
+  completedAt    DateTime? @map("completed_at")
   returnDate     DateTime @map("return_date")
   receivedBy     String?  @map("received_by")
   note           String?

@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Req,
+} from '@nestjs/common';
 import { ReturnService } from './return.service';
 import { CreateReturnDto } from './dto/create-return.dto';
 import { ReturnQueryDto } from './dto/return-query.dto';
@@ -27,5 +38,14 @@ export class ReturnController {
   @RequirePermission('return.create')
   create(@Body() dto: CreateReturnDto) {
     return this.returnService.create(dto);
+  }
+
+  // Action "Hoàn tất xử lý" — một chiều PROCESSING → COMPLETED. Dùng lại
+  // permission return.update (đã chốt 05/07/2026 — không seed key mới).
+  @Post(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('return.update')
+  complete(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    return this.returnService.complete(id, req.user?.userId ?? null);
   }
 }
