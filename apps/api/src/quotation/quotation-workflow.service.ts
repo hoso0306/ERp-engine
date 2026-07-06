@@ -357,6 +357,16 @@ export class QuotationWorkflowService {
     );
     const subtotal = this.calcSubtotal(finalPrice, quantity);
 
+    // Snapshot Rule (quotation.md): snapshot productCode/productName tại thời
+    // điểm thêm/SỬA dòng — refresh lại mỗi lần sửa khi còn Draft/Sent.
+    const snapshotProduct = await this.prisma.product.findUnique({
+      where: { id: item.productId },
+      select: { code: true, name: true },
+    });
+    if (!snapshotProduct) {
+      throw new NotFoundException('Sản phẩm không tồn tại.');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       if (newParameters !== undefined) {
         await tx.quotationItemParameter.deleteMany({ where: { quotationItemId: itemId } });
@@ -385,6 +395,8 @@ export class QuotationWorkflowService {
       return tx.quotationItem.update({
         where: { id: itemId },
         data: {
+          productCode: snapshotProduct.code,
+          productName: snapshotProduct.name,
           quantity,
           systemPrice,
           pricingRuleVersionId,

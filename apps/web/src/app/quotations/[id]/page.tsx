@@ -42,6 +42,10 @@ interface QuotationItem {
   discountBy: string | null;
   finalPrice: number;
   subtotal: number;
+  // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
+  productCode: string;
+  productName: string;
+  // Chỉ dùng điều hướng (navigation), không dùng hiển thị.
   product: { id: string; code: string; name: string };
   parameters: QuotationItemParam[];
 }

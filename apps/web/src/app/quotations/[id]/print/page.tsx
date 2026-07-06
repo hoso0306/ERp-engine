@@ -23,7 +23,9 @@ interface QuotationItem {
   discountReason: string | null;
   finalPrice: number;
   subtotal: number;
-  product: { id: string; code: string; name: string };
+  // Snapshot tại thời điểm thêm/sửa dòng — bản in đọc từ đây, không đọc Product.
+  productCode: string;
+  productName: string;
   parameters: QuotationItemParam[];
 }
 
@@ -295,9 +297,9 @@ export default function QuotationPrintPage() {
                 <tr key={item.id}>
                   <td style={{ textAlign: "center" }}>{idx + 1}</td>
                   <td>
-                    <strong>{item.product.name}</strong>
+                    <strong>{item.productName}</strong>
                     <br />
-                    <span style={{ fontSize: 11, color: "#555" }}>{item.product.code}</span>
+                    <span style={{ fontSize: 11, color: "#555" }}>{item.productCode}</span>
                   </td>
                   <td style={{ fontSize: 11 }}>{fmtParams(item.parameters) || "—"}</td>
                   <td style={{ textAlign: "right" }}>{fmt(Number(item.systemPrice))}</td>
@@ -327,7 +329,7 @@ export default function QuotationPrintPage() {
             <em>Lý do chiết khấu: </em>
             {quotation.items
               .filter((i) => i.discountReason)
-              .map((i) => `${i.product.name} — ${i.discountReason}`)
+              .map((i) => `${i.productName} — ${i.discountReason}`)
               .join("; ")}
           </div>
         )}

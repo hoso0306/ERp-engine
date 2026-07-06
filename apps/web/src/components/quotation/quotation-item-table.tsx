@@ -25,6 +25,10 @@ interface QuotationItemRow {
   discountBy: string | null;
   finalPrice: number;
   subtotal: number;
+  // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
+  productCode: string;
+  productName: string;
+  // Chỉ dùng điều hướng (navigation), không dùng hiển thị.
   product: { id: string; code: string; name: string };
   parameters: Parameter[];
 }
@@ -76,8 +80,8 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
           {items.map((item) => (
             <TableRow key={item.id}>
               <TableCell>
-                <div className="font-medium">{item.product.name}</div>
-                <div className="text-xs text-muted-foreground font-mono">{item.product.code}</div>
+                <div className="font-medium">{item.productName}</div>
+                <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
               </TableCell>
                 <TableCell className="text-xs text-muted-foreground w-48">
                 <div className="space-y-0.5">
