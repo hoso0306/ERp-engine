@@ -789,37 +789,39 @@ User (bổ sung)
 
 ---
 
-### 19. Vòng Architecture Review 2026-07-05 — thay đổi schema đã chốt, ⏳ CHƯA migrate
+### 19. Vòng Architecture Review 2026-07-05 — ✅ ĐÃ migrate & triển khai (Sprint 02 Milestone 01, 06/07/2026)
 
-Các quyết định đã thống nhất trong đợt review kiến trúc toàn dự án (xem `knowledge/modules/report.md`, `quotation.md`, `return.md` bản cập nhật 05/07). Liệt kê tập trung ở đây để làm một đợt migration khi bắt đầu code:
+Các quyết định đã thống nhất trong đợt review kiến trúc toàn dự án (xem `knowledge/modules/report.md`, `quotation.md`, `return.md` bản cập nhật 05/07). Đã triển khai trong `workbench/sprint-02/001-cap-nhat-kien-truc.md` — migration chính `20260706044014_architecture_review_snapshots_return_status_indexes` + migration bổ sung `20260706052711_return_completed_by_at`:
 
-**QuotationItem** (`quotation.md` — sửa vi phạm Snapshot Rule):
+**QuotationItem** (`quotation.md` — sửa vi phạm Snapshot Rule): ✅
 
-- Thêm `productCode`, `productName` (snapshot tại thời điểm thêm/sửa dòng). Backfill bản ghi cũ: join qua `productId` một lần duy nhất lúc migrate.
+- Thêm `productCode`, `productName` (snapshot tại thời điểm thêm/sửa dòng). Backfill bản ghi cũ: join qua `productId` một lần duy nhất lúc migrate. FE (danh sách/chi tiết/trang in) đọc snapshot, `productId` chỉ điều hướng. Verify sống: đổi tên Product sau khi có báo giá → báo giá vẫn giữ tên cũ.
 
-**Return** (`return.md` — bổ sung trạng thái xử lý đã cam kết ở `02-quy-trinh`/`03-danh-sach-module`):
+**Return** (`return.md` — bổ sung trạng thái xử lý đã cam kết ở `02-quy-trinh`/`03-danh-sach-module`): ✅
 
 - Thêm enum `ReturnStatus` (`PROCESSING`/`COMPLETED`) + field `Return.status` (`@default(PROCESSING)`). Backfill bản ghi cũ: set `COMPLETED` (nghiệp vụ đã kết thúc trước khi có trạng thái).
-- Action mới `POST /returns/:id/complete` (chỉ từ `PROCESSING`, một chiều).
+- Action mới `POST /returns/:id/complete` (chỉ từ `PROCESSING`, một chiều) — dùng permission `return.update` (đã chốt, không seed key mới). Bổ sung `completedBy`/`completedAt` (đã chốt 06/07/2026 — theo gợi ý "tối giản" của `return.md` nhưng chọn phương án đầy đủ 2 field) để ghi người thực hiện + thời điểm. `GET /returns` filter theo `status`. FE badge/nút hoãn đến khi có module FE Return (đã chốt 06/07/2026).
 
-**SalesOrderItem** (`report.md` — phục vụ báo cáo B2/B4, cấm join ngược Master Data):
+**SalesOrderItem** (`report.md` — phục vụ báo cáo B2/B4, cấm join ngược Master Data): ✅
 
-- Thêm `productId` (Redundant Reference), `productTypeId` (Redundant Reference), `productTypeName` (snapshot) — set tại Approve. Backfill: join theo `productCode` một lần lúc migrate.
+- Thêm `productTypeId` (Redundant Reference), `productTypeName` (snapshot) — set tại Approve. Backfill: join qua `productId` (cột này đã tồn tại từ trước — mục gốc ghi "thêm productId" là thừa, và join theo id chính xác hơn join theo `productCode`).
 
-**SalesOrder** (`report.md` C1 + architecture review "trước Go-Live"):
+**SalesOrder** (`report.md` C1 + architecture review "trước Go-Live"): ✅
 
-- Thêm `ownerId String?` (FK User); `ownerName` giữ làm snapshot hiển thị.
+- Thêm `ownerId String?` (FK User); `ownerName` giữ làm snapshot hiển thị. Approve set `ownerId` = người tạo báo giá (`Quotation.createdBy`, ghi từ JWT khi tạo), fallback người bấm Approve khi `createdBy` NULL. Không backfill dữ liệu cũ (NULL).
 
-**Index theo ngày** (`report.md` mục 3):
+**Index theo ngày** (`report.md` mục 3): ✅
 
 - `SalesOrder @@index([createdAt])`, `Payment @@index([paymentDate])`, `Return @@index([returnDate])`, `MaterialReceipt @@index([createdAt])`, `SalesOrderItem @@index([productId])`, `SalesOrderItem @@index([productTypeId])`.
 
-**Validation mới, không đổi schema** (`quotation.md`):
+**Validation mới, không đổi schema** (`quotation.md`): ✅
 
-- Approve chặn khi `QuotationItem.pricingRuleVersionId` không còn là version ACTIVE — Action "Tính lại giá" riêng, không recalc âm thầm.
-- Không Cancel Quotation đã có `salesOrderId` (kể cả Manual Override).
+- Approve chặn khi `QuotationItem.pricingRuleVersionId` không còn là version ACTIVE — throw `errorCode: PRICING_VERSION_STALE` + danh sách dòng lệch; Action `POST /quotations/:id/recalculate-prices` (chỉ Draft/Sent) tính lại bằng version ACTIVE, trả `changes` cũ/mới cho FE hiển thị chênh lệch, ghi Timeline bằng action `QUOTATION_MANUAL_OVERRIDE` sẵn có với `payload.action = "RECALCULATE_PRICES"` (đã chốt 06/07/2026 — không thêm enum mới).
+- Không Cancel Quotation đã có `salesOrderId` (kể cả Manual Override) — chặn ở cả `cancel()` lẫn `override()`.
 
-**Huỷ đơn đã thu cọc — ✅ đã chốt (05/07/2026):** cho phép Cancel khi mọi PO còn PENDING kể cả `paidAmount > 0` — cảnh báo bắt buộc xác nhận, Receivable ra khỏi công nợ mở theo rule lọc status sẵn có, Payment giữ nguyên, hoàn tiền ngoài ERP, Timeline payload `{ reason, paidAmount, refundNote }`. Không thêm schema mới. Xem `order.md` mục "Huỷ đơn đã thu cọc" + `debt.md`. Code hiện tại (`SalesOrderService.cancel()` đang chặn theo `paidAmount`) cần sửa theo — thuộc đợt triển khai cùng các thay đổi ở trên.
+**Huỷ đơn đã thu cọc — ✅ đã chốt (05/07/2026), ✅ đã triển khai (06/07/2026):** cho phép Cancel khi mọi PO còn PENDING kể cả `paidAmount > 0` — cảnh báo bắt buộc xác nhận, Receivable ra khỏi công nợ mở theo rule lọc status sẵn có, Payment giữ nguyên, hoàn tiền ngoài ERP, Timeline payload `{ reason, paidAmount, refundNote }` (chỉ thêm 2 field sau khi `paidAmount > 0`). Không thêm schema mới. Xem `order.md` mục "Huỷ đơn đã thu cọc" + `debt.md`. FE dialog cảnh báo hoãn đến khi có module FE Order (đã chốt 06/07/2026); API detail đã trả sẵn `receivable.paidAmount` cho FE dùng.
+
+Toàn bộ verify sống 06/07/2026 trên API + PostgreSQL thật (45 check PASS): snapshot giữ tên cũ khi đổi tên Product; đổi version giá → Approve chặn đúng dòng → tính lại (+chênh lệch đúng) → Approve OK; `ownerId`/`productTypeId`/`productTypeName` đúng trên SalesOrder mới; huỷ đơn đã cọc (PO cascade, payload đúng, công nợ mở giảm đúng delta trên `/receivables/dashboard`, Payment giữ nguyên); Return complete một chiều + filter status.
 
 ---
 

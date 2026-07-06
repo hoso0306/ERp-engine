@@ -121,9 +121,9 @@ feat(schema): architecture review migration - snapshots, return status, date ind
 
 ### Definition of Done
 
-* [ ] Thêm/sửa dòng → snapshot ghi đúng.
-* [ ] Đổi tên Product sau khi báo giá Approved → báo giá hiển thị/in vẫn giữ tên cũ (verify sống).
-* [ ] Build thành công.
+* [x] Thêm/sửa dòng → snapshot ghi đúng (verify sống 06/07).
+* [x] Đổi tên Product sau khi báo giá Approved → báo giá hiển thị/in vẫn giữ tên cũ (verify sống).
+* [x] Build thành công (API + web).
 
 **Commit**
 
@@ -148,11 +148,11 @@ Approve bị chặn nếu giá của bất kỳ dòng nào được tính bằng
 
 ### Definition of Done
 
-* [ ] Approve chặn đúng khi version lệch, thông báo nêu rõ dòng nào.
-* [ ] `recalculate-prices` hoạt động, ghi Timeline (dùng action phù hợp có sẵn hoặc đề xuất — hỏi người dùng nếu cần action mới).
-* [ ] Approve lại thành công sau khi tính lại.
-* [ ] Cancel Quotation Approved bị chặn (verify sống).
-* [ ] Build thành công.
+* [x] Approve chặn đúng khi version lệch, thông báo nêu rõ dòng nào (`errorCode: PRICING_VERSION_STALE` + `staleItems`).
+* [x] `recalculate-prices` hoạt động, ghi Timeline — đã hỏi và chốt với người dùng (06/07): dùng `QUOTATION_MANUAL_OVERRIDE` sẵn có + `payload.action = "RECALCULATE_PRICES"`, không thêm enum mới.
+* [x] Approve lại thành công sau khi tính lại (verify sống).
+* [x] Cancel Quotation Approved bị chặn (verify sống — chặn cả `cancel()` lẫn Manual Override).
+* [x] Build thành công.
 
 **Commit**
 
@@ -180,9 +180,9 @@ feat(quotation): block approve on stale pricing version + recalculate action
 
 ### Definition of Done
 
-* [ ] Approve mới → SalesOrderItem/SalesOrder có đủ field mới, giá trị đúng (verify sống).
-* [ ] Không đọc lại Master Data sau khi tạo (chỉ copy trong transaction Approve).
-* [ ] Build thành công.
+* [x] Approve mới → SalesOrderItem/SalesOrder có đủ field mới, giá trị đúng (verify sống: `ownerId` = người tạo báo giá, `ownerName`, `productTypeId/Name`).
+* [x] Không đọc lại Master Data sau khi tạo (chỉ copy trong transaction Approve).
+* [x] Build thành công.
 
 **Commit**
 
@@ -207,12 +207,12 @@ Sửa `SalesOrderService.cancel()` theo quyết định đã chốt (xem `order.
 
 ### Definition of Done
 
-* [ ] Huỷ đơn đã cọc (PO đều PENDING) thành công; PO cascade `CANCELLED` như cũ.
-* [ ] Công nợ mở không còn tính đơn này; Payment giữ nguyên (verify sống).
-* [ ] Timeline payload đúng quy ước.
-* [ ] FE hiển thị dialog cảnh báo khi đơn có cọc.
-* [ ] Huỷ đơn chưa cọc: hành vi như cũ, không hiện cảnh báo cọc.
-* [ ] Build thành công.
+* [x] Huỷ đơn đã cọc (PO đều PENDING) thành công; PO cascade `CANCELLED` như cũ (verify sống).
+* [x] Công nợ mở không còn tính đơn này (verify delta trên `/receivables/dashboard`); Payment giữ nguyên (verify sống).
+* [x] Timeline payload đúng quy ước (`paidAmount`/`refundNote` chỉ khi có cọc).
+* [ ] FE hiển thị dialog cảnh báo khi đơn có cọc — **hoãn (đã chốt 06/07/2026)**: FE chưa có trang Sales Order; API detail đã trả sẵn `receivable.paidAmount` để dùng khi dựng FE Order.
+* [x] Huỷ đơn chưa cọc: hành vi như cũ, payload không có `paidAmount`/`refundNote` (verify sống).
+* [x] Build thành công.
 
 **Commit**
 
@@ -238,10 +238,10 @@ Triển khai `ReturnStatus` theo `return.md` mục "Trạng thái Return" (schem
 
 ### Definition of Done
 
-* [ ] `complete` hoạt động, chặn đúng khi đã `COMPLETED`.
-* [ ] Filter status hoạt động.
-* [ ] FE hiển thị và thao tác được.
-* [ ] Build thành công.
+* [x] `complete` hoạt động (ghi `completedBy`/`completedAt` — 2 field bổ sung đã chốt 06/07/2026, migration `20260706052711`), chặn đúng khi đã `COMPLETED` (verify sống).
+* [x] Filter status hoạt động (verify sống).
+* [ ] FE hiển thị và thao tác được — **hoãn (đã chốt 06/07/2026)**: FE chưa có trang Return.
+* [x] Build thành công.
 
 **Commit**
 
@@ -259,11 +259,11 @@ Rà soát toàn bộ, khớp tài liệu, đóng milestone.
 
 ### Definition of Done
 
-* [ ] Toàn bộ Task 00–05 hoàn thành, verify sống từng luồng chính: tạo báo giá → đổi tên Product → in báo giá (giữ tên cũ); đổi version giá → Approve bị chặn → tính lại → Approve; huỷ đơn đã cọc; complete Return.
-* [ ] `erd.md` mục 19: đánh dấu ✅ từng hạng mục đã xử lý (đúng pattern các mục 1–18).
-* [ ] Không còn lỗi TypeScript / Runtime. Build thành công.
-* [ ] Đã tự review.
-* [ ] Dừng.
+* [x] Toàn bộ Task 00–05 hoàn thành (phần FE Task 04/05 hoãn theo chốt 06/07/2026 — FE mới có đến module Quotation), verify sống 45 check PASS trên API + PostgreSQL thật: tạo báo giá → đổi tên Product → hiển thị/in giữ tên cũ; đổi version giá → Approve bị chặn → tính lại (+chênh lệch đúng) → Approve; huỷ đơn đã cọc/chưa cọc; complete Return một chiều + filter.
+* [x] `erd.md` mục 19: đánh dấu ✅ từng hạng mục đã xử lý.
+* [x] Không còn lỗi TypeScript / Runtime. Build thành công (API + web), 108/108 unit test pass.
+* [x] Đã tự review.
+* [x] Dừng.
 
 **Commit**
 
@@ -277,11 +277,11 @@ chore(architecture): complete architecture review fixes milestone
 
 Milestone được xem là hoàn thành khi:
 
-* [ ] Hoàn thành toàn bộ Task.
-* [ ] Đã Commit theo từng Task.
-* [ ] Đã Push GitHub.
-* [ ] `erd.md` mục 19 khớp trạng thái thực tế.
-* [ ] Sẵn sàng cho Milestone tiếp theo.
+* [x] Hoàn thành toàn bộ Task (2 mục FE của Task 04/05 hoãn theo chốt 06/07/2026 — chờ module FE Order/Return).
+* [x] Đã Commit theo từng Task.
+* [ ] Đã Push GitHub — chờ lệnh người dùng.
+* [x] `erd.md` mục 19 khớp trạng thái thực tế.
+* [x] Sẵn sàng cho Milestone tiếp theo (`002-bao-cao.md`).
 
 ---
 
