@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { QuotationWorkflowService } from './quotation-workflow.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
@@ -66,6 +67,18 @@ export class QuotationController {
   @RequirePermission('quotation.approve')
   approve(@Param('id') id: string) {
     return this.workflow.approve(id);
+  }
+
+  // Action "Tính lại giá" khi Pricing Rule đổi version giữa chừng — cùng
+  // quyền với sửa báo giá (chỉ chạy được ở Draft/Sent).
+  @Post(':id/recalculate-prices')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.update')
+  recalculatePrices(
+    @Param('id') id: string,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.workflow.recalculatePrices(id, req.user?.userId ?? null);
   }
 
   @Post(':id/cancel')

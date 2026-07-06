@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock } from "lucide-react";
+import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock, RefreshCw, X } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -56,6 +56,24 @@ interface QuotationTimeline {
   payload: Record<string, unknown> | null;
   createdBy: string | null;
   createdAt: string;
+}
+
+// Sprint 02 Task 02 — dòng bị chặn Approve vì Pricing Rule Version đã cũ.
+interface StalePricingItem {
+  itemId: string;
+  productCode: string;
+  productName: string;
+}
+
+// Sprint 02 Task 02 — chênh lệch giá cũ/mới sau Action "Tính lại giá".
+interface RecalcChange {
+  itemId: string;
+  productCode: string;
+  productName: string;
+  oldSystemPrice: number;
+  newSystemPrice: number;
+  oldFinalPrice: number;
+  newFinalPrice: number;
 }
 
 interface Quotation {
@@ -130,6 +148,11 @@ export default function QuotationDetailPage() {
   // Approve action (Task 06)
   const [approving, setApproving] = useState(false);
 
+  // Pricing version stale + recalculate (Sprint 02 Task 02)
+  const [staleItems, setStaleItems] = useState<StalePricingItem[] | null>(null);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcChanges, setRecalcChanges] = useState<RecalcChange[] | null>(null);
+
   // Manual Override dialog (Task 08)
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState("");
@@ -194,15 +217,46 @@ export default function QuotationDetailPage() {
       const res = await fetch(`${API_URL}/api/quotations/${id}/approve`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
+        // Sprint 02 Task 02: Approve bị chặn vì giá tính bằng version cũ —
+        // hiển thị cảnh báo + nút "Tính lại giá", không recalc âm thầm.
+        if (err.errorCode === "PRICING_VERSION_STALE") {
+          setStaleItems(err.staleItems ?? []);
+        }
         toast.error(err.message || "Không thể duyệt báo giá.");
         return;
       }
+      setStaleItems(null);
+      setRecalcChanges(null);
       toast.success("Đã duyệt báo giá. Đơn hàng và Phiếu sản xuất đã được tạo.");
       fetchQuotation();
     } catch {
       toast.error("Lỗi kết nối server.");
     } finally {
       setApproving(false);
+    }
+  }
+
+  // Sprint 02 Task 02 — Action "Tính lại giá" theo Pricing Rule Version ACTIVE.
+  async function handleRecalculate() {
+    setRecalculating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/quotations/${id}/recalculate-prices`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.message || "Không thể tính lại giá.");
+        return;
+      }
+      const data = await res.json();
+      setStaleItems(null);
+      setRecalcChanges(data.changes ?? []);
+      toast.success("Đã tính lại giá theo phiên bản quy tắc giá hiện hành.");
+      fetchQuotation();
+    } catch {
+      toast.error("Lỗi kết nối server.");
+    } finally {
+      setRecalculating(false);
     }
   }
 
@@ -377,6 +431,81 @@ export default function QuotationDetailPage() {
           </div>
         }
       />
+
+      {/* Sprint 02 Task 02: Approve bị chặn vì Pricing Version cũ */}
+      {staleItems && staleItems.length > 0 && (
+        <div className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">
+                Không thể duyệt: giá của {staleItems.length} dòng được tính bằng phiên bản quy
+                tắc giá đã cũ.
+              </p>
+              <ul className="list-disc ml-5 mt-1 text-muted-foreground">
+                {staleItems.map((s) => (
+                  <li key={s.itemId}>
+                    {s.productName} <span className="font-mono text-xs">({s.productCode})</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-muted-foreground">
+                Nhấn &quot;Tính lại giá&quot; để cập nhật theo phiên bản hiện hành — hệ thống không
+                tự đổi giá đã gửi khách.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" onClick={handleRecalculate} disabled={recalculating}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${recalculating ? "animate-spin" : ""}`} />
+            {recalculating ? "Đang tính lại..." : "Tính lại giá"}
+          </Button>
+        </div>
+      )}
+
+      {/* Sprint 02 Task 02: chênh lệch giá cũ/mới sau khi tính lại */}
+      {recalcChanges && recalcChanges.length > 0 && (
+        <div className="rounded-lg border border-blue-400 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">
+              Đã tính lại giá. Kiểm tra chênh lệch bên dưới — nếu giá đổi so với bản đã gửi,
+              hãy gửi lại khách xác nhận trước khi duyệt.
+            </p>
+            <Button variant="ghost" size="icon" onClick={() => setRecalcChanges(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <table className="text-sm w-full">
+            <thead>
+              <tr className="text-muted-foreground text-left">
+                <th className="py-1 pr-4 font-medium">Sản phẩm</th>
+                <th className="py-1 pr-4 font-medium text-right">Giá bán cũ</th>
+                <th className="py-1 pr-4 font-medium text-right">Giá bán mới</th>
+                <th className="py-1 font-medium text-right">Chênh lệch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recalcChanges.map((c) => {
+                const diff = c.newFinalPrice - c.oldFinalPrice;
+                const fmtVnd = (n: number) => new Intl.NumberFormat("vi-VN").format(n) + " ₫";
+                return (
+                  <tr key={c.itemId}>
+                    <td className="py-1 pr-4">{c.productName}</td>
+                    <td className="py-1 pr-4 text-right font-mono">{fmtVnd(c.oldFinalPrice)}</td>
+                    <td className="py-1 pr-4 text-right font-mono">{fmtVnd(c.newFinalPrice)}</td>
+                    <td
+                      className={`py-1 text-right font-mono ${
+                        diff > 0 ? "text-red-600" : diff < 0 ? "text-green-600" : "text-muted-foreground"
+                      }`}
+                    >
+                      {diff === 0 ? "Không đổi" : `${diff > 0 ? "+" : ""}${fmtVnd(diff)}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Header Info */}
       <div className="rounded-lg border p-5 space-y-4">

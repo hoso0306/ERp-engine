@@ -474,6 +474,129 @@ export class QuotationWorkflowService {
   }
 
   // ─────────────────────────────────────────────────────
+  // Workflow: Recalculate Prices (Sprint 02 — Architecture Review)
+  // ─────────────────────────────────────────────────────
+
+  // Action "Tính lại giá" (quotation.md "Khi Pricing Rule đổi version giữa
+  // chừng"): tính lại systemPrice toàn bộ dòng bằng version ACTIVE hiện tại.
+  // Người dùng chủ động chạy khi Approve bị chặn PRICING_VERSION_STALE —
+  // hệ thống không bao giờ recalc âm thầm.
+  async recalculatePrices(id: string, userId?: string | null) {
+    const quotation = await this.findOne(id);
+
+    if (!EDITABLE_STATUSES.includes(quotation.status)) {
+      throw new ForbiddenException(
+        `Chỉ có thể tính lại giá khi báo giá ở trạng thái Nháp hoặc Đã gửi. Trạng thái hiện tại: ${quotation.status}.`,
+      );
+    }
+
+    if (quotation.items.length === 0) {
+      throw new BadRequestException('Báo giá chưa có sản phẩm nào để tính lại giá.');
+    }
+
+    // Tính giá mới cho từng dòng bằng Pricing Engine (đọc version ACTIVE hiện tại).
+    const changes: Array<{
+      itemId: string;
+      productCode: string;
+      productName: string;
+      oldSystemPrice: number;
+      newSystemPrice: number;
+      oldFinalPrice: number;
+      newFinalPrice: number;
+      oldPricingRuleVersionId: string | null;
+      newPricingRuleVersionId: string;
+    }> = [];
+
+    const itemUpdates: Array<{
+      id: string;
+      systemPrice: number;
+      pricingRuleVersionId: string;
+      finalPrice: number;
+      subtotal: number;
+    }> = [];
+
+    for (const item of quotation.items) {
+      const priceResult = await this.pricingEngine.calculate({
+        productId: item.productId,
+        parameters: item.parameters.map((p) => ({ name: p.name, value: p.value })),
+      });
+
+      const newSystemPrice = priceResult.systemPrice;
+      const newFinalPrice = this.calcFinalPrice(
+        newSystemPrice,
+        Number(item.groupDiscount),
+        Number(item.additionalDiscountPercent),
+        Number(item.additionalDiscountAmount),
+      );
+      const newSubtotal = this.calcSubtotal(newFinalPrice, Number(item.quantity));
+
+      changes.push({
+        itemId: item.id,
+        productCode: item.productCode,
+        productName: item.productName,
+        oldSystemPrice: Number(item.systemPrice),
+        newSystemPrice,
+        oldFinalPrice: Number(item.finalPrice),
+        newFinalPrice,
+        oldPricingRuleVersionId: item.pricingRuleVersionId,
+        newPricingRuleVersionId: priceResult.pricingRuleVersionId,
+      });
+
+      itemUpdates.push({
+        id: item.id,
+        systemPrice: newSystemPrice,
+        pricingRuleVersionId: priceResult.pricingRuleVersionId,
+        finalPrice: newFinalPrice,
+        subtotal: newSubtotal,
+      });
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      for (const u of itemUpdates) {
+        await tx.quotationItem.update({
+          where: { id: u.id },
+          data: {
+            systemPrice: u.systemPrice,
+            pricingRuleVersionId: u.pricingRuleVersionId,
+            finalPrice: u.finalPrice,
+            subtotal: u.subtotal,
+          },
+        });
+      }
+
+      // Ghi Timeline bằng action MANUAL_OVERRIDE sẵn có (đã chốt với người
+      // dùng 06/07/2026 — không thêm enum mới); payload.action phân biệt
+      // đây là Action "Tính lại giá".
+      await tx.quotationTimeline.create({
+        data: {
+          quotationId: id,
+          action: QuotationTimelineAction.QUOTATION_MANUAL_OVERRIDE,
+          payload: {
+            code: quotation.code,
+            action: 'RECALCULATE_PRICES',
+            reason: 'Tính lại giá theo Pricing Rule Version đang hoạt động',
+            changes: changes.map((c) => ({
+              productCode: c.productCode,
+              productName: c.productName,
+              oldSystemPrice: c.oldSystemPrice,
+              newSystemPrice: c.newSystemPrice,
+              oldPricingRuleVersionId: c.oldPricingRuleVersionId,
+              newPricingRuleVersionId: c.newPricingRuleVersionId,
+            })),
+          },
+          createdBy: userId ?? null,
+        },
+      });
+
+      return tx.quotation.findUnique({ where: { id }, include: QUOTATION_INCLUDE });
+    });
+
+    // changes trả kèm để FE hiển thị chênh lệch giá cũ/mới cho người dùng
+    // quyết định gửi lại khách.
+    return { quotation: updated, changes };
+  }
+
+  // ─────────────────────────────────────────────────────
   // Workflow: Cancel (Task 05)
   // ─────────────────────────────────────────────────────
 
@@ -486,6 +609,15 @@ export class QuotationWorkflowService {
 
     if (quotation.status === QuotationStatus.CANCELLED) {
       throw new ForbiddenException('Báo giá đã ở trạng thái Đã huỷ.');
+    }
+
+    // Business Rule (quotation.md): không Cancel báo giá đã có salesOrderId
+    // (mọi báo giá Approved). Muốn dừng thương vụ → huỷ Sales Order; báo giá
+    // giữ Approved phục vụ lịch sử.
+    if (quotation.salesOrderId) {
+      throw new ForbiddenException(
+        'Không thể huỷ báo giá đã chuyển thành Đơn hàng. Muốn dừng thương vụ, hãy huỷ Đơn hàng — báo giá giữ nguyên để phục vụ lịch sử.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -529,6 +661,17 @@ export class QuotationWorkflowService {
 
     if (quotation.status === (dto.newStatus as QuotationStatus)) {
       throw new BadRequestException('Trạng thái mới phải khác trạng thái hiện tại.');
+    }
+
+    // Giới hạn Manual Override (quotation.md): không được dùng Override để
+    // Cancel báo giá đã có salesOrderId — xử lý ở Sales Order.
+    if (
+      dto.newStatus === QuotationStatus.CANCELLED &&
+      quotation.salesOrderId
+    ) {
+      throw new ForbiddenException(
+        'Manual Override không được dùng để huỷ báo giá đã chuyển thành Đơn hàng. Muốn dừng thương vụ, hãy huỷ Đơn hàng.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -632,6 +775,12 @@ export class QuotationWorkflowService {
     }
 
     // Validate each item
+    const stalePricingItems: Array<{
+      itemId: string;
+      productCode: string;
+      productName: string;
+    }> = [];
+
     for (const item of quotation.items) {
       if (item.product.status !== 'ACTIVE') {
         throw new BadRequestException(
@@ -646,6 +795,17 @@ export class QuotationWorkflowService {
         );
       }
 
+      // Pricing Version check (quotation.md "Khi Pricing Rule đổi version giữa
+      // chừng"): giá từng dòng phải được tính bằng đúng version đang ACTIVE.
+      // Lệch → chặn, KHÔNG tính lại âm thầm — người dùng chủ động "Tính lại giá".
+      if (item.pricingRuleVersionId !== activePricingVersion.id) {
+        stalePricingItems.push({
+          itemId: item.id,
+          productCode: item.productCode,
+          productName: item.productName,
+        });
+      }
+
       const activeMaterialVersion = item.product.materialRequirement?.versions[0];
       if (!activeMaterialVersion) {
         throw new BadRequestException(
@@ -658,6 +818,18 @@ export class QuotationWorkflowService {
           `Giá bán cuối của sản phẩm "${item.product.name}" không được âm.`,
         );
       }
+    }
+
+    if (stalePricingItems.length > 0) {
+      throw new BadRequestException({
+        // errorCode để FE nhận diện và hiển thị nút "Tính lại giá".
+        errorCode: 'PRICING_VERSION_STALE',
+        message:
+          `Không thể duyệt: giá của ${stalePricingItems.length} dòng được tính bằng phiên bản quy tắc giá đã cũ ` +
+          `(${stalePricingItems.map((i) => i.productName).join(', ')}). ` +
+          'Vui lòng dùng chức năng "Tính lại giá" rồi duyệt lại.',
+        staleItems: stalePricingItems,
+      });
     }
 
     // All validations pass — execute in a single transaction
