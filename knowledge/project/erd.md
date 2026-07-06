@@ -203,6 +203,8 @@ erDiagram
         string id PK
         string quotationId FK
         string productId FK
+        string productCode
+        string productName
         decimal quantity
         decimal systemPrice
         decimal groupDiscount
@@ -244,6 +246,7 @@ erDiagram
         decimal totalAmount
         decimal plannedCost
         decimal plannedProfit
+        string ownerId FK
         string ownerName
         int totalProductionOrders
         int completedProductionOrders
@@ -254,8 +257,11 @@ erDiagram
     SalesOrderItem {
         string id PK
         string salesOrderId FK
+        string productId
         string productCode
         string productName
+        string productTypeId
+        string productTypeName
         string productionCenterId
         string productionCenterName
         decimal systemPrice
@@ -408,6 +414,7 @@ erDiagram
         string salesOrderCode
         string customerId
         string customerName
+        enum status
         datetime returnDate
         string receivedBy
         string note
@@ -772,11 +779,45 @@ User (bổ sung)
 - `User.roleId` — FK bắt buộc tới `Role`. Trước đây (`012-authentication.md`) JWT chỉ chứa `sub`; nay `AuthService.issueToken()` đưa thêm `roleId` vào payload để `PermissionGuard` đọc thẳng từ `req.user`, không phải query DB mỗi request.
 - `PermissionGuard` (`src/permission/permission.guard.ts`) đọc metadata từ `@RequirePermission(key)` (đặt ở method, không đặt ở class — `Reflector.get()` chỉ đọc `context.getHandler()`, đã phát hiện và sửa bug này khi verify sống trên `DashboardController`), tra `Role → RolePermission → Permission.key`, throw `ForbiddenException` nếu thiếu quyền.
 - Bootstrap Owner (seed) dùng `crypto.randomBytes` + `bcrypt` trực tiếp trong `prisma/seed.ts` (cùng thuật toán `AuthService.setTemporaryPassword()`) thay vì gọi qua Nest DI — seed chạy độc lập bằng `ts-node`, ngoài Nest application context.
-- **`PUT /recovery-inventory/:id`** (Management, `011-hang-hoan.md` Task 06) không có action riêng trong Permission catalog (chỉ `return.view/create/mark-used/dispose`) — tạm gán `return.dispose` (quyền mạnh nhất trong catalog Return, vì endpoint này đổi `status` tự do không qua ràng buộc `AVAILABLE`). Cần người dùng xác nhận lại lựa chọn này.
+- **`PUT /recovery-inventory/:id`** (Management, `011-hang-hoan.md` Task 06) dùng permission riêng **`return.update`** (đã xác nhận với người dùng) — tách biệt với `return.dispose` vì `dispose` là Business Action một chiều (Task 05, chỉ chạy khi `status = AVAILABLE`), còn Management sửa `location`/`imageUrl`/`status` tự do không qua ràng buộc đó. Permission catalog Return: `view/create/update/mark-used/dispose`.
 - `CompanyController`/`RunningNumberController` (thuộc `SettingModule`, không nằm trong danh sách liệt kê gốc ở Task 02 của `013-permission.md` — chỉ ghi "SettingController") cũng được gắn `settings.view`/`settings.update` — cùng permission với `SettingController` vì cùng thuộc Settings module, không có permission riêng.
-- `PermissionModule` phụ thuộc 2 chiều với `AuthModule` (`forwardRef`): `PermissionModule` gọi `AuthService.setTemporaryPassword()` khi tạo User; `AuthModule` gọi `PermissionService.getPermissionKeysForRole()` để mở rộng `GET /auth/me` với field `permissions`. `SettingModule` cũng dùng `forwardRef` khi import `PermissionModule` vì tạo thành chu trình `Setting → Permission → Auth → Setting` (do `AuthModule` đã import `SettingModule` sẵn từ `012-authentication.md`).
+- `PermissionModule` phụ thuộc 2 chiều với `AuthModule` (`forwardRef`): `PermissionModule` gọi `AuthService.setTemporaryPassword()` khi tạo User; `AuthModule` gọi `PermissionService.getPermissionKeysForRole()` để mở rộng `GET /auth/me` với field `permissions`. `SettingModule` cũng dùng `forwardRef` khi import `PermissionModule` vì tạo thành chu trình `Setting → Permission → Auth → Setting` (do `AuthModule` đã import `SettingModule` sẵn từ `012-authentication.md`). Đã xác nhận với người dùng: đây là hạn chế kỹ thuật của NestJS khi resolve module phụ thuộc vòng, không phải lỗi/nợ kiến trúc.
 - Dashboard KPI Permission (Task 06): `DashboardController.getOverview()`/`getAlerts()` ẩn từng field con (`production`/`warehouse`/`debt`/`returns`, và tương ứng bên trong `alerts`) thành `null` nếu Role thiếu đúng quyền `view` của module sở hữu — không tạo permission `dashboard.xxx` riêng, không ẩn toàn bộ Dashboard. `sales`/`delayedOrders` không bị ẩn (Task 06 gốc không liệt Sales Overview).
 - Đã verify sống (chạy API thật + PostgreSQL thật): login → JWT chứa `roleId` → `GET /auth/me` trả 38 permission keys đúng theo Role OWNER; tạo User Role SALES → 403 đúng ở `warehouse.view`/`dashboard.view`/`user.view`, 200 đúng ở `customer.view`; chặn tự vô hiệu hoá chính mình; chặn Disable Role còn User đang dùng; `PermissionAudit` ghi đúng `USER_CREATED`.
+
+---
+
+### 19. Vòng Architecture Review 2026-07-05 — thay đổi schema đã chốt, ⏳ CHƯA migrate
+
+Các quyết định đã thống nhất trong đợt review kiến trúc toàn dự án (xem `knowledge/modules/report.md`, `quotation.md`, `return.md` bản cập nhật 05/07). Liệt kê tập trung ở đây để làm một đợt migration khi bắt đầu code:
+
+**QuotationItem** (`quotation.md` — sửa vi phạm Snapshot Rule):
+
+- Thêm `productCode`, `productName` (snapshot tại thời điểm thêm/sửa dòng). Backfill bản ghi cũ: join qua `productId` một lần duy nhất lúc migrate.
+
+**Return** (`return.md` — bổ sung trạng thái xử lý đã cam kết ở `02-quy-trinh`/`03-danh-sach-module`):
+
+- Thêm enum `ReturnStatus` (`PROCESSING`/`COMPLETED`) + field `Return.status` (`@default(PROCESSING)`). Backfill bản ghi cũ: set `COMPLETED` (nghiệp vụ đã kết thúc trước khi có trạng thái).
+- Action mới `POST /returns/:id/complete` (chỉ từ `PROCESSING`, một chiều).
+
+**SalesOrderItem** (`report.md` — phục vụ báo cáo B2/B4, cấm join ngược Master Data):
+
+- Thêm `productId` (Redundant Reference), `productTypeId` (Redundant Reference), `productTypeName` (snapshot) — set tại Approve. Backfill: join theo `productCode` một lần lúc migrate.
+
+**SalesOrder** (`report.md` C1 + architecture review "trước Go-Live"):
+
+- Thêm `ownerId String?` (FK User); `ownerName` giữ làm snapshot hiển thị.
+
+**Index theo ngày** (`report.md` mục 3):
+
+- `SalesOrder @@index([createdAt])`, `Payment @@index([paymentDate])`, `Return @@index([returnDate])`, `MaterialReceipt @@index([createdAt])`, `SalesOrderItem @@index([productId])`, `SalesOrderItem @@index([productTypeId])`.
+
+**Validation mới, không đổi schema** (`quotation.md`):
+
+- Approve chặn khi `QuotationItem.pricingRuleVersionId` không còn là version ACTIVE — Action "Tính lại giá" riêng, không recalc âm thầm.
+- Không Cancel Quotation đã có `salesOrderId` (kể cả Manual Override).
+
+**Huỷ đơn đã thu cọc — ✅ đã chốt (05/07/2026):** cho phép Cancel khi mọi PO còn PENDING kể cả `paidAmount > 0` — cảnh báo bắt buộc xác nhận, Receivable ra khỏi công nợ mở theo rule lọc status sẵn có, Payment giữ nguyên, hoàn tiền ngoài ERP, Timeline payload `{ reason, paidAmount, refundNote }`. Không thêm schema mới. Xem `order.md` mục "Huỷ đơn đã thu cọc" + `debt.md`. Code hiện tại (`SalesOrderService.cancel()` đang chặn theo `paidAmount`) cần sửa theo — thuộc đợt triển khai cùng các thay đổi ở trên.
 
 ---
 

@@ -153,6 +153,13 @@ enum ReturnReason {
   OTHER
 }
 
+// Trạng thái xử lý Return — một chiều PROCESSING → COMPLETED qua Action
+// POST /returns/:id/complete (xem return.md mục "Trạng thái Return").
+enum ReturnStatus {
+  PROCESSING
+  COMPLETED
+}
+
 enum RecoveryInventoryStatus {
   AVAILABLE
   USED
@@ -197,6 +204,7 @@ model User {
   saleCustomers    Customer[] @relation("CustomerSale")
   createdCustomers Customer[] @relation("CustomerCreatedBy")
   updatedCustomers Customer[] @relation("CustomerUpdatedBy")
+  ownedSalesOrders SalesOrder[]
 
   @@index([roleId])
   @@map("users")
@@ -677,6 +685,13 @@ model QuotationItem {
   id          String  @id @default(cuid())
   quotationId String  @map("quotation_id")
   productId   String  @map("product_id")
+
+  // Snapshot tại thời điểm thêm/sửa dòng (Architecture Review 05/07/2026 — sửa
+  // vi phạm Snapshot Rule): hiển thị/in báo giá đọc từ đây, không đọc lại
+  // Product. productId chỉ dùng điều hướng (xem quotation.md).
+  productCode String  @map("product_code")
+  productName String  @map("product_name")
+
   quantity    Decimal @db.Decimal(15, 4)
 
   pricingRuleVersionId         String? @map("pricing_rule_version_id")
@@ -751,6 +766,11 @@ model SalesOrder {
   totalAmount   Decimal          @map("total_amount") @db.Decimal(15, 0)
   plannedCost   Decimal          @map("planned_cost") @db.Decimal(15, 0)
   plannedProfit Decimal          @map("planned_profit") @db.Decimal(15, 0)
+  // FK → users, set tại Approve = người tạo báo giá (Quotation.createdBy) —
+  // phục vụ Báo cáo doanh số theo nhân viên (report.md C1). Nullable: dữ liệu
+  // trước Architecture Review 05/07/2026 không xác định được, để NULL.
+  ownerId       String?          @map("owner_id")
+  // Snapshot hiển thị — giữ nguyên kể cả khi User đổi tên sau này.
   ownerName     String?          @map("owner_name")
 
   totalProductionOrders     Int @map("total_production_orders")
@@ -765,6 +785,7 @@ model SalesOrder {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  owner            User?                @relation(fields: [ownerId], references: [id])
   quotation        Quotation?
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
@@ -777,6 +798,8 @@ model SalesOrder {
   @@index([paymentStatus])
   // Dashboard (009-dashboard.md Task 06) — getDelayedOrders() lọc theo expectedDeliveryDate.
   @@index([expectedDeliveryDate])
+  // Báo cáo (report.md mục 3) — các report doanh thu lọc/gom theo ngày tạo đơn.
+  @@index([createdAt])
   @@map("sales_orders")
 }
 
@@ -787,6 +810,11 @@ model SalesOrderItem {
   productId            String @map("product_id")
   productCode          String @map("product_code")
   productName          String @map("product_name")
+  // Redundant Reference (productTypeId) + snapshot (productTypeName) phục vụ
+  // Báo cáo B2/B4 (report.md) — set tại Approve, không đọc lại Master Data
+  // sau khi tạo. Không dùng @relation, cùng convention productId.
+  productTypeId        String @map("product_type_id")
+  productTypeName      String @map("product_type_name")
   productionCenterId   String @map("production_center_id")
   productionCenterName String @map("production_center_name")
 
@@ -811,6 +839,9 @@ model SalesOrderItem {
   bom        OrderBOM?
 
   @@index([salesOrderId])
+  // Báo cáo (report.md mục 3) — gom doanh thu theo sản phẩm/loại sản phẩm.
+  @@index([productId])
+  @@index([productTypeId])
   @@map("sales_order_items")
 }
 
@@ -980,6 +1011,8 @@ model MaterialReceipt {
   transaction WarehouseTransaction?
 
   @@index([materialId])
+  // Báo cáo (report.md mục 3) — báo cáo nhập kho lọc theo ngày tạo phiếu.
+  @@index([createdAt])
   @@map("material_receipts")
 }
 
@@ -1070,6 +1103,8 @@ model Payment {
 
   @@index([salesOrderId])
   @@index([receivableId])
+  // Báo cáo (report.md mục 3) — báo cáo thu tiền lọc theo ngày thanh toán.
+  @@index([paymentDate])
   @@map("payments")
 }
 
@@ -1131,6 +1166,9 @@ model Return {
   // @relation, cùng convention với SalesOrder.customerId/Receivable.customerId.
   customerId     String   @map("customer_id")
   customerName   String   @map("customer_name")
+  // Một chiều PROCESSING → COMPLETED qua POST /returns/:id/complete
+  // (return.md mục "Trạng thái Return").
+  status         ReturnStatus @default(PROCESSING)
   returnDate     DateTime @map("return_date")
   receivedBy     String?  @map("received_by")
   note           String?
@@ -1142,6 +1180,8 @@ model Return {
 
   @@index([salesOrderId])
   @@index([customerId])
+  // Báo cáo (report.md mục 3) — thống kê Return lọc theo ngày hoàn.
+  @@index([returnDate])
   @@map("returns")
 }
 

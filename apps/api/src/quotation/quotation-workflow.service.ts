@@ -260,6 +260,10 @@ export class QuotationWorkflowService {
       data: {
         quotationId,
         productId: dto.productId,
+        // Snapshot tại thời điểm thêm dòng (quotation.md) — hiển thị/in đọc
+        // từ đây, không đọc lại Product.
+        productCode: product.code,
+        productName: product.name,
         quantity: dto.quantity,
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         systemPrice,
@@ -555,6 +559,7 @@ export class QuotationWorkflowService {
           include: {
             product: {
               include: {
+                productType: true,
                 productionCenter: true,
                 pricingRule: {
                   include: {
@@ -821,6 +826,10 @@ export class QuotationWorkflowService {
             productId: item.productId,
             productCode: item.product.code,
             productName: item.product.name,
+            // Redundant Reference + snapshot phục vụ Báo cáo B2/B4 (report.md)
+            // — copy trong transaction Approve, không đọc lại Master Data sau đó.
+            productTypeId: item.product.productTypeId,
+            productTypeName: item.product.productType.name,
             productionCenterId: item.product.productionCenterId,
             productionCenterName: item.product.productionCenter.name,
             pricingRuleVersionId: item.pricingRuleVersionId,
