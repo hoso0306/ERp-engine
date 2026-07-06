@@ -43,8 +43,10 @@ export class QuotationController {
 
   @Post()
   @RequirePermission('quotation.create')
-  create(@Body() dto: CreateQuotationDto) {
-    return this.workflow.create(dto);
+  create(@Body() dto: CreateQuotationDto, @Req() req: { user?: { userId?: string } }) {
+    // createdBy từ JWT — người tạo báo giá là người phụ trách khách, sẽ được
+    // snapshot làm SalesOrder.ownerId khi Approve (quyết định 05/07/2026).
+    return this.workflow.create(dto, req.user?.userId ?? null);
   }
 
   @Patch(':id')
@@ -65,8 +67,10 @@ export class QuotationController {
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('quotation.approve')
-  approve(@Param('id') id: string) {
-    return this.workflow.approve(id);
+  approve(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    // userId để fallback ownerId khi Quotation.createdBy NULL (báo giá tạo
+    // trước khi có Auth).
+    return this.workflow.approve(id, req.user?.userId ?? null);
   }
 
   // Action "Tính lại giá" khi Pricing Rule đổi version giữa chừng — cùng

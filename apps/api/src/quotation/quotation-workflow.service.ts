@@ -127,7 +127,7 @@ export class QuotationWorkflowService {
   // Quotation CRUD
   // ─────────────────────────────────────────────────────
 
-  async create(dto: CreateQuotationDto) {
+  async create(dto: CreateQuotationDto, userId?: string | null) {
     if (!dto.customerId) {
       throw new BadRequestException('Khách hàng là bắt buộc.');
     }
@@ -154,6 +154,8 @@ export class QuotationWorkflowService {
           expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
           note: dto.note?.trim() || null,
           status: QuotationStatus.DRAFT,
+          // Người tạo báo giá (từ JWT) — nguồn cho SalesOrder.ownerId khi Approve.
+          createdBy: userId ?? null,
         },
         include: QUOTATION_INCLUDE,
       });
@@ -163,6 +165,7 @@ export class QuotationWorkflowService {
           quotationId: quotation.id,
           action: QuotationTimelineAction.QUOTATION_CREATED,
           payload: { code: quotation.code },
+          createdBy: userId ?? null,
         },
       });
 
@@ -704,7 +707,7 @@ export class QuotationWorkflowService {
   // Workflow: Approve (Task 06)
   // ─────────────────────────────────────────────────────
 
-  async approve(id: string) {
+  async approve(id: string, approverUserId?: string | null) {
     // Load full data for validation + snapshot
     const quotation = await this.prisma.quotation.findUnique({
       where: { id },
@@ -830,6 +833,22 @@ export class QuotationWorkflowService {
           'Vui lòng dùng chức năng "Tính lại giá" rồi duyệt lại.',
         staleItems: stalePricingItems,
       });
+    }
+
+    // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
+    // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
+    // Approve. Fallback: createdBy NULL (báo giá trước khi có Auth) → dùng
+    // người bấm Approve. ownerName snapshot tên hiển thị tại thời điểm này.
+    const ownerCandidateIds = [quotation.createdBy, approverUserId].filter(
+      (v): v is string => !!v,
+    );
+    let owner: { id: string; name: string | null; email: string } | null = null;
+    for (const candidateId of ownerCandidateIds) {
+      owner = await this.prisma.user.findUnique({
+        where: { id: candidateId },
+        select: { id: true, name: true, email: true },
+      });
+      if (owner) break;
     }
 
     // All validations pass — execute in a single transaction
@@ -970,6 +989,10 @@ export class QuotationWorkflowService {
           plannedProfit,
           totalProductionOrders,
           note: quotation.note,
+          // Snapshot người phụ trách (report.md C1) — copy trong transaction
+          // Approve, không đọc lại Master Data sau khi tạo.
+          ownerId: owner?.id ?? null,
+          ownerName: owner ? (owner.name ?? owner.email) : null,
         },
       });
 
