@@ -338,14 +338,12 @@ export class SalesOrderService {
       throw new ForbiddenException('Không thể huỷ đơn hàng đã giao cho khách.');
     }
 
-    // Task 06 (Debt module) — không cho Cancel nếu đã thu tiền. Refund không
-    // thuộc phạm vi Sprint 01 (xem debt.md mục "Receivable không tự quyết
-    // định hiệu lực công nợ").
-    if (salesOrder.receivable && Number(salesOrder.receivable.paidAmount) > 0) {
-      throw new ForbiddenException(
-        'Không thể huỷ đơn hàng đã thu tiền. Vui lòng liên hệ kế toán để xử lý.',
-      );
-    }
+    // Quyết định 05/07/2026 (order.md "Huỷ đơn đã thu cọc" + debt.md): cho
+    // phép Cancel kể cả khi đã thu cọc — rule cũ chặn paidAmount > 0 tạo
+    // deadlock vì V1 không có Refund. Receivable/Payment giữ nguyên; công nợ
+    // mở tự loại đơn CANCELLED theo rule lọc status sẵn có. Hoàn tiền thực
+    // hiện ngoài hệ thống, ghi dấu vết ở Timeline payload bên dưới.
+    const paidAmount = Number(salesOrder.receivable?.paidAmount ?? 0);
 
     const startedProductionOrders = salesOrder.productionOrders.filter((po) =>
       STARTED_PRODUCTION_STATUSES.includes(po.status),
@@ -390,7 +388,15 @@ export class SalesOrderService {
           salesOrderId: id,
           action: SalesOrderTimelineAction.CANCELLED,
           actorType: SalesOrderTimelineActorType.USER,
-          payload: { fromStatus: salesOrder.status, reason: dto.reason.trim() },
+          // paidAmount/refundNote chỉ thêm khi đơn đã có tiền cọc (order.md
+          // "Huỷ đơn đã thu cọc") — dấu vết đối chiếu hoàn tiền ngoài ERP.
+          payload: {
+            fromStatus: salesOrder.status,
+            reason: dto.reason.trim(),
+            ...(paidAmount > 0
+              ? { paidAmount, refundNote: 'Refund handled outside ERP' }
+              : {}),
+          },
           createdBy: dto.cancelledBy?.trim() || null,
         },
       });
