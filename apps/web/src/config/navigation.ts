@@ -21,6 +21,9 @@ export interface NavItem {
   title: string;
   href: string;
   icon: LucideIcon;
+  // Trang chưa được xây (BE đã có, FE thuộc milestone sau — xem
+  // workbench/roadmap.md): hiển thị badge "Đang phát triển", không cho bấm.
+  disabled?: boolean;
 }
 
 export interface NavGroup {
@@ -40,9 +43,9 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Khách hàng", href: "/customers", icon: Users },
       { title: "Báo giá", href: "/quotations", icon: FileText },
-      { title: "Đơn hàng", href: "/orders", icon: ShoppingCart },
-      { title: "Công nợ", href: "/debts", icon: CreditCard },
-      { title: "Hàng hoàn", href: "/returns", icon: RotateCcw },
+      { title: "Đơn hàng", href: "/orders", icon: ShoppingCart, disabled: true },
+      { title: "Công nợ", href: "/debts", icon: CreditCard, disabled: true },
+      { title: "Hàng hoàn", href: "/returns", icon: RotateCcw, disabled: true },
     ],
   },
   {
@@ -50,8 +53,8 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Sản phẩm", href: "/products", icon: Package },
       { title: "Vật tư", href: "/materials", icon: Boxes },
-      { title: "Sản xuất", href: "/production", icon: Factory },
-      { title: "Kho", href: "/warehouse", icon: Warehouse },
+      { title: "Sản xuất", href: "/production", icon: Factory, disabled: true },
+      { title: "Kho", href: "/warehouse", icon: Warehouse, disabled: true },
     ],
   },
   {
@@ -65,8 +68,8 @@ export const navigation: NavGroup[] = [
   {
     label: "Hệ thống",
     items: [
-      { title: "Báo cáo", href: "/reports", icon: BarChart3 },
-      { title: "Cài đặt", href: "/settings", icon: Settings },
+      { title: "Báo cáo", href: "/reports", icon: BarChart3, disabled: true },
+      { title: "Cài đặt", href: "/settings", icon: Settings, disabled: true },
     ],
   },
 ];

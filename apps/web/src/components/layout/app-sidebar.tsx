@@ -43,6 +43,26 @@ export function AppSidebar() {
                       ? pathname === "/"
                       : pathname.startsWith(item.href);
 
+                  // Module chưa có trang (BE sẵn, FE thuộc milestone sau):
+                  // disable + badge "Đang phát triển" — không dẫn vào trang trống.
+                  if (item.disabled) {
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          tooltip={`${item.title} — Đang phát triển`}
+                          aria-disabled
+                          className="cursor-not-allowed opacity-50 hover:bg-transparent"
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                          <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground group-data-[collapsible=icon]:hidden">
+                            Đang phát triển
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  }
+
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
