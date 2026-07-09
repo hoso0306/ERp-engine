@@ -28,6 +28,8 @@ interface CustomerData {
   name: string;
   phone: string;
   email: string | null;
+  companyName: string | null;
+  taxCode: string | null;
   province: string | null;
   district: string | null;
   ward: string | null;
@@ -66,6 +68,8 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
       name: form.get("name"),
       phone: form.get("phone"),
       email: form.get("email") || null,
+      companyName: form.get("companyName") || null,
+      taxCode: form.get("taxCode") || null,
       province: form.get("province") || null,
       district: form.get("district") || null,
       ward: form.get("ward") || null,
@@ -149,6 +153,19 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" defaultValue={customer.email ?? ""} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="companyName">
+              Tên công ty <span className="text-muted-foreground">(khách doanh nghiệp)</span>
+            </Label>
+            <Input id="companyName" name="companyName" defaultValue={customer.companyName ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="taxCode">Mã số thuế</Label>
+            <Input id="taxCode" name="taxCode" defaultValue={customer.taxCode ?? ""} />
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">

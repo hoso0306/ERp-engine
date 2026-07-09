@@ -179,6 +179,8 @@ erDiagram
         string code UK
         string name
         string phone UK
+        string companyName
+        string taxCode
         string customerGroupId FK
         string deliveryRouteId FK
         enum status

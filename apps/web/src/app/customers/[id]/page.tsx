@@ -17,6 +17,8 @@ interface Customer {
   name: string;
   phone: string;
   email: string | null;
+  companyName: string | null;
+  taxCode: string | null;
   province: string | null;
   district: string | null;
   ward: string | null;
@@ -121,6 +123,8 @@ export default function CustomerDetailPage() {
         <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <Field label="Số điện thoại" value={customer.phone} />
           <Field label="Email" value={customer.email} />
+          <Field label="Tên công ty" value={customer.companyName} />
+          <Field label="Mã số thuế" value={customer.taxCode} />
           <Field label="Địa chỉ" value={fullAddress} />
         </dl>
       </div>

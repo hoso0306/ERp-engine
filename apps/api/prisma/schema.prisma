@@ -614,6 +614,10 @@ model Customer {
   name     String
   phone    String  @unique
   email    String?
+  // Thông tin doanh nghiệp (testlan1, chốt 08/07/2026) — khách công ty cần
+  // tên công ty + mã số thuế để xuất hoá đơn; khách lẻ để trống.
+  companyName String? @map("company_name")
+  taxCode     String? @map("tax_code")
   province String?
   district String?
   ward     String?

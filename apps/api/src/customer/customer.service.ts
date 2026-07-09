@@ -103,6 +103,8 @@ export class CustomerService {
         name: dto.name.trim(),
         phone: dto.phone.trim(),
         email: dto.email?.trim() || null,
+        companyName: dto.companyName?.trim() || null,
+        taxCode: dto.taxCode?.trim() || null,
         province: dto.province?.trim() || null,
         district: dto.district?.trim() || null,
         ward: dto.ward?.trim() || null,
@@ -184,6 +186,8 @@ export class CustomerService {
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.phone !== undefined) data.phone = dto.phone.trim();
     if (dto.email !== undefined) data.email = dto.email?.trim() || null;
+    if (dto.companyName !== undefined) data.companyName = dto.companyName?.trim() || null;
+    if (dto.taxCode !== undefined) data.taxCode = dto.taxCode?.trim() || null;
     if (dto.province !== undefined) data.province = dto.province?.trim() || null;
     if (dto.district !== undefined) data.district = dto.district?.trim() || null;
     if (dto.ward !== undefined) data.ward = dto.ward?.trim() || null;
@@ -331,6 +335,10 @@ export class CustomerService {
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
+      // 2 cột doanh nghiệp thêm CUỐI danh sách (chốt 08/07/2026) — giữ nguyên
+      // thứ tự cột cũ để file import/export cũ không bị lệch cột.
+      { header: 'Tên công ty', key: 'companyName', width: 25 },
+      { header: 'Mã số thuế', key: 'taxCode', width: 15, numFmt: '@' },
     ];
 
     const rows = customers.map((c) => ({
@@ -338,6 +346,8 @@ export class CustomerService {
       name: c.name,
       phone: c.phone,
       email: c.email || '',
+      companyName: c.companyName || '',
+      taxCode: c.taxCode || '',
       province: c.province || '',
       district: c.district || '',
       ward: c.ward || '',
@@ -373,11 +383,15 @@ export class CustomerService {
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
+      // 2 cột doanh nghiệp thêm CUỐI (chốt 08/07/2026) — file theo template cũ
+      // (15 cột) vẫn import được, 2 cột cuối coi như trống.
+      { header: 'Tên công ty', key: 'companyName', width: 25 },
+      { header: 'Mã số thuế', key: 'taxCode', width: 15, numFmt: '@' },
     ];
 
     const sampleRows = [
-      { name: 'Nguyễn Văn A', phone: '0901000001', email: 'a@email.com', province: 'Hà Nội', district: 'Cầu Giấy', ward: 'Dịch Vọng', address: '123 Cầu Giấy', groupName: 'Khách lẻ', routeName: 'Nội thành', priority: 'MEDIUM', status: 'ACTIVE', defaultDiscount: 5, debtLimit: 50000000, debtTermDays: 30, note: '' },
-      { name: 'Trần Thị B', phone: '0901000002', email: '', province: 'Hải Phòng', district: '', ward: '', address: '', groupName: 'Đại lý', routeName: 'Liên tỉnh', priority: 'HIGH', status: 'ACTIVE', defaultDiscount: 0, debtLimit: 0, debtTermDays: 30, note: 'Khách VIP' },
+      { name: 'Nguyễn Văn A', phone: '0901000001', email: 'a@email.com', province: 'Hà Nội', district: 'Cầu Giấy', ward: 'Dịch Vọng', address: '123 Cầu Giấy', groupName: 'Khách lẻ', routeName: 'Nội thành', priority: 'MEDIUM', status: 'ACTIVE', defaultDiscount: 5, debtLimit: 50000000, debtTermDays: 30, note: '', companyName: '', taxCode: '' },
+      { name: 'Trần Thị B', phone: '0901000002', email: '', province: 'Hải Phòng', district: '', ward: '', address: '', groupName: 'Đại lý', routeName: 'Liên tỉnh', priority: 'HIGH', status: 'ACTIVE', defaultDiscount: 0, debtLimit: 0, debtTermDays: 30, note: 'Khách VIP', companyName: 'Công ty TNHH B', taxCode: '0101234567', },
     ];
 
     await this.excel.export(res, 'mau-import-khach-hang', columns, sampleRows);
@@ -423,6 +437,10 @@ export class CustomerService {
       const defaultDiscount = numCell(12);
       const debtLimit = numCell(13);
       const debtTermDays = numCell(14);
+      const companyName = cell(16) || undefined;
+      // MST VN 10 số thường bắt đầu bằng 0 (mã tỉnh) — Excel cắt như SĐT.
+      let taxCode: string | undefined = cell(17).replace(/\s/g, '') || undefined;
+      if (taxCode && /^\d{9}$/.test(taxCode)) taxCode = '0' + taxCode;
 
       if (!name) {
         errors.push({ row: rowNumber, message: 'Tên khách hàng là bắt buộc.' });
@@ -481,6 +499,8 @@ export class CustomerService {
         debtLimit,
         debtTermDays,
         note: cell(15) || undefined,
+        companyName,
+        taxCode,
       });
     });
 
@@ -523,6 +543,8 @@ export class CustomerService {
           name: dto.name,
           phone: dto.phone,
           email: dto.email || null,
+          companyName: dto.companyName || null,
+          taxCode: dto.taxCode || null,
           province: dto.province || null,
           district: dto.district || null,
           ward: dto.ward || null,

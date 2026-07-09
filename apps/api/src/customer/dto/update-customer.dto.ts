@@ -2,6 +2,8 @@ export class UpdateCustomerDto {
   name?: string;
   phone?: string;
   email?: string | null;
+  companyName?: string | null;
+  taxCode?: string | null;
   province?: string | null;
   district?: string | null;
   ward?: string | null;

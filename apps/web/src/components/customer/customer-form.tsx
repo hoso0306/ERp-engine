@@ -43,7 +43,7 @@ export function CustomerForm() {
       phone: form.get("phone"),
     };
 
-    const optional = ["email", "province", "district", "ward", "address", "note"];
+    const optional = ["email", "companyName", "taxCode", "province", "district", "ward", "address", "note"];
     for (const key of optional) {
       const val = form.get(key);
       if (val && String(val).trim()) body[key] = String(val).trim();
@@ -108,6 +108,19 @@ export function CustomerForm() {
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="companyName">
+              Tên công ty <span className="text-muted-foreground">(khách doanh nghiệp)</span>
+            </Label>
+            <Input id="companyName" name="companyName" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="taxCode">Mã số thuế</Label>
+            <Input id="taxCode" name="taxCode" />
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">

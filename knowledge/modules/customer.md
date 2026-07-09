@@ -148,6 +148,8 @@ code            String          Unique, sinh từ running_numbers
 name            String          Bắt buộc
 phone           String          Unique, bắt buộc
 email           String?         Không unique, validate format
+company_name    String?         Tên công ty — khách doanh nghiệp (thêm 08/07/2026, testlan1)
+tax_code        String?         Mã số thuế — phục vụ xuất hoá đơn (thêm 08/07/2026)
 province        String?
 district        String?
 ward            String?
