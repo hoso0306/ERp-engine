@@ -131,7 +131,7 @@ Thiết kế có sẵn tại `knowledge/modules/report.md`; schema/index tiền 
 * [x] 002 — Sửa lỗi Test lần 1 (sprint-02) — **✅ hoàn thành 09/07/2026** (10 task, 10 commit, verify sống từng task)
 * [x] 003 — FE Đăng nhập + phân quyền (sprint-02) — **✅ hoàn thành 09/07/2026** (API client dùng chung, login + đổi mật khẩu bắt buộc, middleware guard, user menu, ẩn menu/nút theo quyền, migrate 37 file gọi fetch trực tiếp → client dùng chung; verify sống bằng Playwright headless; nợ kỹ thuật ghi nhận: 133 endpoint BE chưa gắn AuthGuard/PermissionGuard, để milestone riêng)
 * [x] 004 — FE Đơn hàng (sprint-02) — **✅ hoàn thành 10/07/2026** (`/orders` danh sách + tabs trạng thái, `/orders/[id]` chi tiết với items+BOM/Phiếu SX/công nợ/Timeline, Action Gửi xe/Khách đã nhận/Huỷ (kèm cảnh báo cọc)/Manual Override, bật menu + link chéo Báo giá⇄Đơn hàng; verify sống bằng Playwright thật, không chỉ đọc code)
-* [ ] 005 — FE Sản xuất + Kho (sprint-02)
+* [x] 005 — FE Sản xuất + Kho (sprint-02) — **✅ hoàn thành 10/07/2026** (`/production` danh sách + chi tiết với thông số/BOM (BE enrich nhỏ, không cần quyền `sales-order.view`) + Action Bắt đầu/Hoàn thành; `/warehouse` Tồn kho (cảnh báo dưới mức) + Phiếu nhập vật tư (tạo/danh sách/chi tiết) + Lịch sử giao dịch kho; bật 2 menu + link chéo Đơn hàng⇄Phiếu SX⇄giao dịch kho; verify sống bằng Playwright thật — Start thiếu tồn kho báo lỗi đúng, nhập kho + Start + Complete đủ tồn kho chạy đúng, đối chiếu số liệu kho khớp BOM)
 * [ ] 006 — FE Công nợ (sprint-02)
 * [ ] 007 — FE Hàng hoàn (sprint-02)
 * [ ] 008 — Báo cáo BE+FE (sprint-03)

@@ -60,8 +60,8 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Sản phẩm", href: "/products", icon: Package },
       { title: "Vật tư", href: "/materials", icon: Boxes },
-      { title: "Sản xuất", href: "/production", icon: Factory, disabled: true, requiredPermission: "production.view" },
-      { title: "Kho", href: "/warehouse", icon: Warehouse, disabled: true, requiredPermission: "warehouse.view" },
+      { title: "Sản xuất", href: "/production", icon: Factory, requiredPermission: "production.view" },
+      { title: "Kho", href: "/warehouse", icon: Warehouse, requiredPermission: "warehouse.view" },
     ],
   },
   {

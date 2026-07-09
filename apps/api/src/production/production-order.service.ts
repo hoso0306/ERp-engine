@@ -101,7 +101,65 @@ export class ProductionOrderService {
       throw new NotFoundException('Phiếu sản xuất không tồn tại.');
     }
 
-    return productionOrder;
+    const items = await this.attachSpecsAndBom(productionOrder.items);
+
+    return { ...productionOrder, items };
+  }
+
+  // Task 01 (005-fe-san-xuat-kho.md) — quản đốc xưởng cần xem thông số sản
+  // phẩm + BOM vật tư của chính phiếu mình, nhưng role "Sản xuất" không có
+  // quyền `sales-order.view` để gọi GET /sales-orders/:id. Đọc thẳng
+  // SalesOrderItemParameter/OrderBOM theo salesOrderItemId (cùng cách
+  // WarehouseService.issueForProductionOrder() đã làm) — không kèm giá vốn vì
+  // Production không quan tâm chi phí (production.md).
+  private async attachSpecsAndBom<
+    T extends { salesOrderItemId: string },
+  >(items: T[]) {
+    const salesOrderItemIds = items.map((item) => item.salesOrderItemId);
+    if (salesOrderItemIds.length === 0) return items;
+
+    const [parameters, boms] = await Promise.all([
+      this.prisma.salesOrderItemParameter.findMany({
+        where: { salesOrderItemId: { in: salesOrderItemIds } },
+        orderBy: { displayOrder: 'asc' },
+        select: {
+          salesOrderItemId: true,
+          name: true,
+          label: true,
+          value: true,
+          unit: true,
+        },
+      }),
+      this.prisma.orderBOM.findMany({
+        where: { salesOrderItemId: { in: salesOrderItemIds } },
+        select: {
+          salesOrderItemId: true,
+          items: {
+            select: {
+              materialCode: true,
+              materialName: true,
+              materialUnit: true,
+              quantity: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const parametersByItem = new Map<string, typeof parameters>();
+    for (const p of parameters) {
+      const list = parametersByItem.get(p.salesOrderItemId) ?? [];
+      list.push(p);
+      parametersByItem.set(p.salesOrderItemId, list);
+    }
+
+    const bomByItem = new Map(boms.map((b) => [b.salesOrderItemId, b.items]));
+
+    return items.map((item) => ({
+      ...item,
+      parameters: parametersByItem.get(item.salesOrderItemId) ?? [],
+      bomMaterials: bomByItem.get(item.salesOrderItemId) ?? [],
+    }));
   }
 
   // ─────────────────────────────────────────────────────

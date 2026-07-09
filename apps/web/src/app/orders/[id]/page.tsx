@@ -370,7 +370,13 @@ export default function SalesOrderDetailPage() {
               <div key={po.id} className="p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="font-mono text-sm font-medium">{po.code}</span>
+                    {hasPermission("production.view") ? (
+                      <Link href={`/production/${po.id}`} className="font-mono text-sm font-medium text-primary underline underline-offset-2">
+                        {po.code}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-sm font-medium">{po.code}</span>
+                    )}
                     <span className="text-sm text-muted-foreground"> — {po.productionCenterName}</span>
                   </div>
                   <ProductionOrderStatusBadge status={po.status} />

@@ -214,6 +214,7 @@ export class WarehouseService {
           code: true,
           name: true,
           currentStock: true,
+          minimumStock: true,
           isActive: true,
           unit: { select: { id: true, name: true } },
         },
