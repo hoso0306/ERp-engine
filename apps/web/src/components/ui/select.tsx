@@ -6,7 +6,42 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Base UI: nếu Root không nhận `items`, <Select.Value> hiển thị GIÁ TRỊ THÔ
+// (id) thay vì label — vì các <Select.Item> nằm trong Portal, chỉ mount khi mở
+// popup nên trigger không biết label trước đó. Wrapper này tự thu thập
+// {value, label} từ cây SelectItem con và truyền vào `items`, để mọi chỗ dùng
+// hiển thị đúng tên item đã chọn mà không phải khai báo items thủ công.
+function collectItemsFromChildren(
+  children: React.ReactNode,
+  acc: Array<{ value: unknown; label: React.ReactNode }>,
+) {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectItem) {
+      const itemProps = child.props as SelectPrimitive.Item.Props
+      acc.push({ value: itemProps.value, label: itemProps.children })
+      return
+    }
+    const childProps = child.props as { children?: React.ReactNode }
+    if (childProps?.children) collectItemsFromChildren(childProps.children, acc)
+  })
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>(
+  props: SelectPrimitive.Root.Props<Value, Multiple>,
+) {
+  const { items, children } = props
+  const derivedItems = React.useMemo(() => {
+    if (items) return items
+    const acc: Array<{ value: unknown; label: React.ReactNode }> = []
+    collectItemsFromChildren(children, acc)
+    return acc.length > 0
+      ? (acc as ReadonlyArray<{ value: Value; label: React.ReactNode }>)
+      : undefined
+  }, [items, children])
+
+  return <SelectPrimitive.Root {...props} items={derivedItems} />
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
