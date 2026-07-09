@@ -21,6 +21,10 @@ interface MaterialPrice {
   note: string | null;
 }
 
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
+}
+
 interface Material {
   id: string;
   code: string;
@@ -30,6 +34,7 @@ interface Material {
   unit: { id: string; name: string } | null;
   currentStock: number | string;
   minimumStock: number | string | null;
+  retailPrice: number | string | null;
   prices: MaterialPrice[];
   createdAt: string;
   updatedAt: string;
@@ -134,6 +139,17 @@ export default function MaterialDetailPage() {
         <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <Field label="Mã vật tư" value={material.code} />
           <Field label="Đơn vị tính" value={material.unit?.name} />
+          <Field
+            label="Giá nhập (mặc định)"
+            value={(() => {
+              const def = material.prices.find((p) => p.isDefault);
+              return def ? formatMoney(Number(def.price)) : null;
+            })()}
+          />
+          <Field
+            label="Giá bán lẻ"
+            value={material.retailPrice !== null ? formatMoney(Number(material.retailPrice)) : null}
+          />
           <Field label="Ghi chú" value={material.note} />
         </dl>
       </div>

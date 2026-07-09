@@ -14,6 +14,8 @@ interface Material {
   unitId: string;
   isActive: boolean;
   note: string | null;
+  retailPrice: number | string | null;
+  minimumStock: number | string | null;
 }
 
 export default function EditMaterialPage() {

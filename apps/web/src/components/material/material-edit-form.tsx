@@ -29,6 +29,8 @@ interface MaterialData {
   unitId: string;
   isActive: boolean;
   note: string | null;
+  retailPrice: number | string | null;
+  minimumStock: number | string | null;
 }
 
 interface MaterialEditFormProps {
@@ -53,11 +55,15 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
     setSubmitting(true);
 
     const form = new FormData(e.currentTarget);
+    const retailPrice = form.get("retailPrice");
+    const minimumStock = form.get("minimumStock");
     const body: Record<string, unknown> = {
       code: form.get("code"),
       name: form.get("name"),
       unitId,
       note: form.get("note") || null,
+      retailPrice: retailPrice && String(retailPrice).trim() ? Number(retailPrice) : null,
+      minimumStock: minimumStock && String(minimumStock).trim() ? Number(minimumStock) : null,
     };
 
     try {
@@ -113,6 +119,41 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="retailPrice">
+              Giá bán lẻ (₫) <span className="text-muted-foreground">(tuỳ chọn)</span>
+            </Label>
+            <Input
+              id="retailPrice"
+              name="retailPrice"
+              type="number"
+              min="0"
+              step="1000"
+              defaultValue={material.retailPrice !== null ? Number(material.retailPrice) : ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dùng khi bán lẻ vật tư. Giá vốn sản xuất vẫn tính theo giá nhập.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="minimumStock">
+              Tồn kho tối thiểu <span className="text-muted-foreground">(tuỳ chọn)</span>
+            </Label>
+            <Input
+              id="minimumStock"
+              name="minimumStock"
+              type="number"
+              min="0"
+              step="any"
+              defaultValue={material.minimumStock !== null ? Number(material.minimumStock) : ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Tồn kho dưới mức này sẽ hiện cảnh báo.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-2">

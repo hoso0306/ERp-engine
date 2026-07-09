@@ -48,6 +48,12 @@ export function MaterialForm() {
     const note = form.get("note");
     if (note && String(note).trim()) body.note = String(note).trim();
 
+    const retailPrice = form.get("retailPrice");
+    if (retailPrice && String(retailPrice).trim()) body.retailPrice = Number(retailPrice);
+
+    const minimumStock = form.get("minimumStock");
+    if (minimumStock && String(minimumStock).trim()) body.minimumStock = Number(minimumStock);
+
     try {
       const res = await fetch(`${API_URL}/api/materials`, {
         method: "POST",
@@ -94,6 +100,27 @@ export function MaterialForm() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="retailPrice">
+              Giá bán lẻ (₫) <span className="text-muted-foreground">(tuỳ chọn)</span>
+            </Label>
+            <Input id="retailPrice" name="retailPrice" type="number" min="0" step="1000" />
+            <p className="text-xs text-muted-foreground">
+              Dùng khi bán lẻ vật tư. Giá vốn sản xuất vẫn tính theo giá nhập.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="minimumStock">
+              Tồn kho tối thiểu <span className="text-muted-foreground">(tuỳ chọn)</span>
+            </Label>
+            <Input id="minimumStock" name="minimumStock" type="number" min="0" step="any" />
+            <p className="text-xs text-muted-foreground">
+              Tồn kho dưới mức này sẽ hiện cảnh báo.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-2">

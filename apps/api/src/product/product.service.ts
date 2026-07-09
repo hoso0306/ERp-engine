@@ -213,7 +213,17 @@ export class ProductService {
         skip,
         take: limit,
         orderBy: { code: 'asc' },
-        include: { unit: { select: { id: true, name: true } } },
+        include: {
+          unit: { select: { id: true, name: true } },
+          // Giá nhập mặc định — hiển thị cạnh giá bán lẻ ở danh sách (Task 07
+          // sprint-02/002): lấy 1 giá isDefault mới nhất, không load cả bảng giá.
+          prices: {
+            where: { isDefault: true },
+            orderBy: { effectiveFrom: 'desc' },
+            take: 1,
+            select: { price: true },
+          },
+        },
       }),
       this.prisma.material.count({ where }),
     ]);
@@ -246,6 +256,7 @@ export class ProductService {
         unitId: dto.unitId,
         note: dto.note?.trim() || null,
         minimumStock: dto.minimumStock ?? null,
+        retailPrice: dto.retailPrice ?? null,
       },
       include: { unit: { select: { id: true, name: true } } },
     });
@@ -272,6 +283,7 @@ export class ProductService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
     if (dto.minimumStock !== undefined) data.minimumStock = dto.minimumStock;
+    if (dto.retailPrice !== undefined) data.retailPrice = dto.retailPrice;
 
     return this.prisma.material.update({
       where: { id },

@@ -54,6 +54,7 @@ erDiagram
         string name
         string unitId FK
         boolean isActive
+        decimal retailPrice
         decimal currentStock
         decimal minimumStock
     }

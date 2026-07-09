@@ -386,6 +386,10 @@ model Material {
   unitId       String   @map("unit_id")
   isActive     Boolean  @default(true) @map("is_active")
   note         String?
+  // Giá bán lẻ (chốt 08/07/2026): dùng khi bán lẻ/tính giá bán. Giá VỐN vẫn
+  // dùng giá nhập (MaterialPrice) — không đụng Pricing/BOM Engine. Source
+  // Data nhập tay, nullable (vật tư không bán lẻ để trống).
+  retailPrice  Decimal? @map("retail_price") @db.Decimal(15, 0)
   currentStock Decimal  @default(0) @map("current_stock") @db.Decimal(15, 4)
   minimumStock Decimal? @map("minimum_stock") @db.Decimal(15, 4)
   createdAt    DateTime @default(now()) @map("created_at")

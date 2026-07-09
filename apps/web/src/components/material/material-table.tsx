@@ -21,10 +21,17 @@ interface Material {
   unit: { id: string; name: string } | null;
   currentStock: number | string;
   minimumStock: number | string | null;
+  retailPrice: number | string | null;
+  // Giá nhập mặc định — API list trả 1 phần tử isDefault mới nhất.
+  prices?: { price: number | string }[];
 }
 
 function formatQty(n: number) {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 4 }).format(n);
+}
+
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
 }
 
 interface Meta {
@@ -52,6 +59,8 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
               <TableHead className="w-28">Mã VT</TableHead>
               <TableHead>Tên vật tư</TableHead>
               <TableHead>Đơn vị</TableHead>
+              <TableHead className="text-right">Giá nhập</TableHead>
+              <TableHead className="text-right">Giá bán lẻ</TableHead>
               <TableHead className="text-right">Tồn kho</TableHead>
               <TableHead className="text-right">Tồn tối thiểu</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
@@ -71,6 +80,12 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
                 <TableCell className="font-mono text-xs">{m.code}</TableCell>
                 <TableCell className="font-medium">{m.name}</TableCell>
                 <TableCell className="text-muted-foreground">{m.unit?.name ?? "—"}</TableCell>
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {m.prices && m.prices.length > 0 ? formatMoney(Number(m.prices[0].price)) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {m.retailPrice !== null ? formatMoney(Number(m.retailPrice)) : "—"}
+                </TableCell>
                 <TableCell className={`text-right font-mono text-sm ${belowMinimum ? "text-destructive font-semibold" : ""}`}>
                   {formatQty(stock)}
                   {belowMinimum && (

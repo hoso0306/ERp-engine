@@ -4,5 +4,7 @@ export class UpdateMaterialDto {
   unitId?: string;
   isActive?: boolean;
   note?: string;
-  minimumStock?: number;
+  minimumStock?: number | null;
+  // Giá bán lẻ (chốt 08/07/2026) — null để xoá; giá vốn vẫn dùng giá nhập.
+  retailPrice?: number | null;
 }
