@@ -279,7 +279,7 @@ Milestone được xem là hoàn thành khi:
 
 * [x] Hoàn thành toàn bộ Task (2 mục FE của Task 04/05 hoãn theo chốt 06/07/2026 — chờ module FE Order/Return).
 * [x] Đã Commit theo từng Task.
-* [ ] Đã Push GitHub — chờ lệnh người dùng.
+* [x] Đã Push GitHub — chờ lệnh người dùng.
 * [x] `erd.md` mục 19 khớp trạng thái thực tế.
 * [x] Sẵn sàng cho Milestone tiếp theo (`002-bao-cao.md`).
 
