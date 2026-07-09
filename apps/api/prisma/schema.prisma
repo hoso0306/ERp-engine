@@ -341,10 +341,28 @@ model ProductionCenter {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  products Product[]
+  products  Product[]
+  materials MaterialProductionCenter[]
 
   @@index([isActive])
   @@map("production_centers")
+}
+
+// Vật tư thuộc nhiều xưởng (chốt 08/07/2026) — hiện CHỈ dùng để lọc danh sách
+// vật tư, không ảnh hưởng nghiệp vụ xuất kho/BOM. Join table explicit theo
+// convention RolePermission.
+model MaterialProductionCenter {
+  id                 String   @id @default(cuid())
+  materialId         String   @map("material_id")
+  productionCenterId String   @map("production_center_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  material         Material         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  productionCenter ProductionCenter @relation(fields: [productionCenterId], references: [id])
+
+  @@unique([materialId, productionCenterId])
+  @@index([productionCenterId])
+  @@map("material_production_centers")
 }
 
 // ──────────────────────────────────────
@@ -395,11 +413,12 @@ model Material {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  unit             Unit                      @relation(fields: [unitId], references: [id])
-  prices           MaterialPrice[]
-  requirementItems MaterialRequirementItem[]
-  receipts         MaterialReceipt[]
-  transactions     WarehouseTransaction[]
+  unit              Unit                       @relation(fields: [unitId], references: [id])
+  prices            MaterialPrice[]
+  requirementItems  MaterialRequirementItem[]
+  receipts          MaterialReceipt[]
+  transactions      WarehouseTransaction[]
+  productionCenters MaterialProductionCenter[]
 
   @@index([isActive])
   @@map("materials")

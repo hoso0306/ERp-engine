@@ -206,6 +206,12 @@ export class ProductService {
     if (query.isActive !== undefined) {
       where.isActive = query.isActive === 'true';
     }
+    // Lọc theo xưởng (chốt 08/07/2026 — chỉ để lọc, không ảnh hưởng kho/BOM).
+    if (query.productionCenterId) {
+      where.productionCenters = {
+        some: { productionCenterId: query.productionCenterId },
+      };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.material.findMany({
@@ -223,6 +229,11 @@ export class ProductService {
             take: 1,
             select: { price: true },
           },
+          productionCenters: {
+            select: {
+              productionCenter: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.material.count({ where }),
@@ -237,6 +248,11 @@ export class ProductService {
       include: {
         unit: { select: { id: true, name: true } },
         prices: { orderBy: { effectiveFrom: 'desc' } },
+        productionCenters: {
+          select: {
+            productionCenter: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!material) throw new NotFoundException('Nguyên liệu không tồn tại.');
@@ -257,8 +273,22 @@ export class ProductService {
         note: dto.note?.trim() || null,
         minimumStock: dto.minimumStock ?? null,
         retailPrice: dto.retailPrice ?? null,
+        ...(dto.productionCenterIds && dto.productionCenterIds.length > 0
+          ? {
+              productionCenters: {
+                create: dto.productionCenterIds.map((id) => ({
+                  productionCenterId: id,
+                })),
+              },
+            }
+          : {}),
       },
-      include: { unit: { select: { id: true, name: true } } },
+      include: {
+        unit: { select: { id: true, name: true } },
+        productionCenters: {
+          select: { productionCenter: { select: { id: true, name: true } } },
+        },
+      },
     });
   }
 
@@ -284,11 +314,25 @@ export class ProductService {
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
     if (dto.minimumStock !== undefined) data.minimumStock = dto.minimumStock;
     if (dto.retailPrice !== undefined) data.retailPrice = dto.retailPrice;
+    // Set lại toàn bộ danh sách xưởng khi FE gửi lên (mảng rỗng = bỏ hết).
+    if (dto.productionCenterIds !== undefined) {
+      data.productionCenters = {
+        deleteMany: {},
+        create: dto.productionCenterIds.map((pcId) => ({
+          productionCenterId: pcId,
+        })),
+      };
+    }
 
     return this.prisma.material.update({
       where: { id },
       data,
-      include: { unit: { select: { id: true, name: true } } },
+      include: {
+        unit: { select: { id: true, name: true } },
+        productionCenters: {
+          select: { productionCenter: { select: { id: true, name: true } } },
+        },
+      },
     });
   }
 

@@ -22,10 +22,17 @@ interface Unit {
   name: string;
 }
 
+interface ProductionCenterOption {
+  id: string;
+  name: string;
+}
+
 export function MaterialForm() {
   const router = useRouter();
   const [units, setUnits] = useState<Unit[]>([]);
   const [unitId, setUnitId] = useState("");
+  const [centers, setCenters] = useState<ProductionCenterOption[]>([]);
+  const [selectedCenterIds, setSelectedCenterIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -33,7 +40,17 @@ export function MaterialForm() {
       .then((r) => r.json())
       .then(setUnits)
       .catch(() => {});
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setCenters)
+      .catch(() => {});
   }, []);
+
+  function toggleCenter(id: string) {
+    setSelectedCenterIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,6 +70,8 @@ export function MaterialForm() {
 
     const minimumStock = form.get("minimumStock");
     if (minimumStock && String(minimumStock).trim()) body.minimumStock = Number(minimumStock);
+
+    if (selectedCenterIds.length > 0) body.productionCenterIds = selectedCenterIds;
 
     try {
       const res = await fetch(`${API_URL}/api/materials`, {
@@ -120,6 +139,28 @@ export function MaterialForm() {
             <p className="text-xs text-muted-foreground">
               Tồn kho dưới mức này sẽ hiện cảnh báo.
             </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>
+            Xưởng sản xuất sử dụng <span className="text-muted-foreground">(để lọc, chọn nhiều)</span>
+          </Label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border p-3">
+            {centers.length === 0 && (
+              <span className="text-sm text-muted-foreground">Chưa có xưởng nào.</span>
+            )}
+            {centers.map((c) => (
+              <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedCenterIds.includes(c.id)}
+                  onChange={() => toggleCenter(c.id)}
+                  className="h-4 w-4 accent-primary"
+                />
+                {c.name}
+              </label>
+            ))}
           </div>
         </div>
 

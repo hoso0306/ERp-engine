@@ -36,6 +36,7 @@ interface Material {
   minimumStock: number | string | null;
   retailPrice: number | string | null;
   prices: MaterialPrice[];
+  productionCenters?: { productionCenter: { id: string; name: string } }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -149,6 +150,13 @@ export default function MaterialDetailPage() {
           <Field
             label="Giá bán lẻ"
             value={material.retailPrice !== null ? formatMoney(Number(material.retailPrice)) : null}
+          />
+          <Field
+            label="Xưởng sử dụng"
+            value={
+              (material.productionCenters ?? []).map((pc) => pc.productionCenter.name).join(", ") ||
+              null
+            }
           />
           <Field label="Ghi chú" value={material.note} />
         </dl>

@@ -22,6 +22,11 @@ interface Unit {
   name: string;
 }
 
+interface ProductionCenterOption {
+  id: string;
+  name: string;
+}
+
 interface MaterialData {
   id: string;
   code: string;
@@ -31,6 +36,7 @@ interface MaterialData {
   note: string | null;
   retailPrice: number | string | null;
   minimumStock: number | string | null;
+  productionCenters?: { productionCenter: { id: string; name: string } }[];
 }
 
 interface MaterialEditFormProps {
@@ -41,6 +47,10 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
   const router = useRouter();
   const [units, setUnits] = useState<Unit[]>([]);
   const [unitId, setUnitId] = useState(material.unitId);
+  const [centers, setCenters] = useState<ProductionCenterOption[]>([]);
+  const [selectedCenterIds, setSelectedCenterIds] = useState<string[]>(
+    (material.productionCenters ?? []).map((pc) => pc.productionCenter.id),
+  );
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -48,7 +58,17 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
       .then((r) => r.json())
       .then(setUnits)
       .catch(() => {});
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setCenters)
+      .catch(() => {});
   }, []);
+
+  function toggleCenter(id: string) {
+    setSelectedCenterIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -64,6 +84,7 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
       note: form.get("note") || null,
       retailPrice: retailPrice && String(retailPrice).trim() ? Number(retailPrice) : null,
       minimumStock: minimumStock && String(minimumStock).trim() ? Number(minimumStock) : null,
+      productionCenterIds: selectedCenterIds,
     };
 
     try {
@@ -153,6 +174,28 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
             <p className="text-xs text-muted-foreground">
               Tồn kho dưới mức này sẽ hiện cảnh báo.
             </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>
+            Xưởng sản xuất sử dụng <span className="text-muted-foreground">(để lọc, chọn nhiều)</span>
+          </Label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border p-3">
+            {centers.length === 0 && (
+              <span className="text-sm text-muted-foreground">Chưa có xưởng nào.</span>
+            )}
+            {centers.map((c) => (
+              <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedCenterIds.includes(c.id)}
+                  onChange={() => toggleCenter(c.id)}
+                  className="h-4 w-4 accent-primary"
+                />
+                {c.name}
+              </label>
+            ))}
           </div>
         </div>
 

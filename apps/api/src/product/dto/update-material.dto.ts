@@ -7,4 +7,6 @@ export class UpdateMaterialDto {
   minimumStock?: number | null;
   // Giá bán lẻ (chốt 08/07/2026) — null để xoá; giá vốn vẫn dùng giá nhập.
   retailPrice?: number | null;
+  // Set lại toàn bộ danh sách xưởng (mảng rỗng = bỏ hết).
+  productionCenterIds?: string[];
 }

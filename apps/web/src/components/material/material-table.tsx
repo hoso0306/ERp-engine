@@ -24,6 +24,7 @@ interface Material {
   retailPrice: number | string | null;
   // Giá nhập mặc định — API list trả 1 phần tử isDefault mới nhất.
   prices?: { price: number | string }[];
+  productionCenters?: { productionCenter: { id: string; name: string } }[];
 }
 
 function formatQty(n: number) {
@@ -63,6 +64,7 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
               <TableHead className="text-right">Giá bán lẻ</TableHead>
               <TableHead className="text-right">Tồn kho</TableHead>
               <TableHead className="text-right">Tồn tối thiểu</TableHead>
+              <TableHead>Xưởng</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
@@ -94,6 +96,17 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
                   {minStock !== null ? formatQty(minStock) : "—"}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {(m.productionCenters ?? []).length > 0
+                      ? (m.productionCenters ?? []).map((pc) => (
+                          <Badge key={pc.productionCenter.id} variant="secondary" className="text-[10px]">
+                            {pc.productionCenter.name}
+                          </Badge>
+                        ))
+                      : <span className="text-muted-foreground text-sm">—</span>}
+                  </div>
                 </TableCell>
                 <TableCell className="text-center">
                   <Badge variant={m.isActive ? "default" : "secondary"}>

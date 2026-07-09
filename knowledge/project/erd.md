@@ -59,6 +59,12 @@ erDiagram
         decimal minimumStock
     }
 
+    MaterialProductionCenter {
+        string id PK
+        string materialId FK
+        string productionCenterId FK
+    }
+
     MaterialPrice {
         string id PK
         string materialId FK
@@ -469,6 +475,8 @@ erDiagram
 
     %% Material
     Material                   ||--|{ MaterialPrice               : "giá NVL"
+    Material                   ||--o{ MaterialProductionCenter    : "thuộc xưởng (lọc)"
+    ProductionCenter           ||--o{ MaterialProductionCenter    : "vật tư của xưởng"
     Material                   ||--o{ MaterialRequirementItem     : "dùng trong BOM"
     Material                   ||--o{ MaterialReceipt              : "nhập kho"
     Material                   ||--o{ WarehouseTransaction         : "biến động kho"

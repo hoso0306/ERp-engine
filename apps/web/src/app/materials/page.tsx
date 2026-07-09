@@ -18,14 +18,28 @@ import { MaterialTable } from "@/components/material/material-table";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+interface ProductionCenterOption {
+  id: string;
+  name: string;
+}
+
 export default function MaterialsPage() {
   const [materials, setMaterials] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [isActive, setIsActive] = useState("all");
+  const [centerId, setCenterId] = useState("all");
+  const [centers, setCenters] = useState<ProductionCenterOption[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/production-centers`)
+      .then((r) => r.json())
+      .then(setCenters)
+      .catch(() => {});
+  }, []);
 
   const fetchMaterials = useCallback(async () => {
     setLoading(true);
@@ -34,6 +48,7 @@ export default function MaterialsPage() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (isActive !== "all") params.set("isActive", isActive);
+      if (centerId !== "all") params.set("productionCenterId", centerId);
       params.set("page", String(page));
       params.set("limit", "20");
 
@@ -46,7 +61,7 @@ export default function MaterialsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, isActive, page]);
+  }, [search, isActive, centerId, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchMaterials, search ? 300 : 0);
@@ -55,7 +70,7 @@ export default function MaterialsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, isActive]);
+  }, [search, isActive, centerId]);
 
   return (
     <div className="space-y-6">
@@ -89,6 +104,20 @@ export default function MaterialsPage() {
             <SelectItem value="all">Tất cả</SelectItem>
             <SelectItem value="true">Đang dùng</SelectItem>
             <SelectItem value="false">Ngừng dùng</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={centerId} onValueChange={(v) => setCenterId(v ?? "all")}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Xưởng sản xuất" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả xưởng</SelectItem>
+            {centers.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
