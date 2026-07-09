@@ -6,6 +6,9 @@ export interface ExcelColumn {
   header: string;
   key: string;
   width?: number;
+  // numFmt '@' = định dạng Text — dùng cho cột SĐT để Excel không tự cắt
+  // số 0 đầu khi người dùng nhập liệu vào file (testlan1 mục Khách hàng).
+  numFmt?: string;
 }
 
 @Injectable()
@@ -29,6 +32,7 @@ export class ExcelService {
       header: col.header,
       key: col.key,
       width: col.width || 20,
+      ...(col.numFmt ? { style: { numFmt: col.numFmt } } : {}),
     }));
 
     sheet.getRow(1).font = { bold: true };

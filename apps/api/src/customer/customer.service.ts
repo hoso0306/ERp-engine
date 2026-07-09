@@ -316,7 +316,8 @@ export class CustomerService {
     const columns = [
       { header: 'Mã KH', key: 'code', width: 12 },
       { header: 'Tên khách hàng', key: 'name', width: 25 },
-      { header: 'Số điện thoại', key: 'phone', width: 15 },
+      // numFmt '@' — cột Text để Excel không cắt số 0 đầu khi người dùng sửa file.
+      { header: 'Số điện thoại', key: 'phone', width: 15, numFmt: '@' },
       { header: 'Email', key: 'email', width: 25 },
       { header: 'Tỉnh/TP', key: 'province', width: 15 },
       { header: 'Quận/Huyện', key: 'district', width: 15 },
@@ -357,7 +358,8 @@ export class CustomerService {
   async exportTemplate(res: Response) {
     const columns = [
       { header: 'Tên khách hàng *', key: 'name', width: 25 },
-      { header: 'Số điện thoại *', key: 'phone', width: 18 },
+      // numFmt '@' — cột Text để Excel không cắt số 0 đầu khi nhập liệu.
+      { header: 'Số điện thoại *', key: 'phone', width: 18, numFmt: '@' },
       { header: 'Email', key: 'email', width: 25 },
       { header: 'Tỉnh/TP', key: 'province', width: 15 },
       { header: 'Quận/Huyện', key: 'district', width: 15 },
@@ -402,9 +404,17 @@ export class CustomerService {
         const v = row.getCell(col).value;
         return v !== null && v !== undefined && v !== '' ? Number(v) : undefined;
       };
+      // SĐT: Excel định dạng số tự cắt số 0 đầu (0901... → 901...). Chuẩn hoá:
+      // bỏ khoảng trắng/ký tự phân tách, nếu còn 9-10 chữ số không bắt đầu
+      // bằng 0 (bị Excel cắt) → thêm lại "0" (testlan1 mục Khách hàng).
+      const phoneCell = (col: number) => {
+        let s = cell(col).replace(/[\s.\-()]/g, '');
+        if (/^[1-9]\d{8,9}$/.test(s)) s = '0' + s;
+        return s;
+      };
 
       const name = cell(1);
-      const phone = cell(2);
+      const phone = phoneCell(2);
       const email = cell(3) || undefined;
       const groupName = cell(8);
       const routeName = cell(9);
@@ -420,6 +430,14 @@ export class CustomerService {
       }
       if (!phone) {
         errors.push({ row: rowNumber, message: 'Số điện thoại là bắt buộc.' });
+        return;
+      }
+      // 10 số di động hoặc 11 số cố định, bắt đầu bằng 0.
+      if (!/^0\d{9,10}$/.test(phone)) {
+        errors.push({
+          row: rowNumber,
+          message: `Số điện thoại "${phone}" không hợp lệ (cần 10-11 chữ số, bắt đầu bằng 0).`,
+        });
         return;
       }
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
