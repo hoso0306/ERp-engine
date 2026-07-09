@@ -20,8 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPost, apiPatch, ApiError } from "@/lib/api";
 
 interface ParameterOption {
   id: string;
@@ -175,27 +174,17 @@ export function ProductParameterDialog({
     }
 
     try {
-      const url = isEdit
-        ? `${API_URL}/api/products/${productId}/parameters/${parameter.id}`
-        : `${API_URL}/api/products/${productId}/parameters`;
-
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu thông số.");
-        return;
+      if (isEdit) {
+        await apiPatch(`/products/${productId}/parameters/${parameter.id}`, body);
+      } else {
+        await apiPost(`/products/${productId}/parameters`, body);
       }
 
       toast.success(isEdit ? "Cập nhật thành công." : "Thêm thông số thành công.");
       onOpenChange(false);
       onSaved();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu thông số.");
     } finally {
       setSubmitting(false);
     }

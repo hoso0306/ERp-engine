@@ -38,6 +38,9 @@ const SALES_ORDER_INCLUDE = {
   },
   timeline: { orderBy: { createdAt: 'asc' as const } },
   receivable: true,
+  // Task 01 (004-fe-don-hang.md) — expose id báo giá gốc để FE link chéo
+  // Order → Quotation. Chỉ đọc thêm, không đổi Business Rule/Snapshot.
+  quotation: { select: { id: true } },
 } satisfies Prisma.SalesOrderInclude;
 
 @Injectable()

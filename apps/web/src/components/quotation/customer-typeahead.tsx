@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet } from "@/lib/api";
 
 export interface CustomerOption {
   id: string;
@@ -50,8 +49,7 @@ export function CustomerTypeahead({ value, onChange }: CustomerTypeaheadProps) {
         if (query.trim()) params.set("search", query.trim());
         params.set("limit", "10");
         params.set("status", "ACTIVE");
-        const res = await fetch(`${API_URL}/api/customers?${params}`);
-        const json = await res.json();
+        const json = await apiGet<{ data: CustomerOption[] }>(`/customers?${params}`);
         setOptions(json.data ?? []);
         setHighlighted(0);
       } catch {

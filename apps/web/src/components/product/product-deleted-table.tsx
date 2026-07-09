@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPatch, ApiError } from "@/lib/api";
 
 interface Product {
   id: string;
@@ -50,18 +49,11 @@ export function ProductDeletedTable({
   async function handleRestore() {
     if (!restoreTarget) return;
     try {
-      const res = await fetch(`${API_URL}/api/products/${restoreTarget.id}/restore`, {
-        method: "PATCH",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể khôi phục sản phẩm.");
-        return;
-      }
+      await apiPatch(`/products/${restoreTarget.id}/restore`);
       toast.success("Đã khôi phục sản phẩm.");
       onRestored();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể khôi phục sản phẩm.");
     }
   }
 

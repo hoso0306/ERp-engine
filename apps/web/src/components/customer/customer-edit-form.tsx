@@ -14,8 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, ApiError } from "@/lib/api";
 
 interface FilterOption {
   id: string;
@@ -55,8 +54,8 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/customers/groups`).then((r) => r.json()).then(setGroups).catch(() => {});
-    fetch(`${API_URL}/api/customers/routes`).then((r) => r.json()).then(setRoutes).catch(() => {});
+    apiGet<FilterOption[]>("/customers/groups").then(setGroups).catch(() => {});
+    apiGet<FilterOption[]>("/customers/routes").then(setRoutes).catch(() => {});
   }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -95,23 +94,12 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
     if (debtTermDays !== null) body.debtTermDays = Number(debtTermDays);
 
     try {
-      const res = await fetch(`${API_URL}/api/customers/${customer.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật khách hàng.");
-        return;
-      }
-
+      await apiPatch(`/customers/${customer.id}`, body);
       toast.success("Cập nhật thành công.");
       router.push(`/customers/${customer.id}`);
       router.refresh();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSubmitting(false);
     }

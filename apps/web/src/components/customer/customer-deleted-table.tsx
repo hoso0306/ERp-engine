@@ -11,8 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPatch, ApiError } from "@/lib/api";
 
 interface Customer {
   id: string;
@@ -40,16 +39,11 @@ interface Props {
 export function CustomerDeletedTable({ customers, meta, onPageChange, onRestored }: Props) {
   async function handleRestore(id: string, name: string) {
     try {
-      const res = await fetch(`${API_URL}/api/customers/${id}/restore`, { method: "PATCH" });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể khôi phục.");
-        return;
-      }
+      await apiPatch(`/customers/${id}/restore`);
       toast.success(`Đã khôi phục "${name}".`);
       onRestored();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     }
   }
 

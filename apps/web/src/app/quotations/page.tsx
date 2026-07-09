@@ -11,10 +11,11 @@ import {
   type QuotationTab,
 } from "@/components/quotation/quotation-filter";
 import { QuotationTable } from "@/components/quotation/quotation-table";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 export default function QuotationsPage() {
+  const { hasPermission } = useAuth();
   const [quotations, setQuotations] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
@@ -39,8 +40,7 @@ export default function QuotationsPage() {
       params.set("page", String(page));
       params.set("limit", "10");
 
-      const res = await fetch(`${API_URL}/api/quotations?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: never[]; meta: typeof meta }>(`/quotations?${params}`);
       setQuotations(json.data);
       setMeta(json.meta);
     } catch {
@@ -65,10 +65,12 @@ export default function QuotationsPage() {
         title="Báo giá"
         description="Quản lý danh sách báo giá"
         actions={
-          <Button render={<Link href="/quotations/new" />}>
-            <Plus className="mr-2 h-4 w-4" />
-            Tạo báo giá
-          </Button>
+          hasPermission("quotation.create") ? (
+            <Button render={<Link href="/quotations/new" />}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tạo báo giá
+            </Button>
+          ) : undefined
         }
       />
 

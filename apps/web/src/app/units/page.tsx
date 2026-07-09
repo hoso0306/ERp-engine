@@ -22,8 +22,7 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ConfirmDialog } from "@/components/shared";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
 
 interface Unit {
   id: string;
@@ -45,8 +44,7 @@ export default function UnitsPage() {
 
   const fetchUnits = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/units`);
-      if (res.ok) setUnits(await res.json());
+      setUnits(await apiGet<Unit[]>("/units"));
     } catch {
       // silent
     } finally {
@@ -78,24 +76,17 @@ export default function UnitsPage() {
     }
     setSubmitting(true);
     try {
-      const url = editTarget
-        ? `${API_URL}/api/units/${editTarget.id}`
-        : `${API_URL}/api/units`;
-      const res = await fetch(url, {
-        method: editTarget ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
+      const body = { name: name.trim() };
+      if (editTarget) {
+        await apiPatch(`/units/${editTarget.id}`, body);
+      } else {
+        await apiPost("/units", body);
       }
       toast.success(editTarget ? "Đã cập nhật." : "Đã thêm đơn vị.");
       setDialogOpen(false);
       fetchUnits();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu.");
     } finally {
       setSubmitting(false);
     }
@@ -104,18 +95,11 @@ export default function UnitsPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(`${API_URL}/api/units/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/units/${deleteTarget.id}`);
       toast.success("Đã xoá đơn vị.");
       fetchUnits();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá.");
     }
   }
 

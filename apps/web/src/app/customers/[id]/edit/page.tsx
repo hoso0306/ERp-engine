@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { CustomerEditForm } from "@/components/customer/customer-edit-form";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, ApiError } from "@/lib/api";
 
 export default function EditCustomerPage() {
   const params = useParams();
@@ -15,13 +14,9 @@ export default function EditCustomerPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/customers/${params.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Không tìm thấy khách hàng.");
-        return res.json();
-      })
+    apiGet<null>(`/customers/${params.id}`)
       .then(setCustomer)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Không tìm thấy khách hàng."))
       .finally(() => setLoading(false));
   }, [params.id]);
 

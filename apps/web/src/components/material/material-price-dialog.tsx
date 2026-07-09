@@ -13,8 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPost, apiPatch, ApiError } from "@/lib/api";
 
 interface MaterialPrice {
   id: string;
@@ -75,27 +74,17 @@ export function MaterialPriceDialog({
     body.note = note && String(note).trim() ? String(note).trim() : null;
 
     try {
-      const url = isEdit
-        ? `${API_URL}/api/materials/${materialId}/prices/${price.id}`
-        : `${API_URL}/api/materials/${materialId}/prices`;
-
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu giá vật tư.");
-        return;
+      if (isEdit) {
+        await apiPatch(`/materials/${materialId}/prices/${price.id}`, body);
+      } else {
+        await apiPost(`/materials/${materialId}/prices`, body);
       }
 
       toast.success(isEdit ? "Cập nhật giá thành công." : "Thêm giá thành công.");
       onOpenChange(false);
       onSaved();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu giá vật tư.");
     } finally {
       setSubmitting(false);
     }

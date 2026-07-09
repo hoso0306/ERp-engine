@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiDelete, ApiError } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 interface Customer {
   id: string;
@@ -51,34 +51,26 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 export default function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { hasPermission } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/customers/${params.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Không tìm thấy khách hàng.");
-        return res.json();
-      })
+    apiGet<Customer>(`/customers/${params.id}`)
       .then(setCustomer)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Không tìm thấy khách hàng."))
       .finally(() => setLoading(false));
   }, [params.id]);
 
   async function handleDelete() {
     try {
-      const res = await fetch(`${API_URL}/api/customers/${params.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá khách hàng.");
-        return;
-      }
+      await apiDelete(`/customers/${params.id}`);
       toast.success("Đã xoá khách hàng.");
       router.push("/customers");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     }
   }
 
@@ -97,14 +89,18 @@ export default function CustomerDetailPage() {
         description={customer.code}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" render={<Link href={`/customers/${customer.id}/edit`} />}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Chỉnh sửa
-            </Button>
-            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Xoá
-            </Button>
+            {hasPermission("customer.update") && (
+              <Button variant="outline" render={<Link href={`/customers/${customer.id}/edit`} />}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Chỉnh sửa
+              </Button>
+            )}
+            {hasPermission("customer.delete") && (
+              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Xoá
+              </Button>
+            )}
           </div>
         }
       />

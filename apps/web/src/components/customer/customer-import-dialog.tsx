@@ -13,8 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPost, apiUrl, ApiError } from "@/lib/api";
 
 interface ImportError {
   row: number;
@@ -46,11 +45,10 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
     formData.append("file", file);
 
     try {
-      const res = await fetch(`${API_URL}/api/customers/import`, {
-        method: "POST",
-        body: formData,
-      });
-      const json = await res.json();
+      const json = await apiPost<{ success: number; errors: ImportError[] }>(
+        "/customers/import",
+        formData,
+      );
 
       if (json.errors?.length > 0) {
         setErrors(json.errors);
@@ -61,8 +59,8 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
       toast.success(`Đã import ${json.success} khách hàng.`);
       onOpenChange(false);
       onImported();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setUploading(false);
     }
@@ -81,7 +79,7 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
         <Button
           variant="outline"
           className="w-full justify-start"
-          onClick={() => window.open(`${API_URL}/api/customers/template`, "_blank")}
+          onClick={() => window.open(apiUrl("/customers/template"), "_blank")}
         >
           <Download className="mr-2 h-4 w-4" />
           Tải file mẫu (.xlsx)

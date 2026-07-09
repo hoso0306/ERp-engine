@@ -15,8 +15,7 @@ import { Pencil, Trash2, Plus } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared";
 import { MaterialPriceDialog } from "./material-price-dialog";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiDelete, ApiError } from "@/lib/api";
 
 interface MaterialPrice {
   id: string;
@@ -41,19 +40,11 @@ export function MaterialPriceList({ materialId, prices, onChanged }: MaterialPri
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(
-        `${API_URL}/api/materials/${materialId}/prices/${deleteTarget.id}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá giá.");
-        return;
-      }
+      await apiDelete(`/materials/${materialId}/prices/${deleteTarget.id}`);
       toast.success("Đã xoá giá.");
       onChanged();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá giá.");
     }
   }
 

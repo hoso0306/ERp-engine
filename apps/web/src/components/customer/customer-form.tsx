@@ -14,8 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 
 interface FilterOption {
   id: string;
@@ -29,8 +28,8 @@ export function CustomerForm() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/customers/groups`).then((r) => r.json()).then(setGroups).catch(() => {});
-    fetch(`${API_URL}/api/customers/routes`).then((r) => r.json()).then(setRoutes).catch(() => {});
+    apiGet<FilterOption[]>("/customers/groups").then(setGroups).catch(() => {});
+    apiGet<FilterOption[]>("/customers/routes").then(setRoutes).catch(() => {});
   }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -68,22 +67,11 @@ export function CustomerForm() {
     if (debtTermDays && String(debtTermDays).trim()) body.debtTermDays = Number(debtTermDays);
 
     try {
-      const res = await fetch(`${API_URL}/api/customers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tạo khách hàng.");
-        return;
-      }
-
+      await apiPost("/customers", body);
       toast.success("Tạo khách hàng thành công.");
       router.push("/customers");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSubmitting(false);
     }

@@ -9,8 +9,7 @@ import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared
 import { ProductFilter } from "@/components/product/product-filter";
 import { ProductTable } from "@/components/product/product-table";
 import { ProductDeletedTable } from "@/components/product/product-deleted-table";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet } from "@/lib/api";
 
 interface ProductType {
   id: string;
@@ -26,7 +25,7 @@ interface ProductionCenter {
 export default function ProductsPage() {
   const [tab, setTab] = useState("all");
 
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
@@ -38,7 +37,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [deleted, setDeleted] = useState([]);
+  const [deleted, setDeleted] = useState<any[]>([]);
   const [deletedMeta, setDeletedMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [deletedPage, setDeletedPage] = useState(1);
   const [deletedLoading, setDeletedLoading] = useState(false);
@@ -55,8 +54,7 @@ export default function ProductsPage() {
       params.set("page", String(page));
       params.set("limit", "10");
 
-      const res = await fetch(`${API_URL}/api/products?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: any[]; meta: typeof meta }>(`/products?${params}`);
       setProducts(json.data);
       setMeta(json.meta);
     } catch {
@@ -72,8 +70,9 @@ export default function ProductsPage() {
       const params = new URLSearchParams();
       params.set("page", String(deletedPage));
       params.set("limit", "10");
-      const res = await fetch(`${API_URL}/api/products/deleted?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: any[]; meta: typeof deletedMeta }>(
+        `/products/deleted?${params}`,
+      );
       setDeleted(json.data);
       setDeletedMeta(json.meta);
     } catch {
@@ -84,14 +83,8 @@ export default function ProductsPage() {
   }, [deletedPage]);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/product-types`)
-      .then((r) => r.json())
-      .then(setProductTypes)
-      .catch(() => {});
-    fetch(`${API_URL}/api/production-centers`)
-      .then((r) => r.json())
-      .then(setProductionCenters)
-      .catch(() => {});
+    apiGet<ProductType[]>("/product-types").then(setProductTypes).catch(() => {});
+    apiGet<ProductionCenter[]>("/production-centers").then(setProductionCenters).catch(() => {});
   }, []);
 
   useEffect(() => {

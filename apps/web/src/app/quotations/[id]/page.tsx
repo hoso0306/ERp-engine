@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,8 +21,8 @@ import { toast } from "sonner";
 import { QuotationStatusBadge } from "@/components/quotation/quotation-status-badge";
 import { QuotationItemDialog } from "@/components/quotation/quotation-item-dialog";
 import { QuotationItemTable } from "@/components/quotation/quotation-item-table";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 interface QuotationItemParam {
   name: string;
@@ -123,6 +124,7 @@ function isEditable(status: string): boolean {
 export default function QuotationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { hasPermission } = useAuth();
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,12 +166,10 @@ export default function QuotationDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}`);
-      if (!res.ok) { setError("Không tìm thấy báo giá."); return; }
-      const data = await res.json();
+      const data = await apiGet<Quotation>(`/quotations/${id}`);
       setQuotation(data);
-    } catch {
-      setError("Không thể tải báo giá.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Không thể tải báo giá.");
     } finally {
       setLoading(false);
     }
@@ -190,21 +190,15 @@ export default function QuotationDetailPage() {
     e.preventDefault();
     setEditSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: editNote.trim() || null, expiryDate: editExpiry || null }),
+      await apiPatch(`/quotations/${id}`, {
+        note: editNote.trim() || null,
+        expiryDate: editExpiry || null,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
-      }
       toast.success("Đã cập nhật.");
       setEditOpen(false);
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setEditSaving(false);
     }
@@ -214,23 +208,23 @@ export default function QuotationDetailPage() {
     if (!confirm("Xác nhận khách hàng đã duyệt báo giá này? Hành động sẽ sinh Đơn hàng và Phiếu sản xuất.")) return;
     setApproving(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/approve`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json();
-        // Sprint 02 Task 02: Approve bị chặn vì giá tính bằng version cũ —
-        // hiển thị cảnh báo + nút "Tính lại giá", không recalc âm thầm.
-        if (err.errorCode === "PRICING_VERSION_STALE") {
-          setStaleItems(err.staleItems ?? []);
-        }
-        toast.error(err.message || "Không thể duyệt báo giá.");
-        return;
-      }
+      await apiPost(`/quotations/${id}/approve`);
       setStaleItems(null);
       setRecalcChanges(null);
       toast.success("Đã duyệt báo giá. Đơn hàng và Phiếu sản xuất đã được tạo.");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      // Sprint 02 Task 02: Approve bị chặn vì giá tính bằng version cũ —
+      // hiển thị cảnh báo + nút "Tính lại giá", không recalc âm thầm.
+      if (err instanceof ApiError) {
+        const body = err.body as { errorCode?: string; staleItems?: StalePricingItem[] } | undefined;
+        if (body?.errorCode === "PRICING_VERSION_STALE") {
+          setStaleItems(body.staleItems ?? []);
+        }
+        toast.error(err.message || "Không thể duyệt báo giá.");
+      } else {
+        toast.error("Lỗi kết nối server.");
+      }
     } finally {
       setApproving(false);
     }
@@ -240,21 +234,13 @@ export default function QuotationDetailPage() {
   async function handleRecalculate() {
     setRecalculating(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/recalculate-prices`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tính lại giá.");
-        return;
-      }
-      const data = await res.json();
+      const data = await apiPost<{ changes?: RecalcChange[] }>(`/quotations/${id}/recalculate-prices`);
       setStaleItems(null);
       setRecalcChanges(data.changes ?? []);
       toast.success("Đã tính lại giá theo phiên bản quy tắc giá hiện hành.");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setRecalculating(false);
     }
@@ -264,16 +250,11 @@ export default function QuotationDetailPage() {
     if (!confirm("Xác nhận gửi báo giá cho khách hàng?")) return;
     setSending(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/send`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể gửi báo giá.");
-        return;
-      }
+      await apiPost(`/quotations/${id}/send`);
       toast.success("Đã gửi báo giá.");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSending(false);
     }
@@ -284,22 +265,13 @@ export default function QuotationDetailPage() {
     if (!cancelReason.trim()) { toast.error("Vui lòng nhập lý do huỷ."); return; }
     setCancelSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: cancelReason.trim() }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể huỷ báo giá.");
-        return;
-      }
+      await apiPost(`/quotations/${id}/cancel`, { reason: cancelReason.trim() });
       toast.success("Đã huỷ báo giá.");
       setCancelOpen(false);
       setCancelReason("");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setCancelSaving(false);
     }
@@ -311,27 +283,18 @@ export default function QuotationDetailPage() {
     if (!overrideReason.trim()) { toast.error("Vui lòng nhập lý do điều chỉnh."); return; }
     setOverrideSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/override`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          newStatus: overrideStatus,
-          reason: overrideReason.trim(),
-          overrideBy: overrideBy.trim() || undefined,
-        }),
+      await apiPost(`/quotations/${id}/override`, {
+        newStatus: overrideStatus,
+        reason: overrideReason.trim(),
+        overrideBy: overrideBy.trim() || undefined,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể điều chỉnh.");
-        return;
-      }
       toast.success("Đã điều chỉnh trạng thái.");
       setOverrideOpen(false);
       setOverrideReason("");
       setOverrideBy("");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setOverrideSaving(false);
     }
@@ -340,18 +303,11 @@ export default function QuotationDetailPage() {
   async function deleteItem(itemId: string) {
     if (!confirm("Xoá sản phẩm này khỏi báo giá?")) return;
     try {
-      const res = await fetch(`${API_URL}/api/quotations/${id}/items/${itemId}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/quotations/${id}/items/${itemId}`);
       toast.success("Đã xoá sản phẩm.");
       fetchQuotation();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     }
   }
 
@@ -359,6 +315,7 @@ export default function QuotationDetailPage() {
   if (error || !quotation) return <ErrorState description={error ?? "Không tìm thấy báo giá."} onRetry={fetchQuotation} />;
 
   const editable = isEditable(quotation.status);
+  const canEditItems = editable && hasPermission("quotation.update");
   // Cảnh báo quá hạn chỉ áp dụng báo giá còn mở (Nháp/Đã gửi) — testlan1.
   const expired = isExpired(quotation.expiryDate) && editable;
   const groupDiscount = Number(quotation.customer.customerGroup?.discountPercent ?? 0);
@@ -375,14 +332,14 @@ export default function QuotationDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
-            {editable && (
+            {editable && hasPermission("quotation.update") && (
               <Button variant="outline" onClick={openEditHeader}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Sửa thông tin
               </Button>
             )}
             {/* Task 07: PDF download */}
-            {quotation.status !== "CANCELLED" && (
+            {quotation.status !== "CANCELLED" && hasPermission("quotation.print") && (
               <a href={`/quotations/${id}/print`} target="_blank" rel="noreferrer">
                 <Button variant="outline">
                   <FileDown className="mr-2 h-4 w-4" />
@@ -390,22 +347,24 @@ export default function QuotationDetailPage() {
                 </Button>
               </a>
             )}
-            {/* Task 05: Send */}
-            {quotation.status === "DRAFT" && (
+            {/* Task 05: Send — không có permission key riêng (quotation.md/permission.md
+                không liệt kê "send"), dùng chung quotation.update vì đây là bước
+                chỉnh sửa/tiến trạng thái báo giá còn mở, không phải quyền độc lập. */}
+            {quotation.status === "DRAFT" && hasPermission("quotation.update") && (
               <Button onClick={handleSend} disabled={sending}>
                 <Send className="mr-2 h-4 w-4" />
                 {sending ? "Đang gửi..." : "Gửi báo giá"}
               </Button>
             )}
             {/* Task 06: Approve */}
-            {quotation.status === "SENT" && (
+            {quotation.status === "SENT" && hasPermission("quotation.approve") && (
               <Button onClick={handleApprove} disabled={approving} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 {approving ? "Đang xử lý..." : "Khách đã duyệt"}
               </Button>
             )}
             {/* Task 05: Cancel */}
-            {canCancel && (
+            {canCancel && hasPermission("quotation.cancel") && (
               <Button
                 variant="destructive"
                 onClick={() => { setCancelReason(""); setCancelOpen(true); }}
@@ -415,20 +374,22 @@ export default function QuotationDetailPage() {
               </Button>
             )}
             {/* Task 08: Manual Override */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => {
-                setOverrideStatus("");
-                setOverrideReason("");
-                setOverrideBy("");
-                setOverrideOpen(true);
-              }}
-            >
-              <Settings2 className="mr-2 h-4 w-4" />
-              Override
-            </Button>
+            {hasPermission("quotation.override") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => {
+                  setOverrideStatus("");
+                  setOverrideReason("");
+                  setOverrideBy("");
+                  setOverrideOpen(true);
+                }}
+              >
+                <Settings2 className="mr-2 h-4 w-4" />
+                Override
+              </Button>
+            )}
           </div>
         }
       />
@@ -550,7 +511,12 @@ export default function QuotationDetailPage() {
           {quotation.salesOrderId && (
             <div className="flex gap-2">
               <span className="text-muted-foreground w-32 shrink-0">Đơn hàng</span>
-              <Badge variant="secondary" className="font-mono text-xs">Đã tạo đơn hàng</Badge>
+              <Link
+                href={`/orders/${quotation.salesOrderId}`}
+                className="text-primary underline underline-offset-2 text-sm"
+              >
+                Xem đơn hàng
+              </Link>
             </div>
           )}
           {quotation.note && (
@@ -568,7 +534,7 @@ export default function QuotationDetailPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">Danh sách sản phẩm</h3>
-          {editable && (
+          {canEditItems && (
             <Button
               onClick={() => {
                 setEditingItem(null);
@@ -583,7 +549,7 @@ export default function QuotationDetailPage() {
 
         <QuotationItemTable
           items={quotation.items}
-          editable={editable}
+          editable={canEditItems}
           onEdit={(item) => {
             setEditingItem(item);
             setItemDialogOpen(true);

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet } from "@/lib/api";
 
 interface QuotationItemParam {
   name: string;
@@ -91,27 +90,21 @@ export default function QuotationPrintPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/quotations/${id}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Không tìm thấy báo giá.");
-        return r.json();
-      })
-      .then((data: Quotation) => {
+    apiGet<Quotation>(`/quotations/${id}`)
+      .then((data) => {
         setQuotation(data);
         document.title = `${data.code} - ${data.customer.name}`;
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message || "Không tìm thấy báo giá."));
 
     // Company info + điều khoản mặc định — đọc qua Settings module, không hard-code
     // (xem knowledge/modules/setting.md mục "Document Settings").
-    fetch(`${API_URL}/api/settings/company`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: Company | null) => setCompany(data))
+    apiGet<Company | null>("/settings/company")
+      .then((data) => setCompany(data))
       .catch(() => setCompany(null));
 
-    fetch(`${API_URL}/api/settings/Document`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: Setting[]) => {
+    apiGet<Setting[]>("/settings/Document")
+      .then((data) => {
         const terms = data.find((s) => s.key === "quotationDefaultTerms")?.value ?? "";
         setQuotationDefaultTerms(terms);
       })

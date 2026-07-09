@@ -30,8 +30,7 @@ import {
   type PricingRuleItem,
 } from "@/components/product/pricing-rule-item-dialog";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "@/lib/api";
 
 interface ProductParameter {
   id: string;
@@ -114,11 +113,9 @@ export default function PricingRuleVersionPage() {
 
   const loadVersion = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}`,
+      const data = await apiGet<PricingRuleVersion>(
+        `/products/${productId}/pricing-rule/versions/${versionId}`,
       );
-      if (!res.ok) throw new Error("Không tìm thấy phiên bản.");
-      const data: PricingRuleVersion = await res.json();
       setVersion(data);
       setFormName(data.name ?? "");
       setFormExpr(data.expression ?? "");
@@ -126,7 +123,7 @@ export default function PricingRuleVersionPage() {
       setFormRoundValue(data.priceRoundValue != null ? String(data.priceRoundValue) : "");
       setFormNote(data.note ?? "");
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof ApiError ? err.message : "Không tìm thấy phiên bản.");
     } finally {
       setLoading(false);
     }
@@ -134,9 +131,8 @@ export default function PricingRuleVersionPage() {
 
   useEffect(() => {
     loadVersion();
-    fetch(`${API_URL}/api/products/${productId}/parameters`)
-      .then((r) => r.json())
-      .then((data: ProductParameter[]) => {
+    apiGet<ProductParameter[]>(`/products/${productId}/parameters`)
+      .then((data) => {
         setParameters(data);
         const init: Record<string, string> = {};
         data.filter((p) => p.type === "NUMBER").forEach((p) => { init[p.name] = ""; });
@@ -155,24 +151,14 @@ export default function PricingRuleVersionPage() {
         priceRoundValue: formRoundValue ? Number(formRoundValue) : null,
         note: formNote.trim() || null,
       };
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
+      const updated = await apiPatch<PricingRuleVersion>(
+        `/products/${productId}/pricing-rule/versions/${versionId}`,
+        body,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
-      }
-      const updated = await res.json();
       setVersion(updated);
       toast.success("Đã lưu thay đổi.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu.");
     } finally {
       setSaving(false);
     }
@@ -181,20 +167,13 @@ export default function PricingRuleVersionPage() {
   async function handleActivate() {
     setActivating(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}/activate`,
-        { method: "PATCH" },
+      const updated = await apiPatch<PricingRuleVersion>(
+        `/products/${productId}/pricing-rule/versions/${versionId}/activate`,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể kích hoạt.");
-        return;
-      }
-      const updated = await res.json();
       setVersion(updated);
       toast.success("Đã kích hoạt phiên bản.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể kích hoạt.");
     } finally {
       setActivating(false);
     }
@@ -202,38 +181,24 @@ export default function PricingRuleVersionPage() {
 
   async function handleDeleteVersion() {
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/products/${productId}/pricing-rule/versions/${versionId}`);
       toast.success("Đã xoá phiên bản.");
       router.push(`/products/${productId}`);
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá.");
     }
   }
 
   async function handleDeleteItem() {
     if (!itemDeleteTarget) return;
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}/items/${itemDeleteTarget.id}`,
-        { method: "DELETE" },
+      await apiDelete(
+        `/products/${productId}/pricing-rule/versions/${versionId}/items/${itemDeleteTarget.id}`,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá Rule.");
-        return;
-      }
       toast.success("Đã xoá Rule.");
       loadVersion();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá Rule.");
     }
   }
 
@@ -245,22 +210,13 @@ export default function PricingRuleVersionPage() {
       for (const [k, v] of Object.entries(previewParams)) {
         if (v !== "") numericParams[k] = Number(v);
       }
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions/${versionId}/preview`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ params: numericParams }),
-        },
+      const result = await apiPost<PreviewResult>(
+        `/products/${productId}/pricing-rule/versions/${versionId}/preview`,
+        { params: numericParams },
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tính giá.");
-        return;
-      }
-      setPreviewResult(await res.json());
-    } catch {
-      toast.error("Lỗi kết nối server.");
+      setPreviewResult(result);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể tính giá.");
     } finally {
       setPreviewing(false);
     }

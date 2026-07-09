@@ -23,8 +23,7 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ConfirmDialog } from "@/components/shared";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
 
 interface ProductionCenter {
   id: string;
@@ -51,8 +50,7 @@ export default function ProductionCentersPage() {
 
   const fetchCenters = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/production-centers`);
-      if (res.ok) setCenters(await res.json());
+      setCenters(await apiGet<ProductionCenter[]>("/production-centers"));
     } catch {
       // silent
     } finally {
@@ -88,24 +86,17 @@ export default function ProductionCentersPage() {
     }
     setSubmitting(true);
     try {
-      const url = editTarget
-        ? `${API_URL}/api/production-centers/${editTarget.id}`
-        : `${API_URL}/api/production-centers`;
-      const res = await fetch(url, {
-        method: editTarget ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: description.trim() || null, isActive }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
+      const body = { name: name.trim(), description: description.trim() || null, isActive };
+      if (editTarget) {
+        await apiPatch(`/production-centers/${editTarget.id}`, body);
+      } else {
+        await apiPost("/production-centers", body);
       }
       toast.success(editTarget ? "Đã cập nhật." : "Đã thêm xưởng sản xuất.");
       setDialogOpen(false);
       fetchCenters();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu.");
     } finally {
       setSubmitting(false);
     }
@@ -114,36 +105,20 @@ export default function ProductionCentersPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(`${API_URL}/api/production-centers/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/production-centers/${deleteTarget.id}`);
       toast.success("Đã xoá xưởng sản xuất.");
       fetchCenters();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá.");
     }
   }
 
   async function toggleActive(center: ProductionCenter) {
     try {
-      const res = await fetch(`${API_URL}/api/production-centers/${center.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !center.isActive }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật.");
-        return;
-      }
+      await apiPatch(`/production-centers/${center.id}`, { isActive: !center.isActive });
       fetchCenters();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể cập nhật.");
     }
   }
 

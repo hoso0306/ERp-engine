@@ -14,8 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, ApiError } from "@/lib/api";
 
 interface Option {
   id: string;
@@ -55,18 +54,9 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/product-types`)
-      .then((r) => r.json())
-      .then(setProductTypes)
-      .catch(() => {});
-    fetch(`${API_URL}/api/units`)
-      .then((r) => r.json())
-      .then(setUnits)
-      .catch(() => {});
-    fetch(`${API_URL}/api/production-centers`)
-      .then((r) => r.json())
-      .then(setProductionCenters)
-      .catch(() => {});
+    apiGet<Option[]>("/product-types").then(setProductTypes).catch(() => {});
+    apiGet<Option[]>("/units").then(setUnits).catch(() => {});
+    apiGet<ProductionCenterOption[]>("/production-centers").then(setProductionCenters).catch(() => {});
   }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -83,23 +73,12 @@ export function ProductEditForm({ product }: ProductEditFormProps) {
     };
 
     try {
-      const res = await fetch(`${API_URL}/api/products/${product.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật sản phẩm.");
-        return;
-      }
-
+      await apiPatch(`/products/${product.id}`, body);
       toast.success("Cập nhật thành công.");
       router.push(`/products/${product.id}`);
       router.refresh();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể cập nhật sản phẩm.");
     } finally {
       setSubmitting(false);
     }

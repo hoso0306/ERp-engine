@@ -9,8 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { MaterialPriceList } from "@/components/material/material-price-list";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, ApiError } from "@/lib/api";
 
 interface MaterialPrice {
   id: string;
@@ -64,12 +63,10 @@ export default function MaterialDetailPage() {
 
   const fetchMaterial = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/materials/${params.id}`);
-      if (!res.ok) throw new Error("Không tìm thấy vật tư.");
-      const data = await res.json();
+      const data = await apiGet<Material>(`/materials/${params.id}`);
       setMaterial(data);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof ApiError ? err.message : "Không tìm thấy vật tư.");
     } finally {
       setLoading(false);
     }
@@ -83,21 +80,13 @@ export default function MaterialDetailPage() {
     if (!material) return;
     setToggling(true);
     try {
-      const res = await fetch(`${API_URL}/api/materials/${material.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !material.isActive }),
+      const updated = await apiPatch<Material>(`/materials/${material.id}`, {
+        isActive: !material.isActive,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật trạng thái.");
-        return;
-      }
-      const updated = await res.json();
       setMaterial((prev) => prev ? { ...prev, isActive: updated.isActive } : prev);
       toast.success(updated.isActive ? "Đã kích hoạt vật tư." : "Đã ngừng sử dụng vật tư.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể cập nhật trạng thái.");
     } finally {
       setToggling(false);
     }

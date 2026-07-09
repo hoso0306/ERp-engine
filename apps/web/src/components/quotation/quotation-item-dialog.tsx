@@ -14,8 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
 
 interface ProductParam {
   id: string;
@@ -92,8 +91,7 @@ export function QuotationItemDialog({
   // Load active products (lightweight list, no parameters)
   useEffect(() => {
     if (!open) return;
-    fetch(`${API_URL}/api/products?status=ACTIVE&limit=200`)
-      .then((r) => r.json())
+    apiGet<{ data: ProductOption[] }>("/products?status=ACTIVE&limit=200")
       .then((json) => setProducts(json.data ?? []))
       .catch(() => {});
   }, [open]);
@@ -103,9 +101,8 @@ export function QuotationItemDialog({
     const base = products.find((p) => p.id === id);
     if (!base) return;
     try {
-      const res = await fetch(`${API_URL}/api/products/${id}/parameters`);
-      const params: ProductParam[] = res.ok ? await res.json() : [];
-      setSelectedProduct({ ...base, parameters: params });
+      const params = await apiGet<ProductParam[]>(`/products/${id}/parameters`);
+      setSelectedProduct({ ...base, parameters: params ?? [] });
       return params;
     } catch {
       setSelectedProduct({ ...base, parameters: [] });
@@ -160,17 +157,11 @@ export function QuotationItemDialog({
 
     setPriceLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/pricing-engine/calculate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, parameters }),
+      const data = await apiPost<{ systemPrice: number }>("/pricing-engine/calculate", {
+        productId,
+        parameters,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSystemPrice(data.systemPrice);
-      } else {
-        setSystemPrice(null);
-      }
+      setSystemPrice(data.systemPrice);
     } catch {
       setSystemPrice(null);
     } finally {
@@ -235,27 +226,17 @@ export function QuotationItemDialog({
 
     setSubmitting(true);
     try {
-      const url = isEdit
-        ? `${API_URL}/api/quotations/${quotationId}/items/${item!.id}`
-        : `${API_URL}/api/quotations/${quotationId}/items`;
-
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
+      if (isEdit) {
+        await apiPatch(`/quotations/${quotationId}/items/${item!.id}`, body);
+      } else {
+        await apiPost(`/quotations/${quotationId}/items`, body);
       }
 
       toast.success(isEdit ? "Cập nhật thành công." : "Thêm sản phẩm thành công.");
       onOpenChange(false);
       onSaved();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSubmitting(false);
     }

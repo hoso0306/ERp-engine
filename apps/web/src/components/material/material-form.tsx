@@ -14,8 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 
 interface Unit {
   id: string;
@@ -36,14 +35,8 @@ export function MaterialForm() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/units`)
-      .then((r) => r.json())
-      .then(setUnits)
-      .catch(() => {});
-    fetch(`${API_URL}/api/production-centers`)
-      .then((r) => r.json())
-      .then(setCenters)
-      .catch(() => {});
+    apiGet<Unit[]>("/units").then(setUnits).catch(() => {});
+    apiGet<ProductionCenterOption[]>("/production-centers").then(setCenters).catch(() => {});
   }, []);
 
   function toggleCenter(id: string) {
@@ -74,22 +67,11 @@ export function MaterialForm() {
     if (selectedCenterIds.length > 0) body.productionCenterIds = selectedCenterIds;
 
     try {
-      const res = await fetch(`${API_URL}/api/materials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tạo vật tư.");
-        return;
-      }
-
+      await apiPost("/materials", body);
       toast.success("Tạo vật tư thành công.");
       router.push("/materials");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể tạo vật tư.");
     } finally {
       setSubmitting(false);
     }

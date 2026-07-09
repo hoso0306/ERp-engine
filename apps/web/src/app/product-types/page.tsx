@@ -23,8 +23,7 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, ConfirmDialog } from "@/components/shared";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
 
 interface ProductType {
   id: string;
@@ -48,8 +47,7 @@ export default function ProductTypesPage() {
 
   const fetchTypes = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/product-types`);
-      if (res.ok) setTypes(await res.json());
+      setTypes(await apiGet<ProductType[]>("/product-types"));
     } catch {
       // silent
     } finally {
@@ -83,24 +81,17 @@ export default function ProductTypesPage() {
     }
     setSubmitting(true);
     try {
-      const url = editTarget
-        ? `${API_URL}/api/product-types/${editTarget.id}`
-        : `${API_URL}/api/product-types`;
-      const res = await fetch(url, {
-        method: editTarget ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), isActive }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
+      const body = { name: name.trim(), isActive };
+      if (editTarget) {
+        await apiPatch(`/product-types/${editTarget.id}`, body);
+      } else {
+        await apiPost("/product-types", body);
       }
       toast.success(editTarget ? "Đã cập nhật." : "Đã thêm loại sản phẩm.");
       setDialogOpen(false);
       fetchTypes();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu.");
     } finally {
       setSubmitting(false);
     }
@@ -109,36 +100,20 @@ export default function ProductTypesPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(`${API_URL}/api/product-types/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/product-types/${deleteTarget.id}`);
       toast.success("Đã xoá loại sản phẩm.");
       fetchTypes();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá.");
     }
   }
 
   async function toggleActive(type: ProductType) {
     try {
-      const res = await fetch(`${API_URL}/api/product-types/${type.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !type.isActive }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật.");
-        return;
-      }
+      await apiPatch(`/product-types/${type.id}`, { isActive: !type.isActive });
       fetchTypes();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể cập nhật.");
     }
   }
 

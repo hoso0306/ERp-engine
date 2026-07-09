@@ -11,8 +11,8 @@ import { ProductParameterList } from "@/components/product/product-parameter-lis
 import { PricingRuleSection } from "@/components/product/pricing-rule-section";
 import { MaterialRequirementSection } from "@/components/product/material-requirement-section";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, apiDelete, apiUrl, ApiError } from "@/lib/api";
+import { getStoredToken } from "@/lib/auth-cookie";
 
 interface Product {
   id: string;
@@ -54,49 +54,39 @@ export default function ProductDetailPage() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/products/${params.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Không tìm thấy sản phẩm.");
-        return res.json();
-      })
-      .then(setProduct)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const data = await apiGet<Product>(`/products/${params.id}`);
+        setProduct(data);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Không tìm thấy sản phẩm.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, [params.id]);
 
   async function handleDelete() {
     try {
-      const res = await fetch(`${API_URL}/api/products/${params.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá sản phẩm.");
-        return;
-      }
+      await apiDelete(`/products/${params.id}`);
       toast.success("Đã xoá sản phẩm.");
       router.push("/products");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá sản phẩm.");
     }
   }
 
   async function handleStatusChange() {
     setActing(true);
     try {
-      const res = await fetch(`${API_URL}/api/products/${params.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
+      const updated = await apiPatch<Product>(`/products/${params.id}/status`, {
+        status: nextStatus,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể đổi trạng thái.");
-        return;
-      }
-      const updated = await res.json();
       setProduct(updated);
       toast.success("Đã cập nhật trạng thái.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể đổi trạng thái.");
     } finally {
       setActing(false);
     }
@@ -110,7 +100,10 @@ export default function ProductDetailPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      const res = await fetch(`${API_URL}/api/products/${params.id}/export`);
+      const token = getStoredToken();
+      const res = await fetch(apiUrl(`/products/${params.id}/export`), {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) {
         toast.error("Không thể xuất file.");
         return;

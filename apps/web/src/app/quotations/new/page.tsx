@@ -12,8 +12,7 @@ import {
   type CustomerOption,
 } from "@/components/quotation/customer-typeahead";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiPost, ApiError } from "@/lib/api";
 
 export default function NewQuotationPage() {
   const router = useRouter();
@@ -32,23 +31,11 @@ export default function NewQuotationPage() {
       if (expiryDate) body.expiryDate = expiryDate;
       if (note.trim()) body.note = note.trim();
 
-      const res = await fetch(`${API_URL}/api/quotations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tạo báo giá.");
-        return;
-      }
-
-      const data = await res.json();
+      const data = await apiPost<{ id: string }>("/quotations", body);
       toast.success("Tạo báo giá thành công.");
       router.push(`/quotations/${data.id}`);
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSubmitting(false);
     }

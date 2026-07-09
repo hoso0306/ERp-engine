@@ -15,8 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
 import { MaterialTable } from "@/components/material/material-table";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet } from "@/lib/api";
 
 interface ProductionCenterOption {
   id: string;
@@ -24,7 +23,7 @@ interface ProductionCenterOption {
 }
 
 export default function MaterialsPage() {
-  const [materials, setMaterials] = useState([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [isActive, setIsActive] = useState("all");
@@ -35,10 +34,7 @@ export default function MaterialsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/production-centers`)
-      .then((r) => r.json())
-      .then(setCenters)
-      .catch(() => {});
+    apiGet<ProductionCenterOption[]>("/production-centers").then(setCenters).catch(() => {});
   }, []);
 
   const fetchMaterials = useCallback(async () => {
@@ -52,8 +48,7 @@ export default function MaterialsPage() {
       params.set("page", String(page));
       params.set("limit", "20");
 
-      const res = await fetch(`${API_URL}/api/materials?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: any[]; meta: typeof meta }>(`/materials?${params}`);
       setMaterials(json.data);
       setMeta(json.meta);
     } catch {

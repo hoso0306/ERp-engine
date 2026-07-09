@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Eye } from "lucide-react";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 
 interface PricingRuleVersion {
   id: string;
@@ -40,11 +39,10 @@ export function PricingRuleSection({ productId }: { productId: string }) {
 
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/products/${productId}/pricing-rule`);
-      if (res.ok) {
-        const data = await res.json();
-        setVersions(data.versions ?? []);
-      }
+      const data = await apiGet<{ versions?: PricingRuleVersion[] }>(
+        `/products/${productId}/pricing-rule`,
+      );
+      setVersions(data.versions ?? []);
     } catch {
       // silent
     } finally {
@@ -59,23 +57,13 @@ export function PricingRuleSection({ productId }: { productId: string }) {
   async function handleCreate() {
     setCreating(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/pricing-rule/versions`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
+      const version = await apiPost<{ id: string }>(
+        `/products/${productId}/pricing-rule/versions`,
+        {},
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tạo phiên bản.");
-        return;
-      }
-      const version = await res.json();
       router.push(`/products/${productId}/pricing-rule/versions/${version.id}`);
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể tạo phiên bản.");
     } finally {
       setCreating(false);
     }

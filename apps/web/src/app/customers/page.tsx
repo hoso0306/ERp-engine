@@ -10,8 +10,8 @@ import { CustomerFilter } from "@/components/customer/customer-filter";
 import { CustomerTable } from "@/components/customer/customer-table";
 import { CustomerDeletedTable } from "@/components/customer/customer-deleted-table";
 import { CustomerImportDialog } from "@/components/customer/customer-import-dialog";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiUrl } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 interface FilterOption {
   id: string;
@@ -19,6 +19,7 @@ interface FilterOption {
 }
 
 export default function CustomersPage() {
+  const { hasPermission } = useAuth();
   const [tab, setTab] = useState("all");
 
   // Active customers state
@@ -51,8 +52,7 @@ export default function CustomersPage() {
       params.set("page", String(page));
       params.set("limit", "10");
 
-      const res = await fetch(`${API_URL}/api/customers?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: never[]; meta: typeof meta }>(`/customers?${params}`);
       setCustomers(json.data);
       setMeta(json.meta);
     } catch {
@@ -65,11 +65,9 @@ export default function CustomersPage() {
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set("page", String(deletedPage));
-      params.set("limit", "10");
-      const res = await fetch(`${API_URL}/api/customers/deleted?${params}`);
-      const json = await res.json();
+      const json = await apiGet<{ data: never[]; meta: typeof deletedMeta }>(
+        `/customers/deleted?page=${deletedPage}&limit=10`,
+      );
       setDeleted(json.data);
       setDeletedMeta(json.meta);
     } catch {
@@ -80,8 +78,8 @@ export default function CustomersPage() {
   }, [deletedPage]);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/customers/groups`).then((r) => r.json()).then(setGroups).catch(() => {});
-    fetch(`${API_URL}/api/customers/routes`).then((r) => r.json()).then(setRoutes).catch(() => {});
+    apiGet<FilterOption[]>("/customers/groups").then(setGroups).catch(() => {});
+    apiGet<FilterOption[]>("/customers/routes").then(setRoutes).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -109,27 +107,33 @@ export default function CustomersPage() {
         description="Quản lý danh sách khách hàng"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              Import
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (search) params.set("search", search);
-                if (groupId !== "all") params.set("customerGroupId", groupId);
-                if (routeId !== "all") params.set("deliveryRouteId", routeId);
-                window.open(`${API_URL}/api/customers/export?${params}`, "_blank");
-              }}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button render={<Link href="/customers/new" />}>
-              <Plus className="mr-2 h-4 w-4" />
-              Thêm khách hàng
-            </Button>
+            {hasPermission("customer.create") && (
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </Button>
+            )}
+            {hasPermission("customer.export") && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (search) params.set("search", search);
+                  if (groupId !== "all") params.set("customerGroupId", groupId);
+                  if (routeId !== "all") params.set("deliveryRouteId", routeId);
+                  window.open(apiUrl(`/customers/export?${params}`), "_blank");
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            )}
+            {hasPermission("customer.create") && (
+              <Button render={<Link href="/customers/new" />}>
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm khách hàng
+              </Button>
+            )}
           </div>
         }
       />

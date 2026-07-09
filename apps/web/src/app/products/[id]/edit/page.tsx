@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { ProductEditForm } from "@/components/product/product-edit-form";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, ApiError } from "@/lib/api";
 
 interface Product {
   id: string;
@@ -26,14 +25,17 @@ export default function EditProductPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/products/${params.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Không tìm thấy sản phẩm.");
-        return res.json();
-      })
-      .then(setProduct)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const data = await apiGet<Product>(`/products/${params.id}`);
+        setProduct(data);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Không tìm thấy sản phẩm.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, [params.id]);
 
   if (loading) return <Loading />;

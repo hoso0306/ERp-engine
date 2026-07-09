@@ -18,8 +18,7 @@ import {
   type ProductParameter,
 } from "./product-parameter-dialog";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiDelete, ApiError } from "@/lib/api";
 
 interface ProductParameterListProps {
   productId: string;
@@ -41,9 +40,7 @@ export function ProductParameterList({ productId }: ProductParameterListProps) {
 
   const fetchParameters = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/products/${productId}/parameters`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiGet<ProductParameter[]>(`/products/${productId}/parameters`);
       setParameters(data);
     } catch {
       // silent
@@ -59,19 +56,11 @@ export function ProductParameterList({ productId }: ProductParameterListProps) {
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/parameters/${deleteTarget.id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá thông số.");
-        return;
-      }
+      await apiDelete(`/products/${productId}/parameters/${deleteTarget.id}`);
       toast.success("Đã xoá thông số.");
       fetchParameters();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá thông số.");
     }
   }
 

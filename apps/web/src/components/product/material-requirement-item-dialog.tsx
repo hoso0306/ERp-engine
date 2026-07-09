@@ -20,8 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
 
 interface Material {
   id: string;
@@ -73,8 +72,7 @@ export function MaterialRequirementItemDialog({
   useEffect(() => {
     if (!open) return;
     setLoadingMaterials(true);
-    fetch(`${API_URL}/api/materials?limit=200`)
-      .then((r) => r.json())
+    apiGet<{ data: Material[] }>("/materials?limit=200")
       .then((d) => setMaterials(d.data ?? []))
       .catch(() => {})
       .finally(() => setLoadingMaterials(false));
@@ -125,27 +123,23 @@ export function MaterialRequirementItemDialog({
     };
 
     try {
-      const url = isEdit
-        ? `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/items/${item.id}`
-        : `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/items`;
-
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu Item.");
-        return;
+      if (isEdit) {
+        await apiPatch(
+          `/products/${productId}/material-requirement/versions/${versionId}/items/${item.id}`,
+          body,
+        );
+      } else {
+        await apiPost(
+          `/products/${productId}/material-requirement/versions/${versionId}/items`,
+          body,
+        );
       }
 
       toast.success(isEdit ? "Cập nhật thành công." : "Thêm Item thành công.");
       onOpenChange(false);
       onSaved();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu Item.");
     } finally {
       setSubmitting(false);
     }

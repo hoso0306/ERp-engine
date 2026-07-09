@@ -23,8 +23,7 @@ import {
   type MaterialRequirementItem,
 } from "@/components/product/material-requirement-item-dialog";
 import { toast } from "sonner";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "@/lib/api";
 
 interface ProductParameter {
   id: string;
@@ -96,16 +95,14 @@ export default function MaterialRequirementVersionPage() {
 
   const loadVersion = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
+      const data = await apiGet<MaterialRequirementVersion>(
+        `/products/${productId}/material-requirement/versions/${versionId}`,
       );
-      if (!res.ok) throw new Error("Không tìm thấy phiên bản.");
-      const data: MaterialRequirementVersion = await res.json();
       setVersion(data);
       setName(data.name ?? "");
       setNote(data.note ?? "");
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof ApiError ? err.message : "Không tìm thấy phiên bản.");
     } finally {
       setLoading(false);
     }
@@ -113,9 +110,8 @@ export default function MaterialRequirementVersionPage() {
 
   useEffect(() => {
     loadVersion();
-    fetch(`${API_URL}/api/products/${productId}/parameters`)
-      .then((r) => r.json())
-      .then((data: ProductParameter[]) => setParameters(data.filter((p) => p.usedInMaterial)))
+    apiGet<ProductParameter[]>(`/products/${productId}/parameters`)
+      .then((data) => setParameters(data.filter((p) => p.usedInMaterial)))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -125,24 +121,14 @@ export default function MaterialRequirementVersionPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() || null, note: note.trim() || null }),
-        },
+      const updated = await apiPatch<MaterialRequirementVersion>(
+        `/products/${productId}/material-requirement/versions/${versionId}`,
+        { name: name.trim() || null, note: note.trim() || null },
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể lưu.");
-        return;
-      }
-      const updated = await res.json();
       setVersion(updated);
       toast.success("Đã lưu.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu.");
     } finally {
       setSaving(false);
     }
@@ -151,20 +137,13 @@ export default function MaterialRequirementVersionPage() {
   async function handleActivate() {
     setActivating(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/activate`,
-        { method: "PATCH" },
+      const updated = await apiPatch<MaterialRequirementVersion>(
+        `/products/${productId}/material-requirement/versions/${versionId}/activate`,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể kích hoạt.");
-        return;
-      }
-      const updated = await res.json();
       setVersion(updated);
       toast.success("Đã kích hoạt phiên bản.");
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể kích hoạt.");
     } finally {
       setActivating(false);
     }
@@ -172,38 +151,24 @@ export default function MaterialRequirementVersionPage() {
 
   async function handleDeleteVersion() {
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá.");
-        return;
-      }
+      await apiDelete(`/products/${productId}/material-requirement/versions/${versionId}`);
       toast.success("Đã xoá phiên bản.");
       router.push(`/products/${productId}`);
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá.");
     }
   }
 
   async function handleDeleteItem() {
     if (!deleteItemTarget) return;
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/items/${deleteItemTarget.id}`,
-        { method: "DELETE" },
+      await apiDelete(
+        `/products/${productId}/material-requirement/versions/${versionId}/items/${deleteItemTarget.id}`,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể xoá Item.");
-        return;
-      }
       toast.success("Đã xoá Item.");
       loadVersion();
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá Item.");
     }
   }
 
@@ -217,23 +182,13 @@ export default function MaterialRequirementVersionPage() {
     setPreviewing(true);
     setPreviewResult(null);
     try {
-      const res = await fetch(
-        `${API_URL}/api/products/${productId}/material-requirement/versions/${versionId}/preview`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
-        },
+      const result = await apiPost<NonNullable<typeof previewResult>>(
+        `/products/${productId}/material-requirement/versions/${versionId}/preview`,
+        params,
       );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.message || "Không thể tính định mức.");
-        return;
-      }
-      const result = await res.json();
       setPreviewResult(result);
-    } catch {
-      toast.error("Lỗi kết nối server.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể tính định mức.");
     } finally {
       setPreviewing(false);
     }

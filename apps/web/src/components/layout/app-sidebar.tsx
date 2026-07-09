@@ -16,9 +16,11 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { navigation } from "@/config/navigation";
+import { useAuth } from "@/context/auth-context";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { hasPermission } = useAuth();
 
   return (
     <Sidebar collapsible="icon">
@@ -32,12 +34,18 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {navigation.map((group) => (
+        {navigation.map((group) => {
+          const visibleItems = group.items.filter(
+            (item) => !item.requiredPermission || hasPermission(item.requiredPermission),
+          );
+          if (visibleItems.length === 0) return null;
+
+          return (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => {
+                {visibleItems.map((item) => {
                   const isActive =
                     item.href === "/"
                       ? pathname === "/"
@@ -79,7 +87,8 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ))}
+          );
+        })}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
