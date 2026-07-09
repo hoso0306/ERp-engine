@@ -5,7 +5,11 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
-import { QuotationFilter } from "@/components/quotation/quotation-filter";
+import {
+  QuotationFilter,
+  TAB_STATUS_PARAM,
+  type QuotationTab,
+} from "@/components/quotation/quotation-filter";
 import { QuotationTable } from "@/components/quotation/quotation-table";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -14,7 +18,10 @@ export default function QuotationsPage() {
   const [quotations, setQuotations] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  // Mặc định tab "Chờ xử lý" (DRAFT + SENT) — thiết kế chốt 08/07/2026.
+  const [tab, setTab] = useState<QuotationTab>("pending");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +32,10 @@ export default function QuotationsPage() {
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      if (status !== "all") params.set("status", status);
+      const statusParam = TAB_STATUS_PARAM[tab];
+      if (statusParam) params.set("status", statusParam);
+      if (dateFrom) params.set("createdFrom", dateFrom);
+      if (dateTo) params.set("createdTo", dateTo);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -38,7 +48,7 @@ export default function QuotationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, page]);
+  }, [search, tab, dateFrom, dateTo, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchQuotations, search ? 300 : 0);
@@ -47,7 +57,7 @@ export default function QuotationsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status]);
+  }, [search, tab, dateFrom, dateTo]);
 
   return (
     <div className="space-y-6">
@@ -65,14 +75,25 @@ export default function QuotationsPage() {
       <QuotationFilter
         search={search}
         onSearchChange={setSearch}
-        status={status}
-        onStatusChange={setStatus}
+        tab={tab}
+        onTabChange={setTab}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
       />
 
       {loading && <Loading />}
       {error && <ErrorState description={error} onRetry={fetchQuotations} />}
       {!loading && !error && quotations.length === 0 && (
-        <EmptyState title="Chưa có báo giá" description="Chưa có báo giá nào được tạo." />
+        <EmptyState
+          title="Không có báo giá"
+          description={
+            tab === "pending"
+              ? "Không có báo giá nào đang chờ xử lý."
+              : "Không có báo giá nào khớp bộ lọc."
+          }
+        />
       )}
       {!loading && !error && quotations.length > 0 && (
         <QuotationTable quotations={quotations} meta={meta} onPageChange={setPage} />

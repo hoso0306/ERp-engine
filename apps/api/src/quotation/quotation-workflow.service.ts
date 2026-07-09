@@ -85,9 +85,37 @@ export class QuotationWorkflowService {
       where.customerId = query.customerId;
     }
 
+    // Hỗ trợ nhiều trạng thái phân tách dấu phẩy (tab "Chờ xử lý" = DRAFT,SENT).
     const validStatuses: QuotationStatus[] = ['DRAFT', 'SENT', 'APPROVED', 'CANCELLED'];
-    if (query.status && validStatuses.includes(query.status as QuotationStatus)) {
-      where.status = query.status as QuotationStatus;
+    if (query.status) {
+      const statuses = query.status
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is QuotationStatus =>
+          validStatuses.includes(s as QuotationStatus),
+        );
+      if (statuses.length === 1) {
+        where.status = statuses[0];
+      } else if (statuses.length > 1) {
+        where.status = { in: statuses };
+      }
+    }
+
+    // Lọc theo khoảng ngày tạo (createdTo lấy hết ngày đó).
+    const createdAtFilter: Prisma.DateTimeFilter = {};
+    if (query.createdFrom) {
+      const from = new Date(query.createdFrom);
+      if (!isNaN(from.getTime())) createdAtFilter.gte = from;
+    }
+    if (query.createdTo) {
+      const to = new Date(query.createdTo);
+      if (!isNaN(to.getTime())) {
+        to.setHours(23, 59, 59, 999);
+        createdAtFilter.lte = to;
+      }
+    }
+    if (Object.keys(createdAtFilter).length > 0) {
+      where.createdAt = createdAtFilter;
     }
 
     const [data, total] = await Promise.all([

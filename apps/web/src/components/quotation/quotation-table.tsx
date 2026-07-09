@@ -73,7 +73,10 @@ export function QuotationTable({ quotations, meta, onPageChange }: QuotationTabl
           <TableBody>
             {quotations.map((q) => {
               const total = q.items.reduce((s, i) => s + Number(i.subtotal), 0);
-              const expired = isExpired(q.expiryDate);
+              // Cảnh báo quá hạn chỉ áp dụng báo giá còn mở (Nháp/Đã gửi) —
+              // báo giá Đã duyệt/Đã huỷ không còn ý nghĩa hết hạn (testlan1).
+              const expired =
+                isExpired(q.expiryDate) && (q.status === "DRAFT" || q.status === "SENT");
 
               return (
                 <TableRow

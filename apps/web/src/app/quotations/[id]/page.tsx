@@ -359,7 +359,8 @@ export default function QuotationDetailPage() {
   if (error || !quotation) return <ErrorState description={error ?? "Không tìm thấy báo giá."} onRetry={fetchQuotation} />;
 
   const editable = isEditable(quotation.status);
-  const expired = isExpired(quotation.expiryDate);
+  // Cảnh báo quá hạn chỉ áp dụng báo giá còn mở (Nháp/Đã gửi) — testlan1.
+  const expired = isExpired(quotation.expiryDate) && editable;
   const groupDiscount = Number(quotation.customer.customerGroup?.discountPercent ?? 0);
   const canCancel = quotation.status !== "CANCELLED";
 
