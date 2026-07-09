@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared";
 import { Button } from "@/components/ui/button";
@@ -8,46 +8,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+  CustomerTypeahead,
+  type CustomerOption,
+} from "@/components/quotation/customer-typeahead";
 import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-interface CustomerOption {
-  id: string;
-  code: string;
-  name: string;
-  phone: string;
-}
-
 export default function NewQuotationPage() {
   const router = useRouter();
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
-  const [customerId, setCustomerId] = useState("");
-  const [customerSearch, setCustomerSearch] = useState("");
+  const [customer, setCustomer] = useState<CustomerOption | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (customerSearch) params.set("search", customerSearch);
-    params.set("limit", "50");
-    params.set("status", "ACTIVE");
-    fetch(`${API_URL}/api/customers?${params}`)
-      .then((r) => r.json())
-      .then((json) => setCustomers(json.data ?? []))
-      .catch(() => {});
-  }, [customerSearch]);
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!customerId) { toast.error("Vui lòng chọn khách hàng."); return; }
+    if (!customer) { toast.error("Vui lòng chọn khách hàng."); return; }
 
     setSubmitting(true);
     try {
-      const body: Record<string, unknown> = { customerId };
+      const body: Record<string, unknown> = { customerId: customer.id };
       if (expiryDate) body.expiryDate = expiryDate;
       if (note.trim()) body.note = note.trim();
 
@@ -81,27 +62,7 @@ export default function NewQuotationPage() {
         <fieldset className="space-y-4">
           <div className="space-y-2">
             <Label>Khách hàng *</Label>
-            <Input
-              placeholder="Tìm theo tên hoặc số điện thoại..."
-              value={customerSearch}
-              onChange={(e) => {
-                setCustomerSearch(e.target.value);
-                setCustomerId("");
-              }}
-              className="mb-2"
-            />
-            <Select value={customerId} onValueChange={(v) => setCustomerId(v ?? "")} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn khách hàng..." />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name} — {c.phone}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CustomerTypeahead value={customer} onChange={setCustomer} />
           </div>
 
           <div className="space-y-2">
@@ -127,7 +88,7 @@ export default function NewQuotationPage() {
         </fieldset>
 
         <div className="flex gap-3">
-          <Button type="submit" disabled={submitting || !customerId}>
+          <Button type="submit" disabled={submitting || !customer}>
             {submitting ? "Đang tạo..." : "Tạo báo giá"}
           </Button>
           <Button type="button" variant="outline" onClick={() => router.push("/quotations")}>
