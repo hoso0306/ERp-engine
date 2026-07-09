@@ -317,7 +317,7 @@ export default function MaterialRequirementVersionPage() {
       {/* Items */}
       <div className="rounded-lg border p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">Danh sách nguyên liệu</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Danh sách vật tư</h2>
           {isDraft && (
             <Button
               size="sm"
@@ -339,7 +339,7 @@ export default function MaterialRequirementVersionPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nguyên liệu</TableHead>
+                  <TableHead>Vật tư</TableHead>
                   <TableHead>Expression</TableHead>
                   <TableHead className="text-right w-24">Hao hụt (%)</TableHead>
                   <TableHead className="text-right w-28">Round Step</TableHead>
@@ -450,7 +450,7 @@ export default function MaterialRequirementVersionPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Nguyên liệu</TableHead>
+                        <TableHead>Vật tư</TableHead>
                         <TableHead className="text-right">Số lượng gốc</TableHead>
                         <TableHead className="text-right">Sau hao hụt</TableHead>
                         <TableHead className="text-right">Sau làm tròn</TableHead>
@@ -523,7 +523,7 @@ export default function MaterialRequirementVersionPage() {
         open={deleteItemOpen}
         onOpenChange={setDeleteItemOpen}
         title="Xoá Item"
-        description={`Xoá nguyên liệu "${deleteItemTarget?.material.name}"?`}
+        description={`Xoá vật tư "${deleteItemTarget?.material.name}"?`}
         confirmLabel="Xoá"
         variant="destructive"
         onConfirm={handleDeleteItem}

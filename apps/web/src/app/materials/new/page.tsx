@@ -6,7 +6,7 @@ import { MaterialForm } from "@/components/material/material-form";
 export default function NewMaterialPage() {
   return (
     <div className="space-y-6">
-      <PageHeader title="Thêm nguyên liệu" description="Tạo nguyên liệu mới" />
+      <PageHeader title="Thêm vật tư" description="Tạo vật tư mới" />
       <MaterialForm />
     </div>
   );

@@ -49,7 +49,7 @@ export const navigation: NavGroup[] = [
     label: "Vận hành",
     items: [
       { title: "Sản phẩm", href: "/products", icon: Package },
-      { title: "Nguyên liệu", href: "/materials", icon: Boxes },
+      { title: "Vật tư", href: "/materials", icon: Boxes },
       { title: "Sản xuất", href: "/production", icon: Factory },
       { title: "Kho", href: "/warehouse", icon: Warehouse },
     ],

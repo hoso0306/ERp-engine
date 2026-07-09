@@ -42,7 +42,7 @@ export default function MaterialsPage() {
       setMaterials(json.data);
       setMeta(json.meta);
     } catch {
-      setError("Không thể tải danh sách nguyên liệu.");
+      setError("Không thể tải danh sách vật tư.");
     } finally {
       setLoading(false);
     }
@@ -60,12 +60,12 @@ export default function MaterialsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Nguyên liệu"
-        description="Quản lý danh mục nguyên liệu và giá"
+        title="Vật tư"
+        description="Quản lý danh mục vật tư và giá"
         actions={
           <Button render={<Link href="/materials/new" />}>
             <Plus className="mr-2 h-4 w-4" />
-            Thêm nguyên liệu
+            Thêm vật tư
           </Button>
         }
       />
@@ -74,7 +74,7 @@ export default function MaterialsPage() {
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Tìm theo tên, mã nguyên liệu..."
+            placeholder="Tìm theo tên, mã vật tư..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -97,8 +97,8 @@ export default function MaterialsPage() {
       {error && <ErrorState description={error} onRetry={fetchMaterials} />}
       {!loading && !error && materials.length === 0 && (
         <EmptyState
-          title="Chưa có nguyên liệu"
-          description="Thêm nguyên liệu đầu tiên để bắt đầu."
+          title="Chưa có vật tư"
+          description="Thêm vật tư đầu tiên để bắt đầu."
         />
       )}
       {!loading && !error && materials.length > 0 && (

@@ -57,11 +57,11 @@ export function MaterialForm() {
 
       if (!res.ok) {
         const err = await res.json();
-        toast.error(err.message || "Không thể tạo nguyên liệu.");
+        toast.error(err.message || "Không thể tạo vật tư.");
         return;
       }
 
-      toast.success("Tạo nguyên liệu thành công.");
+      toast.success("Tạo vật tư thành công.");
       router.push("/materials");
     } catch {
       toast.error("Lỗi kết nối server.");
@@ -73,10 +73,10 @@ export function MaterialForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-6 max-w-2xl">
       <fieldset className="space-y-4">
-        <legend className="text-sm font-medium text-muted-foreground">Thông tin nguyên liệu</legend>
+        <legend className="text-sm font-medium text-muted-foreground">Thông tin vật tư</legend>
 
         <div className="space-y-2">
-          <Label htmlFor="name">Tên nguyên liệu *</Label>
+          <Label htmlFor="name">Tên vật tư *</Label>
           <Input id="name" name="name" required />
         </div>
 
@@ -103,12 +103,12 @@ export function MaterialForm() {
       </fieldset>
 
       <p className="text-sm text-muted-foreground">
-        Mã nguyên liệu sẽ được tạo tự động (NL000001, NL000002, ...).
+        Mã vật tư sẽ được tạo tự động (NL000001, NL000002, ...).
       </p>
 
       <div className="flex gap-3">
         <Button type="submit" disabled={submitting || !unitId}>
-          {submitting ? "Đang lưu..." : "Tạo nguyên liệu"}
+          {submitting ? "Đang lưu..." : "Tạo vật tư"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.push("/materials")}>
           Huỷ

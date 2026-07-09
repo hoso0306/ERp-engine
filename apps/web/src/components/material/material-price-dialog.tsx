@@ -87,7 +87,7 @@ export function MaterialPriceDialog({
 
       if (!res.ok) {
         const err = await res.json();
-        toast.error(err.message || "Không thể lưu giá nguyên liệu.");
+        toast.error(err.message || "Không thể lưu giá vật tư.");
         return;
       }
 
@@ -105,7 +105,7 @@ export function MaterialPriceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Chỉnh sửa giá" : "Thêm giá nguyên liệu"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Chỉnh sửa giá" : "Thêm giá vật tư"}</DialogTitle>
         </DialogHeader>
 
         <form id="price-form" onSubmit={onSubmit} className="space-y-4">

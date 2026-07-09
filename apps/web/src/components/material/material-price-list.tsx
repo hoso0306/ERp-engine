@@ -151,7 +151,7 @@ export function MaterialPriceList({ materialId, prices, onChanged }: MaterialPri
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Xoá giá nguyên liệu"
+        title="Xoá giá vật tư"
         description={`Bạn có chắc muốn xoá mức giá ${deleteTarget ? (deleteTarget.price).toLocaleString("vi-VN") + " đ" : ""}?`}
         confirmLabel="Xoá"
         variant="destructive"

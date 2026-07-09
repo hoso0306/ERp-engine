@@ -26,7 +26,7 @@ export default function EditMaterialPage() {
   useEffect(() => {
     fetch(`${API_URL}/api/materials/${params.id}`)
       .then((res) => {
-        if (!res.ok) throw new Error("Không tìm thấy nguyên liệu.");
+        if (!res.ok) throw new Error("Không tìm thấy vật tư.");
         return res.json();
       })
       .then(setMaterial)
@@ -40,7 +40,7 @@ export default function EditMaterialPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Chỉnh sửa nguyên liệu" description={material.code} />
+      <PageHeader title="Chỉnh sửa vật tư" description={material.code} />
       <MaterialEditForm material={material} />
     </div>
   );

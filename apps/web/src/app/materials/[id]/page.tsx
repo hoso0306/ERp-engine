@@ -28,9 +28,15 @@ interface Material {
   isActive: boolean;
   note: string | null;
   unit: { id: string; name: string } | null;
+  currentStock: number | string;
+  minimumStock: number | string | null;
   prices: MaterialPrice[];
   createdAt: string;
   updatedAt: string;
+}
+
+function formatQty(n: number) {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 4 }).format(n);
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -53,7 +59,7 @@ export default function MaterialDetailPage() {
   const fetchMaterial = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/materials/${params.id}`);
-      if (!res.ok) throw new Error("Không tìm thấy nguyên liệu.");
+      if (!res.ok) throw new Error("Không tìm thấy vật tư.");
       const data = await res.json();
       setMaterial(data);
     } catch (err) {
@@ -83,7 +89,7 @@ export default function MaterialDetailPage() {
       }
       const updated = await res.json();
       setMaterial((prev) => prev ? { ...prev, isActive: updated.isActive } : prev);
-      toast.success(updated.isActive ? "Đã kích hoạt nguyên liệu." : "Đã ngừng sử dụng nguyên liệu.");
+      toast.success(updated.isActive ? "Đã kích hoạt vật tư." : "Đã ngừng sử dụng vật tư.");
     } catch {
       toast.error("Lỗi kết nối server.");
     } finally {
@@ -124,12 +130,43 @@ export default function MaterialDetailPage() {
       </div>
 
       <div className="rounded-lg border p-6">
-        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin nguyên liệu</h3>
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin vật tư</h3>
         <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          <Field label="Mã nguyên liệu" value={material.code} />
+          <Field label="Mã vật tư" value={material.code} />
           <Field label="Đơn vị tính" value={material.unit?.name} />
           <Field label="Ghi chú" value={material.note} />
         </dl>
+      </div>
+
+      {/* Tồn kho (testlan1 mục 1.4) — API trả sẵn currentStock/minimumStock */}
+      <div className="rounded-lg border p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Tồn kho</h3>
+        {(() => {
+          const stock = Number(material.currentStock);
+          const minStock = material.minimumStock !== null ? Number(material.minimumStock) : null;
+          const belowMinimum = minStock !== null && stock < minStock;
+          return (
+            <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <div>
+                <dt className="text-sm text-muted-foreground">Tồn kho hiện tại</dt>
+                <dd className={`mt-1 text-lg font-semibold font-mono ${belowMinimum ? "text-destructive" : ""}`}>
+                  {formatQty(stock)} {material.unit?.name ?? ""}
+                  {belowMinimum && (
+                    <Badge variant="destructive" className="ml-2 align-middle text-[10px]">
+                      Dưới mức tối thiểu
+                    </Badge>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">Tồn kho tối thiểu</dt>
+                <dd className="mt-1 text-lg font-semibold font-mono">
+                  {minStock !== null ? `${formatQty(minStock)} ${material.unit?.name ?? ""}` : "—"}
+                </dd>
+              </div>
+            </dl>
+          );
+        })()}
       </div>
 
       <div className="rounded-lg border p-6">

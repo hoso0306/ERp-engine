@@ -97,7 +97,7 @@ export function MaterialRequirementItemDialog({
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!materialId) {
-      toast.error("Vui lòng chọn nguyên liệu.");
+      toast.error("Vui lòng chọn vật tư.");
       return;
     }
     if (!expression.trim()) {
@@ -160,10 +160,10 @@ export function MaterialRequirementItemDialog({
 
         <form id="mat-req-item-form" onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Nguyên liệu *</Label>
+            <Label>Vật tư *</Label>
             <Select value={materialId} onValueChange={(v) => setMaterialId(v ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder={loadingMaterials ? "Đang tải..." : "Chọn nguyên liệu..."} />
+                <SelectValue placeholder={loadingMaterials ? "Đang tải..." : "Chọn vật tư..."} />
               </SelectTrigger>
               <SelectContent>
                 {materials.map((m) => (
@@ -187,7 +187,7 @@ export function MaterialRequirementItemDialog({
               placeholder="ví dụ: width * height * thickness"
             />
             <p className="text-xs text-muted-foreground">
-              Công thức tính số lượng nguyên liệu. Dùng tên biến của thông số sản phẩm.
+              Công thức tính số lượng vật tư. Dùng tên biến của thông số sản phẩm.
             </p>
           </div>
 

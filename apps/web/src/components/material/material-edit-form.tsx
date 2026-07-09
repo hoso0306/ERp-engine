@@ -69,7 +69,7 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
 
       if (!res.ok) {
         const err = await res.json();
-        toast.error(err.message || "Không thể cập nhật nguyên liệu.");
+        toast.error(err.message || "Không thể cập nhật vật tư.");
         return;
       }
 
@@ -86,15 +86,15 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
   return (
     <form onSubmit={onSubmit} className="space-y-6 max-w-2xl">
       <fieldset className="space-y-4">
-        <legend className="text-sm font-medium text-muted-foreground">Thông tin nguyên liệu</legend>
+        <legend className="text-sm font-medium text-muted-foreground">Thông tin vật tư</legend>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="code">Mã nguyên liệu *</Label>
+            <Label htmlFor="code">Mã vật tư *</Label>
             <Input id="code" name="code" defaultValue={material.code} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Tên nguyên liệu *</Label>
+            <Label htmlFor="name">Tên vật tư *</Label>
             <Input id="name" name="name" defaultValue={material.name} required />
           </div>
         </div>
