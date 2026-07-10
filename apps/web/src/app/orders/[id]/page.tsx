@@ -23,6 +23,7 @@ import { SalesOrderStatusBadge, SALES_ORDER_STATUS_LABEL } from "@/components/sa
 import { PaymentStatusBadge, PAYMENT_STATUS_LABEL } from "@/components/sales-order/payment-status-badge";
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 import { SalesOrderItemTable } from "@/components/sales-order/sales-order-item-table";
+import { ReturnStatusBadge } from "@/components/return/return-status-badge";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -81,6 +82,13 @@ interface Receivable {
   dueDate: string | null;
 }
 
+interface ReturnRow {
+  id: string;
+  code: string;
+  returnDate: string;
+  status: string;
+}
+
 interface SalesOrderTimeline {
   id: string;
   action: string;
@@ -137,6 +145,8 @@ export default function SalesOrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [returns, setReturns] = useState<ReturnRow[]>([]);
+
   const [shipping, setShipping] = useState(false);
   const [delivering, setDelivering] = useState(false);
 
@@ -164,6 +174,13 @@ export default function SalesOrderDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
+
+  useEffect(() => {
+    if (!hasPermission("return.view")) return;
+    apiGet<{ data: ReturnRow[] }>(`/returns?salesOrderId=${id}&limit=50`)
+      .then((json) => setReturns(json.data))
+      .catch(() => setReturns([]));
+  }, [id, hasPermission]);
 
   async function handleShip() {
     if (!confirm("Xác nhận gửi xe cho đơn hàng này?")) return;
@@ -424,6 +441,45 @@ export default function SalesOrderDetailPage() {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Chưa có công nợ.</p>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* Hàng hoàn — chỉ đọc dữ liệu Return, không ảnh hưởng nghiệp vụ đơn hàng */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">Hàng hoàn</h3>
+          {order.status === "DELIVERED" && hasPermission("return.create") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/returns/new?salesOrderId=${order.id}`)}
+            >
+              Tạo phiếu hoàn
+            </Button>
+          )}
+        </div>
+        {returns.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Chưa có phiếu hoàn nào.</p>
+        ) : (
+          <div className="rounded-md border divide-y">
+            {returns.map((r) => (
+              <div key={r.id} className="p-4 flex items-center justify-between">
+                <div>
+                  {hasPermission("return.view") ? (
+                    <Link href={`/returns/${r.id}`} className="font-mono text-sm font-medium text-primary underline underline-offset-2">
+                      {r.code}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-sm font-medium">{r.code}</span>
+                  )}
+                  <span className="text-sm text-muted-foreground"> — {new Date(r.returnDate).toLocaleDateString("vi-VN")}</span>
+                </div>
+                <ReturnStatusBadge status={r.status} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

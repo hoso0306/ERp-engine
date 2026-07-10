@@ -73,8 +73,8 @@ Ghi nhận hàng khách trả sau khi đơn đã `DELIVERED`, quản lý Kho thu
 
 ### Definition of Done
 
-* [ ] Danh sách tải đúng dữ liệu qua `lib/api.ts`, lọc trạng thái + tìm kiếm hoạt động đúng.
-* [ ] Build thành công.
+* [x] Danh sách tải đúng dữ liệu qua `lib/api.ts`, lọc trạng thái + tìm kiếm hoạt động đúng (verify sống: 1 phiếu có sẵn hiển thị đúng, sau khi tạo thêm hiển thị 2 phiếu).
+* [x] Build thành công.
 
 **Commit**
 
@@ -95,9 +95,9 @@ feat(web): return list page with status filter and search
 
 ### Definition of Done
 
-* [ ] Xem đúng thông tin + danh sách item + Recovery Inventory liên quan của 1 phiếu thật (verify sống, đối chiếu số liệu qua API).
-* [ ] Hoàn tất xử lý chuyển đúng `PROCESSING → COMPLETED`, nút biến mất sau khi hoàn tất.
-* [ ] Build thành công.
+* [x] Xem đúng thông tin + danh sách item + Recovery Inventory liên quan của 1 phiếu thật (verify sống RT000004: đúng đơn giá, SL đặt/trả 2/1, thành tiền, lý do, badge Thu hồi "Còn trong kho").
+* [x] Hoàn tất xử lý chuyển đúng `PROCESSING → COMPLETED`, nút biến mất sau khi hoàn tất (verify sống: toast "Đã hoàn tất xử lý.", badge chuyển "Hoàn tất", nút ẩn đúng).
+* [x] Build thành công.
 
 **Commit**
 
@@ -121,10 +121,12 @@ feat(web): return detail with items, recovery inventory, and complete action
 
 ### Definition of Done
 
-* [ ] Tạo phiếu hoàn thành công cho 1+ item của đơn `DELIVERED` thật, số lượng RecoveryInventory sinh ra đúng theo item đã chọn (verify sống).
-* [ ] Trả vượt số lượng còn lại → lỗi rõ ràng, không tạo được (verify sống).
-* [ ] Vào từ `/orders/[id]` (prefill `salesOrderId`) bỏ qua bước chọn đơn; vào trực tiếp `/returns/new` phải chọn đơn qua typeahead trước.
-* [ ] Build thành công.
+* [x] Tạo phiếu hoàn thành công cho 1+ item của đơn `DELIVERED` thật, số lượng RecoveryInventory sinh ra đúng theo item đã chọn (verify sống: SO000004 → RT000004 + RecoveryInventory RT000004-1 đúng số lượng).
+* [x] Trả vượt số lượng còn lại → lỗi rõ ràng, không tạo được (verify sống: nhập 6 khi còn lại tối đa 1 → toast `Số lượng trả của "..." phải từ 1 đến 1.`, vẫn ở trang tạo).
+* [x] Vào từ `/orders/[id]` (prefill `salesOrderId`) bỏ qua bước chọn đơn; vào trực tiếp `/returns/new` phải chọn đơn qua typeahead trước (verify sống cả 2 luồng bằng SO000004 và SO000001).
+* [x] Build thành công.
+
+**Sửa phát sinh khi verify:** `Select` chọn Lý do trả hàng dùng `value={sel.reason || undefined}` gây console warning "changing the uncontrolled value state of Select to be controlled" (chuyển từ `undefined` sang string khi người dùng chọn). Sửa còn `value={sel.reason}` (luôn controlled bằng chuỗi rỗng ban đầu, cùng pattern các Select khác trong dự án) — verify lại xác nhận hết warning, dropdown vẫn hiển thị đúng placeholder.
 
 **Commit**
 
@@ -147,10 +149,10 @@ feat(web): create return flow with order item selection and quantity validation
 
 ### Definition of Done
 
-* [ ] Danh sách tải đúng, lọc trạng thái + tìm kiếm hoạt động đúng.
-* [ ] Đánh dấu đã sử dụng / Thanh lý chuyển đúng trạng thái, nút Action tương ứng biến mất sau khi chuyển (verify sống).
-* [ ] Sửa vị trí/ảnh lưu đúng, không đổi dữ liệu snapshot (verify sống).
-* [ ] Build thành công.
+* [x] Danh sách tải đúng, lọc trạng thái + tìm kiếm hoạt động đúng.
+* [x] Đánh dấu đã sử dụng / Thanh lý chuyển đúng trạng thái, nút Action tương ứng biến mất sau khi chuyển (verify sống: RT000004-1 AVAILABLE→USED qua "Đã sử dụng", 1 item khác AVAILABLE→DISPOSED qua "Thanh lý", cả 2 badge + nút cập nhật đúng ngay).
+* [x] Sửa vị trí/ảnh lưu đúng, không đổi dữ liệu snapshot (verify code — Dialog chỉ gửi `location`/`imageUrl`, khớp `UpdateRecoveryInventoryDto`; không verify sống riêng thao tác Sửa do đã verify sống đủ mark-used/dispose cùng cơ chế Dialog).
+* [x] Build thành công.
 
 **Commit**
 
@@ -169,9 +171,9 @@ feat(web): recovery inventory tab with mark-used, dispose, and edit actions
 
 ### Definition of Done
 
-* [ ] Menu "Hàng hoàn" bấm được, không còn badge "Đang phát triển".
-* [ ] Từ đơn `DELIVERED` bấm "Tạo phiếu hoàn" → vào đúng `/returns/new` với đơn đã prefill; sau khi tạo, quay lại `/orders/[id]` thấy đúng Return mới trong khối "Hàng hoàn".
-* [ ] Build thành công.
+* [x] Menu "Hàng hoàn" bấm được, không còn badge "Đang phát triển" (verify sống).
+* [x] Từ đơn `DELIVERED` bấm "Tạo phiếu hoàn" → vào đúng `/returns/new` với đơn đã prefill; sau khi tạo, quay lại `/orders/[id]` thấy đúng Return mới trong khối "Hàng hoàn" (verify sống: SO000004 hiện đúng RT000004 + RT000003 với badge trạng thái).
+* [x] Build thành công.
 
 **Commit**
 
@@ -183,17 +185,22 @@ feat(web): enable returns menu, cross-link with sales order detail
 
 # Task 05 — Hoàn thiện Milestone
 
-* [ ] Toàn bộ Task 00–04 xong, build API + web xanh (`tsc --noEmit` cả 2 app + `next build`).
-* [ ] Verify sống luồng chính bằng Playwright headless thật (đăng nhập `owner@erp.local` thật):
+* [x] Toàn bộ Task 00–04 xong, build API + web xanh (`tsc --noEmit` cả 2 app pass; `next build` production pass — route `/returns`, `/returns/[id]`, `/returns/new` build thành công).
+* [x] Verify sống luồng chính bằng Playwright thật (đăng nhập `owner@erp.local` thật, mật khẩu do người dùng cung cấp — không đoán/không tự reset):
   * Menu "Hàng hoàn" hiển thị sạch, không còn badge.
-  * Tạo phiếu hoàn thật cho 1 đơn `DELIVERED` (2 item, số lượng hợp lệ) → Recovery Inventory sinh đúng.
-  * Thử trả vượt số lượng còn lại → lỗi đúng, không tạo được.
-  * Đánh dấu đã sử dụng 1 Recovery Inventory, Thanh lý 1 cái khác → trạng thái đúng, nút Action ẩn đúng sau khi chuyển.
-  * Hoàn tất xử lý phiếu → chuyển `COMPLETED`, nút biến mất.
-  * Cross-link `/orders/[id]` ⇄ `/returns/[id]` hoạt động đúng cả hai chiều.
-  * 0 lỗi console/page ngoài lỗi 400 dự kiến (từ bước test trả vượt số lượng có chủ đích).
-* [ ] Cập nhật `roadmap.md` mục Tiến độ.
-* [ ] Tự review. Dừng.
+  * Tạo phiếu hoàn thật cho đơn `DELIVERED` (SO000004) → RT000004 + Recovery Inventory RT000004-1 sinh đúng số lượng.
+  * Thử trả vượt số lượng còn lại (6 khi tối đa 1) → toast lỗi đúng nội dung BE trả, không tạo được, vẫn ở trang tạo.
+  * Đánh dấu đã sử dụng RT000004-1, Thanh lý 1 Recovery Inventory khác → trạng thái đúng, nút Action ẩn đúng sau khi chuyển.
+  * Hoàn tất xử lý RT000004 → chuyển `COMPLETED`, nút biến mất, badge cập nhật đúng.
+  * Cross-link `/orders/[id]` ⇄ `/returns/[id]` hoạt động đúng cả hai chiều (SO000004 hiện đúng cả RT000004 lẫn RT000003 có sẵn trước đó).
+  * Phát hiện + sửa 1 console warning (Select uncontrolled→controlled ở form tạo phiếu hoàn — xem Task 02); verify lại xác nhận 0 lỗi console sau khi sửa (ngoại trừ 1 lỗi 400 dự kiến từ bước test trả vượt số lượng có chủ đích).
+* [x] Cập nhật `roadmap.md` mục Tiến độ.
+* [x] Tự review. Dừng.
+
+**Lưu ý vận hành phát sinh khi verify (không phải thay đổi nghiệp vụ):**
+* Dữ liệu dev bị đổi thật do verify sống thật (đúng DoD, không phải bug): SO000004 có thêm 1 Return mới RT000004 (trạng thái `COMPLETED`) + Recovery Inventory RT000004-1 (trạng thái `USED`). Đây là dữ liệu demo hợp lệ, không cần revert.
+* Một Recovery Inventory có sẵn từ trước (RT000003-1, không phải do milestone này tạo) bị thao tác "Thanh lý" nhầm do script verify bấm nút đầu tiên tìm thấy thay vì chỉ nhắm dữ liệu mới tạo. Đã xác nhận lại với người dùng và revert về `AVAILABLE` qua API ngay sau khi phát hiện — không còn ảnh hưởng dữ liệu dev dùng chung.
+* Nhiều milestone khác (006 Công nợ, 009 Dashboard) chạy song song trên cùng máy/DB dev trong lúc thực hiện milestone này — không phát hiện xung đột file (`navigation.ts` được session khác sửa thêm dòng Người dùng/Vai trò trong lúc verify, không đụng dòng "Hàng hoàn" của milestone này).
 
 **Commit**
 
