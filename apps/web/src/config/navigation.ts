@@ -51,7 +51,7 @@ export const navigation: NavGroup[] = [
       { title: "Khách hàng", href: "/customers", icon: Users, requiredPermission: "customer.view" },
       { title: "Báo giá", href: "/quotations", icon: FileText, requiredPermission: "quotation.view" },
       { title: "Đơn hàng", href: "/orders", icon: ShoppingCart, requiredPermission: "sales-order.view" },
-      { title: "Công nợ", href: "/debts", icon: CreditCard, disabled: true, requiredPermission: "debt.view" },
+      { title: "Công nợ", href: "/debts", icon: CreditCard, requiredPermission: "debt.view" },
       { title: "Hàng hoàn", href: "/returns", icon: RotateCcw, disabled: true, requiredPermission: "return.view" },
     ],
   },

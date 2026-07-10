@@ -396,7 +396,17 @@ export default function SalesOrderDetailPage() {
 
       {/* Debt summary */}
       <div className="space-y-4">
-        <h3 className="text-base font-semibold">Công nợ</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">Công nợ</h3>
+          {order.receivable && hasPermission("debt.view") && (
+            <Link
+              href={`/debts/${order.receivable.id}`}
+              className="text-sm text-primary underline underline-offset-2"
+            >
+              Xem chi tiết công nợ
+            </Link>
+          )}
+        </div>
         {order.receivable ? (
           <div className="rounded-lg border p-5 grid grid-cols-3 gap-4 text-sm">
             <div>
