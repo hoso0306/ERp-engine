@@ -6,6 +6,14 @@ import { PermissionAuditAction, Prisma } from '@prisma/client';
 export class PermissionService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Task 00 (010-fe-cai-dat-nguoi-dung.md) — danh mục đầy đủ để dựng UI gán
+  // quyền cho Role (khác getPermissionKeysForRole, chỉ trả quyền ĐÃ gán).
+  async findAllCatalog() {
+    return this.prisma.permission.findMany({
+      orderBy: [{ resource: 'asc' }, { action: 'asc' }],
+    });
+  }
+
   // Dùng bởi PermissionGuard (Task 01) và Dashboard KPI filtering (Task 06).
   async getPermissionKeysForRole(roleId: string): Promise<string[]> {
     const rolePermissions = await this.prisma.rolePermission.findMany({

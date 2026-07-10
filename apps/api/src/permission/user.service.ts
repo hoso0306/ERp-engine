@@ -142,6 +142,18 @@ export class UserService {
       });
     }
 
+    // Task 01 (010-fe-cai-dat-nguoi-dung.md) — cấp lại mật khẩu tạm, đúng
+    // thiết kế đã ghi ở authentication.md. Không tự viết logic hash ở đây —
+    // gọi qua AuthService (Module Ownership), giống create().
+    if (dto.resetPassword === true) {
+      const temporaryPassword = await this.authService.setTemporaryPassword(id);
+      const refreshed = await this.prisma.user.findUniqueOrThrow({
+        where: { id },
+        include: { role: true },
+      });
+      return { ...this.toSafeUser(refreshed), temporaryPassword };
+    }
+
     return this.toSafeUser(updated);
   }
 

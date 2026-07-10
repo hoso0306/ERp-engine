@@ -14,6 +14,8 @@ import {
   Ruler,
   Tag,
   Building2,
+  UserCog,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -76,7 +78,9 @@ export const navigation: NavGroup[] = [
     label: "Hệ thống",
     items: [
       { title: "Báo cáo", href: "/reports", icon: BarChart3, disabled: true },
-      { title: "Cài đặt", href: "/settings", icon: Settings, disabled: true, requiredPermission: "settings.view" },
+      { title: "Cài đặt", href: "/settings", icon: Settings, requiredPermission: "settings.view" },
+      { title: "Người dùng", href: "/settings/users", icon: UserCog, requiredPermission: "user.view" },
+      { title: "Vai trò", href: "/settings/roles", icon: ShieldCheck, requiredPermission: "role.view" },
     ],
   },
 ];

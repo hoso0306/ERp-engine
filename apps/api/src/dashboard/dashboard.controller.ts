@@ -32,7 +32,11 @@ export class DashboardController {
       warehouse: this.hideUnlessAllowed(overview.warehouse, allowed, 'warehouse.view'),
       debt: this.hideUnlessAllowed(overview.debt, allowed, 'debt.view'),
       returns: this.hideUnlessAllowed(overview.returns, allowed, 'return.view'),
-      alerts: overview.alerts,
+      // Bug fix (verify sống 010-fe-cai-dat-nguoi-dung.md): alerts trong
+      // overview trước đây trả thẳng không lọc theo quyền, khác với
+      // GET /dashboard/alerts (đã lọc đúng) — rò dữ liệu công nợ/kho cho user
+      // chỉ có dashboard.view. Dùng chung buildGatedAlerts() với getAlerts().
+      alerts: this.buildGatedAlerts(overview.alerts, allowed),
     };
   }
 
@@ -75,6 +79,26 @@ export class DashboardController {
   async getAlerts(@Req() req: AuthenticatedRequest) {
     const alerts = await this.dashboardService.getAlerts();
     const allowed = await this.permissionKeys(req);
+    return this.buildGatedAlerts(alerts, allowed);
+  }
+
+  private async permissionKeys(req: AuthenticatedRequest): Promise<Set<string>> {
+    const roleId = req.user.roleId;
+    if (!roleId) return new Set();
+    return new Set(await this.permissionService.getPermissionKeysForRole(roleId));
+  }
+
+  private hideUnlessAllowed<T>(data: T, allowed: Set<string>, key: string): T | null {
+    return allowed.has(key) ? data : null;
+  }
+
+  // Dùng chung bởi getOverview() và getAlerts() — trước đây getOverview() trả
+  // thẳng alerts không lọc theo quyền, khác với getAlerts() độc lập (bug, xem
+  // ghi chú ở getOverview()).
+  private buildGatedAlerts(
+    alerts: Awaited<ReturnType<DashboardService['getAlerts']>>,
+    allowed: Set<string>,
+  ) {
     return {
       overdueDebt: this.hideUnlessAllowed(alerts.overdueDebt, allowed, 'debt.view'),
       creditLimitExceeded: this.hideUnlessAllowed(
@@ -94,15 +118,5 @@ export class DashboardController {
       ),
       delayedOrders: alerts.delayedOrders,
     };
-  }
-
-  private async permissionKeys(req: AuthenticatedRequest): Promise<Set<string>> {
-    const roleId = req.user.roleId;
-    if (!roleId) return new Set();
-    return new Set(await this.permissionService.getPermissionKeysForRole(roleId));
-  }
-
-  private hideUnlessAllowed<T>(data: T, allowed: Set<string>, key: string): T | null {
-    return allowed.has(key) ? data : null;
   }
 }
