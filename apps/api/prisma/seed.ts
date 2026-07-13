@@ -27,6 +27,14 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   settings: ['view', 'update'],
   user: ['view', 'create', 'update'],
   role: ['view', 'create', 'update', 'disable'],
+  // Sprint 03 Task 012 — Product (catalog, pricing rule, matrix, material
+  // requirement, validation rule, derived parameter). `activate` tách riêng
+  // khỏi `update` (kích hoạt version đổi giá/định mức live) — chỉ OWNER/ADMIN
+  // có qua allKeys(), không nằm trong nhóm filter của MANAGER bên dưới.
+  product: ['view', 'create', 'update', 'delete', 'activate', 'export'],
+  // Tách khỏi resource `production` (vốn chỉ có view/start/complete cho
+  // ProductionOrder) — CRUD xưởng sản xuất là khái niệm khác.
+  'production-center': ['view', 'create', 'update', 'delete'],
 };
 
 function keysForResource(resource: string): string[] {
@@ -65,12 +73,20 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
       ...keysForResource('customer'),
       ...keysForResource('quotation'),
       'sales-order.view',
+      // Sprint 03 Task 012 — bắt buộc để chọn sản phẩm khi tạo báo giá.
+      'product.view',
     ],
   },
   {
     code: 'PRODUCTION',
     name: 'Sản xuất',
-    permissionKeys: [...keysForResource('production'), 'warehouse.view'],
+    permissionKeys: [
+      ...keysForResource('production'),
+      'warehouse.view',
+      // Sprint 03 Task 012 — xem BOM/định mức vật tư và danh sách xưởng.
+      'product.view',
+      'production-center.view',
+    ],
   },
   { code: 'WAREHOUSE', name: 'Kho', permissionKeys: keysForResource('warehouse') },
   {

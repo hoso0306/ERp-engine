@@ -396,6 +396,48 @@ dispose
 
 ---
 
+## Product
+
+```text
+view
+
+create
+
+update
+
+delete
+
+activate
+
+export
+```
+
+**Bao gồm** Product, Material (+ giá vật tư), Unit, ProductType, ProductParameter, PricingRule (version + item + matrix), MaterialRequirement (version + item), ValidationRule, DerivedParameter — toàn bộ catalog/master data thuộc `ProductModule`, dùng chung một resource `product` (giống cách Quotation gộp chung QuotationItem vào resource `quotation`).
+
+**`activate`** — kích hoạt PricingRuleVersion/MaterialRequirementVersion, tách riêng khỏi `update` cùng logic Quotation tách `approve` khỏi `update`: đây là hành động đổi giá bán/định mức vật tư đang chạy **live** cho toàn bộ đơn hàng mới, không phải một chỉnh sửa DRAFT thông thường. Chỉ OWNER/ADMIN có quyền này (qua `allKeys()`) — MANAGER dù có nhóm quyền "hành động nặng" (approve/override/cancel) cũng **không** có `product.activate`, vì đây là quyết định giá bán cấp doanh nghiệp, không cùng nhóm với các Business Action approve/override/cancel của từng chứng từ riêng lẻ.
+
+**`export`** — xuất Excel thông tin sản phẩm, cùng pattern action `export` đã có ở Customer.
+
+**Endpoint `/pricing-engine/calculate`** (module riêng, ngoài `ProductModule`) dùng chung permission `product.view` — đây là hàm tính giá dùng lại bởi cả trang Preview của Product lẫn form tạo Báo giá (Quotation), không mutate dữ liệu nên xếp vào `view`.
+
+---
+
+## Production Center
+
+```text
+view
+
+create
+
+update
+
+delete
+```
+
+Tách khỏi resource `production` (vốn chỉ có `view/start/complete` — quyền theo dõi/thao tác ProductionOrder) vì CRUD xưởng sản xuất (`ProductionCenter`) là khái niệm khác: quản lý danh sách xưởng (master data), không phải vận hành một đơn sản xuất cụ thể.
+
+---
+
 ## Dashboard
 
 ```text

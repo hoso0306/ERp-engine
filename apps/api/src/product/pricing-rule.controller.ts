@@ -1,21 +1,27 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { CreatePricingRuleVersionDto } from './dto/create-pricing-rule-version.dto';
 import { UpdatePricingRuleVersionDto } from './dto/update-pricing-rule-version.dto';
 import { CreatePricingRuleItemDto } from './dto/create-pricing-rule-item.dto';
 import { UpdatePricingRuleItemDto } from './dto/update-pricing-rule-item.dto';
 import { UpdatePriceMatrixDto } from './dto/update-price-matrix.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequirePermission } from '../permission/require-permission.decorator';
 
 @Controller('products/:productId/pricing-rule')
+@UseGuards(AuthGuard, PermissionGuard)
 export class PricingRuleController {
   constructor(private readonly productService: ProductService) {}
 
   @Get()
+  @RequirePermission('product.view')
   findPricingRule(@Param('productId') productId: string) {
     return this.productService.findPricingRule(productId);
   }
 
   @Post('versions')
+  @RequirePermission('product.create')
   createVersion(
     @Param('productId') productId: string,
     @Body() dto: CreatePricingRuleVersionDto,
@@ -24,16 +30,19 @@ export class PricingRuleController {
   }
 
   @Get('versions/:versionId')
+  @RequirePermission('product.view')
   findVersion(@Param('versionId') versionId: string) {
     return this.productService.findPricingRuleVersion(versionId);
   }
 
   @Patch('versions/:versionId/activate')
+  @RequirePermission('product.activate')
   activateVersion(@Param('versionId') versionId: string) {
     return this.productService.activatePricingRuleVersion(versionId);
   }
 
   @Patch('versions/:versionId')
+  @RequirePermission('product.update')
   updateVersion(
     @Param('versionId') versionId: string,
     @Body() dto: UpdatePricingRuleVersionDto,
@@ -42,11 +51,13 @@ export class PricingRuleController {
   }
 
   @Delete('versions/:versionId')
+  @RequirePermission('product.delete')
   deleteVersion(@Param('versionId') versionId: string) {
     return this.productService.deletePricingRuleVersion(versionId);
   }
 
   @Post('versions/:versionId/items')
+  @RequirePermission('product.create')
   createItem(
     @Param('versionId') versionId: string,
     @Body() dto: CreatePricingRuleItemDto,
@@ -55,6 +66,7 @@ export class PricingRuleController {
   }
 
   @Patch('versions/:versionId/items/:itemId')
+  @RequirePermission('product.update')
   updateItem(
     @Param('itemId') itemId: string,
     @Body() dto: UpdatePricingRuleItemDto,
@@ -63,11 +75,13 @@ export class PricingRuleController {
   }
 
   @Delete('versions/:versionId/items/:itemId')
+  @RequirePermission('product.delete')
   deleteItem(@Param('itemId') itemId: string) {
     return this.productService.deletePricingRuleItem(itemId);
   }
 
   @Post('versions/:versionId/preview')
+  @RequirePermission('product.view')
   previewPrice(
     @Param('versionId') versionId: string,
     @Body('params') params: Record<string, number>,
@@ -76,6 +90,7 @@ export class PricingRuleController {
   }
 
   @Patch('versions/:versionId/matrix')
+  @RequirePermission('product.update')
   updateMatrix(
     @Param('versionId') versionId: string,
     @Body() dto: UpdatePriceMatrixDto,

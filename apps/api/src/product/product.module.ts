@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PricingEngineModule } from '../pricing-engine/pricing-engine.module';
 import { BomEngineModule } from '../bom-engine/bom-engine.module';
+import { PermissionModule } from '../permission/permission.module';
 import { ProductService } from './product.service';
 import { ProductController } from './product.controller';
 import { UnitController } from './unit.controller';
@@ -14,7 +15,7 @@ import { ValidationRuleController } from './validation-rule.controller';
 import { DerivedParameterController } from './derived-parameter.controller';
 
 @Module({
-  imports: [PricingEngineModule, BomEngineModule],
+  imports: [PricingEngineModule, BomEngineModule, PermissionModule],
   controllers: [
     ProductionCenterController,
     UnitController,
