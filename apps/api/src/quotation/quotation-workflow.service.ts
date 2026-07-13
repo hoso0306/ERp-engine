@@ -18,7 +18,9 @@ import {
   ProductionOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { coerceParameters } from '../shared/derived-params';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
+import { BomEngineService, BomConfig, BomLine } from '../bom-engine/bom-engine.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
@@ -60,6 +62,7 @@ export class QuotationWorkflowService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricingEngine: PricingEngineService,
+    private readonly bomEngine: BomEngineService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -305,6 +308,8 @@ export class QuotationWorkflowService {
         discountBy: dto.discountBy?.trim() || null,
         finalPrice,
         subtotal,
+        // Snapshot cảnh báo Validation Rule tại thời điểm tính giá (Task 06)
+        warnings: priceResult.warnings,
         displayOrder,
         parameters: {
           create: dto.parameters.map((p, idx) => {
@@ -368,6 +373,7 @@ export class QuotationWorkflowService {
     const quantity = dto.quantity ?? Number(item.quantity);
     let systemPrice = Number(item.systemPrice);
     let pricingRuleVersionId = item.pricingRuleVersionId;
+    let warnings = item.warnings as string[] | null;
     const newParameters = dto.parameters;
 
     if (dto.parameters !== undefined) {
@@ -377,6 +383,7 @@ export class QuotationWorkflowService {
       });
       systemPrice = priceResult.systemPrice;
       pricingRuleVersionId = priceResult.pricingRuleVersionId;
+      warnings = priceResult.warnings;
     }
 
     const groupDiscount = Number(item.groupDiscount);
@@ -437,6 +444,7 @@ export class QuotationWorkflowService {
           discountBy,
           finalPrice,
           subtotal,
+          warnings: warnings ?? [],
           ...(dto.displayOrder !== undefined ? { displayOrder: dto.displayOrder } : {}),
         },
         include: {
@@ -544,6 +552,7 @@ export class QuotationWorkflowService {
       pricingRuleVersionId: string;
       finalPrice: number;
       subtotal: number;
+      warnings: string[];
     }> = [];
 
     for (const item of quotation.items) {
@@ -579,6 +588,7 @@ export class QuotationWorkflowService {
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         finalPrice: newFinalPrice,
         subtotal: newSubtotal,
+        warnings: priceResult.warnings,
       });
     }
 
@@ -591,6 +601,7 @@ export class QuotationWorkflowService {
             pricingRuleVersionId: u.pricingRuleVersionId,
             finalPrice: u.finalPrice,
             subtotal: u.subtotal,
+            warnings: u.warnings,
           },
         });
       }
@@ -879,115 +890,42 @@ export class QuotationWorkflowService {
       if (owner) break;
     }
 
+    // Snapshot Rule (knowledge/modules/order.md): OrderBOM tính từ đúng
+    // QuotationItem.materialRequirementVersionId đã snapshot khi báo giá —
+    // KHÔNG phải version đang ACTIVE trên sản phẩm. Version đã kích hoạt là
+    // bất biến nên load được trước transaction; toàn bộ tính toán là hàm thuần
+    // của BOM Engine (Filter theo condition → Formula → Waste → Round).
+    const bomConfigCache = new Map<string, BomConfig>();
+    const itemComputations: Array<{
+      item: (typeof quotation.items)[number];
+      bomLines: BomLine[];
+      itemPlannedCost: number;
+    }> = [];
+
+    for (const item of quotation.items) {
+      let bomLines: BomLine[] = [];
+      let itemPlannedCost = 0;
+
+      if (item.materialRequirementVersionId) {
+        let config = bomConfigCache.get(item.materialRequirementVersionId);
+        if (!config) {
+          config = await this.bomEngine.loadConfigForVersion(item.materialRequirementVersionId);
+          bomConfigCache.set(item.materialRequirementVersionId, config);
+        }
+
+        // BOM nhận KÍCH THƯỚC GỐC khách đặt — không bao giờ nhận billable
+        // params của Pricing Engine (nguyên tắc billable ≠ actual).
+        const rawParams = coerceParameters(item.parameters);
+        const bomResult = this.bomEngine.calculateBom(config, rawParams, Number(item.quantity));
+        bomLines = bomResult.lines;
+        itemPlannedCost = bomResult.plannedCost;
+      }
+
+      itemComputations.push({ item, bomLines, itemPlannedCost });
+    }
+
     // All validations pass — execute in a single transaction
     return this.prisma.$transaction(async (tx) => {
-      // Snapshot Rule (knowledge/modules/order.md): OrderBOM must be computed from
-      // QuotationItem.materialRequirementVersionId — the exact version snapshotted when the
-      // quotation item was priced — NOT the version currently marked ACTIVE on the product.
-      // Fetch only those specific versions by id (no ACTIVE filter).
-      const materialRequirementVersionIds = Array.from(
-        new Set(
-          quotation.items
-            .map((i) => i.materialRequirementVersionId)
-            .filter((v): v is string => !!v),
-        ),
-      );
-
-      const materialRequirementVersions = materialRequirementVersionIds.length
-        ? await tx.materialRequirementVersion.findMany({
-            where: { id: { in: materialRequirementVersionIds } },
-            include: {
-              items: {
-                include: {
-                  material: {
-                    include: {
-                      unit: { select: { name: true } },
-                      prices: {
-                        where: { isDefault: true },
-                        orderBy: { effectiveFrom: 'desc' },
-                        take: 1,
-                      },
-                    },
-                  },
-                },
-                orderBy: { displayOrder: 'asc' },
-              },
-            },
-          })
-        : [];
-      const materialVersionMap = new Map(materialRequirementVersions.map((v) => [v.id, v]));
-
-      type BomItemData = {
-        materialId: string;
-        materialCode: string;
-        materialName: string;
-        materialUnit: string | null;
-        expression: string;
-        wastePercent: number;
-        roundType: RoundType;
-        roundValue: number | null;
-        quantity: number;
-        unitPrice: number;
-        lineTotal: number;
-      };
-
-      // Pre-compute BOM + plannedCost per item (pure calculation, no DB writes yet) so that
-      // SalesOrder-level plannedCost/plannedProfit/totalProductionOrders are known upfront.
-      const itemComputations = quotation.items.map((item) => {
-        const materialVersion = item.materialRequirementVersionId
-          ? materialVersionMap.get(item.materialRequirementVersionId)
-          : undefined;
-
-        // Build parameter map for expression evaluation
-        const paramMap: Record<string, number> = {};
-        for (const p of item.parameters) {
-          const n = parseFloat(p.value);
-          paramMap[p.name] = isNaN(n) ? 0 : n;
-        }
-        // Derived: area in m²
-        const w = paramMap['width'] ?? 0;
-        const h = paramMap['height'] ?? 0;
-        paramMap['area'] = (w * h) / 1_000_000;
-
-        let itemPlannedCost = 0;
-        const bomItemsData: BomItemData[] = [];
-
-        if (materialVersion) {
-          for (const matReqItem of materialVersion.items) {
-            let matQty = 0;
-            try {
-              matQty = this.evalExpression(matReqItem.expression, paramMap);
-              matQty = matQty * (1 + Number(matReqItem.wastePercent) / 100);
-              matQty = this.applyRounding(matQty, matReqItem.roundType, matReqItem.roundValue ? Number(matReqItem.roundValue) : 0);
-              matQty = matQty * Number(item.quantity);
-            } catch {
-              matQty = 0;
-            }
-
-            const defaultPrice = matReqItem.material.prices[0];
-            const unitPrice = defaultPrice ? Number(defaultPrice.price) : 0;
-            const lineTotal = Math.round(matQty * unitPrice);
-            itemPlannedCost += lineTotal;
-
-            bomItemsData.push({
-              materialId: matReqItem.materialId,
-              materialCode: matReqItem.material.code,
-              materialName: matReqItem.material.name,
-              materialUnit: matReqItem.material.unit?.name ?? null,
-              expression: matReqItem.expression,
-              wastePercent: Number(matReqItem.wastePercent),
-              roundType: matReqItem.roundType,
-              roundValue: matReqItem.roundValue ? Number(matReqItem.roundValue) : null,
-              quantity: matQty,
-              unitPrice,
-              lineTotal,
-            });
-          }
-        }
-
-        return { item, bomItemsData, itemPlannedCost };
-      });
-
       // Planned Financials (order.md): computed once at creation, never re-derived later.
       const totalAmount = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
       const plannedCost = itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
@@ -1054,7 +992,7 @@ export class QuotationWorkflowService {
       >();
 
       // Create SalesOrderItems + OrderBOMs
-      for (const { item, bomItemsData, itemPlannedCost } of itemComputations) {
+      for (const { item, bomLines, itemPlannedCost } of itemComputations) {
         const soItem = await tx.salesOrderItem.create({
           data: {
             salesOrderId: salesOrder.id,
@@ -1090,15 +1028,31 @@ export class QuotationWorkflowService {
           },
         });
 
-        // Create OrderBOM if the quotation item had a material requirement version snapshotted
-        if (item.materialRequirementVersionId && bomItemsData.length > 0) {
+        // Create OrderBOM if the quotation item had a material requirement version snapshotted.
+        // Chỉ chứa các dòng đã qua Filter condition — vật tư không thuộc config
+        // khách chọn (vd màu khác) không xuất hiện trong OrderBOM.
+        if (item.materialRequirementVersionId && bomLines.length > 0) {
           await tx.orderBOM.create({
             data: {
               salesOrderId: salesOrder.id,
               salesOrderItemId: soItem.id,
               materialRequirementVersionId: item.materialRequirementVersionId,
               plannedCost: itemPlannedCost,
-              items: { create: bomItemsData },
+              items: {
+                create: bomLines.map((line) => ({
+                  materialId: line.materialId,
+                  materialCode: line.materialCode,
+                  materialName: line.materialName,
+                  materialUnit: line.materialUnit,
+                  expression: line.expression,
+                  wastePercent: line.wastePercent,
+                  roundType: line.roundType,
+                  roundValue: line.roundValue,
+                  quantity: line.quantity,
+                  unitPrice: line.unitPrice,
+                  lineTotal: line.lineTotal,
+                })),
+              },
             },
           });
         }
@@ -1255,23 +1209,4 @@ export class QuotationWorkflowService {
     return Math.round(finalPrice * quantity);
   }
 
-  private evalExpression(expression: string, vars: Record<string, number>): number {
-    const keys = Object.keys(vars);
-    const values = Object.values(vars);
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(...keys, `"use strict"; return (${expression});`);
-    const result = fn(...values);
-    if (typeof result !== 'number' || !isFinite(result)) return 0;
-    return result;
-  }
-
-  private applyRounding(value: number, roundType: RoundType, step: number): number {
-    if (step <= 0 || roundType === RoundType.NONE) return value;
-    switch (roundType) {
-      case RoundType.CEIL:  return Math.ceil(value / step) * step;
-      case RoundType.FLOOR: return Math.floor(value / step) * step;
-      case RoundType.ROUND: return Math.round(value / step) * step;
-      default: return value;
-    }
-  }
 }

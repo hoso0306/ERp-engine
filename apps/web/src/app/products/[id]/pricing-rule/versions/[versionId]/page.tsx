@@ -29,6 +29,7 @@ import {
   PricingRuleItemDialog,
   type PricingRuleItem,
 } from "@/components/product/pricing-rule-item-dialog";
+import { PriceMatrixEditor, type PriceMatrixRow } from "@/components/product/price-matrix-editor";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "@/lib/api";
 
@@ -38,6 +39,8 @@ interface ProductParameter {
   label: string;
   type: string;
   unit: string | null;
+  usedInPricing: boolean;
+  options: { value: string; label: string | null }[];
 }
 
 interface PricingRuleVersion {
@@ -50,6 +53,7 @@ interface PricingRuleVersion {
   status: string;
   note: string | null;
   items: PricingRuleItem[];
+  matrixRows: PriceMatrixRow[];
   pricingRule: { productId: string };
 }
 
@@ -58,6 +62,8 @@ interface PreviewResult {
   adjustedParams: Record<string, number>;
   rawPrice: number;
   finalPrice: number;
+  unitPrice: number | null;
+  warnings: string[];
 }
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -69,6 +75,8 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
 const ruleTypeLabels: Record<string, string> = {
   MIN_AREA: "MIN_AREA",
   MIN_DIMENSION: "MIN_DIMENSION",
+  MIN_VALUE: "MIN_VALUE",
+  BILLABLE_STEP: "BILLABLE_STEP",
 };
 
 const roundTypeLabels: Record<string, string> = {
@@ -135,7 +143,9 @@ export default function PricingRuleVersionPage() {
       .then((data) => {
         setParameters(data);
         const init: Record<string, string> = {};
-        data.filter((p) => p.type === "NUMBER").forEach((p) => { init[p.name] = ""; });
+        data
+          .filter((p) => p.type === "NUMBER" || p.type === "ENUM")
+          .forEach((p) => { init[p.name] = ""; });
         setPreviewParams(init);
       })
       .catch(() => {});
@@ -206,13 +216,15 @@ export default function PricingRuleVersionPage() {
     setPreviewing(true);
     setPreviewResult(null);
     try {
-      const numericParams: Record<string, number> = {};
+      const paramTypes = new Map(parameters.map((p) => [p.name, p.type]));
+      const inputParams: Record<string, number | string> = {};
       for (const [k, v] of Object.entries(previewParams)) {
-        if (v !== "") numericParams[k] = Number(v);
+        if (v === "") continue;
+        inputParams[k] = paramTypes.get(k) === "NUMBER" ? Number(v) : v;
       }
       const result = await apiPost<PreviewResult>(
         `/products/${productId}/pricing-rule/versions/${versionId}/preview`,
-        { params: numericParams },
+        { params: inputParams },
       );
       setPreviewResult(result);
     } catch (err) {
@@ -228,7 +240,7 @@ export default function PricingRuleVersionPage() {
 
   const isDraft = version.status === "DRAFT";
   const st = statusMap[version.status] ?? statusMap.DRAFT;
-  const numberParams = parameters.filter((p) => p.type === "NUMBER");
+  const numberParams = parameters.filter((p) => p.type === "NUMBER" || p.type === "ENUM");
 
   return (
     <div className="space-y-6">
@@ -390,7 +402,8 @@ export default function PricingRuleVersionPage() {
                 <TableRow>
                   <TableHead>Loại</TableHead>
                   <TableHead>Thông số</TableHead>
-                  <TableHead>Giá trị tối thiểu</TableHead>
+                  <TableHead>Giá trị</TableHead>
+                  <TableHead>Điều kiện</TableHead>
                   <TableHead>Mô tả</TableHead>
                   {isDraft && <TableHead className="w-20" />}
                 </TableRow>
@@ -406,7 +419,14 @@ export default function PricingRuleVersionPage() {
                     <TableCell className="font-mono text-sm">
                       {item.targetParameter || "—"}
                     </TableCell>
-                    <TableCell className="font-medium">{Number(item.value).toLocaleString("vi-VN")}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.ruleType === "BILLABLE_STEP"
+                        ? `[${item.rangeFrom ?? "-∞"}, ${item.rangeTo ?? "+∞"}) → ${Number(item.billValue).toLocaleString("vi-VN")}`
+                        : Number(item.value).toLocaleString("vi-VN")}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate">
+                      {item.condition || "—"}
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {item.description || "—"}
                     </TableCell>
@@ -438,13 +458,28 @@ export default function PricingRuleVersionPage() {
         )}
       </div>
 
+      {/* Price Matrix */}
+      <div className="rounded-lg border p-6 space-y-4">
+        <h3 className="text-sm font-medium text-muted-foreground">
+          Bảng giá ma trận (đơn giá theo tổ hợp cấu hình)
+        </h3>
+        <PriceMatrixEditor
+          productId={productId}
+          versionId={versionId}
+          parameters={parameters}
+          matrixRows={version.matrixRows}
+          isDraft={isDraft}
+          onSaved={loadVersion}
+        />
+      </div>
+
       {/* Preview */}
       <div className="rounded-lg border p-6 space-y-4">
         <h3 className="text-sm font-medium text-muted-foreground">Preview giá bán</h3>
 
         {numberParams.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Sản phẩm chưa có thông số kiểu NUMBER để nhập giá trị.
+            Sản phẩm chưa có thông số kiểu NUMBER/ENUM để nhập giá trị.
           </p>
         ) : (
           <>
@@ -454,20 +489,43 @@ export default function PricingRuleVersionPage() {
                   <Label htmlFor={`pv-${p.name}`} className="text-xs">
                     {p.label}{p.unit ? ` (${p.unit})` : ""}
                   </Label>
-                  <Input
-                    id={`pv-${p.name}`}
-                    type="number"
-                    value={previewParams[p.name] ?? ""}
-                    onChange={(e) =>
-                      setPreviewParams((prev) => ({ ...prev, [p.name]: e.target.value }))
-                    }
-                    placeholder="0"
-                  />
+                  {p.type === "ENUM" ? (
+                    <Select
+                      value={previewParams[p.name] ?? ""}
+                      onValueChange={(v) =>
+                        setPreviewParams((prev) => ({ ...prev, [p.name]: v ?? "" }))
+                      }
+                    >
+                      <SelectTrigger id={`pv-${p.name}`}>
+                        <SelectValue placeholder="Chọn..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {p.options.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label ?? o.value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id={`pv-${p.name}`}
+                      type="number"
+                      value={previewParams[p.name] ?? ""}
+                      onChange={(e) =>
+                        setPreviewParams((prev) => ({ ...prev, [p.name]: e.target.value }))
+                      }
+                      placeholder="0"
+                    />
+                  )}
                 </div>
               ))}
             </div>
 
-            <Button onClick={handlePreview} disabled={previewing || !formExpr.trim()}>
+            <Button
+              onClick={handlePreview}
+              disabled={previewing || (!formExpr.trim() && version.matrixRows.length === 0)}
+            >
               {previewing ? "Đang tính..." : "Tính giá bán"}
             </Button>
 
@@ -485,6 +543,12 @@ export default function PricingRuleVersionPage() {
                   </div>
                 </div>
                 <div className="border-t pt-3 space-y-1">
+                  {previewResult.unitPrice !== null && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Đơn giá tra được (matrix):</span>
+                      <span className="font-mono">{previewResult.unitPrice.toLocaleString("vi-VN")} đ/m²</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Giá thô:</span>
                     <span>{previewResult.rawPrice.toLocaleString("vi-VN")} đ</span>
@@ -501,6 +565,14 @@ export default function PricingRuleVersionPage() {
                     </span>
                   </div>
                 </div>
+
+                {previewResult.warnings.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-1">
+                    {previewResult.warnings.map((w, idx) => (
+                      <p key={idx} className="text-xs text-amber-800">⚠ {w}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -513,6 +585,7 @@ export default function PricingRuleVersionPage() {
         onOpenChange={setItemAddOpen}
         productId={productId}
         versionId={versionId}
+        parameters={parameters}
         onSaved={loadVersion}
       />
 
@@ -521,6 +594,7 @@ export default function PricingRuleVersionPage() {
         onOpenChange={(open) => !open && setItemEditTarget(null)}
         productId={productId}
         versionId={versionId}
+        parameters={parameters}
         item={itemEditTarget}
         onSaved={loadVersion}
       />

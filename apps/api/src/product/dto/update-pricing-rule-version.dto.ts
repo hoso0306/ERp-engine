@@ -1,7 +1,7 @@
 export class UpdatePricingRuleVersionDto {
-  name?: string;
-  expression?: string;
+  name?: string | null;
+  expression?: string | null;
   priceRoundType?: string;
   priceRoundValue?: number | null;
-  note?: string;
+  note?: string | null;
 }

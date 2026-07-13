@@ -10,6 +10,8 @@ import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/sha
 import { ProductParameterList } from "@/components/product/product-parameter-list";
 import { PricingRuleSection } from "@/components/product/pricing-rule-section";
 import { MaterialRequirementSection } from "@/components/product/material-requirement-section";
+import { ValidationRuleSection } from "@/components/product/validation-rule-section";
+import { DerivedParameterSection } from "@/components/product/derived-parameter-section";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiDelete, apiUrl, ApiError } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-cookie";
@@ -219,6 +221,14 @@ export default function ProductDetailPage() {
 
       <div className="rounded-lg border p-6">
         <MaterialRequirementSection productId={product.id} />
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <DerivedParameterSection productId={product.id} />
+      </div>
+
+      <div className="rounded-lg border p-6">
+        <ValidationRuleSection productId={product.id} />
       </div>
 
       <div className="text-xs text-muted-foreground">

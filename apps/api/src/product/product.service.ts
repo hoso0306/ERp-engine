@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
+import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
+import { BomEngineService } from '../bom-engine/bom-engine.service';
+import { validate as validateExpressionSyntax } from '../shared/expression';
 import { Prisma, ProductStatus, ParameterType, RoundType, PricingRuleType } from '@prisma/client';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
@@ -31,10 +34,17 @@ import { CreateMaterialRequirementItemDto } from './dto/create-material-requirem
 import { UpdateMaterialRequirementItemDto } from './dto/update-material-requirement-item.dto';
 import { CreateProductionCenterDto } from './dto/create-production-center.dto';
 import { UpdateProductionCenterDto } from './dto/update-production-center.dto';
+import { CreateValidationRuleDto, UpdateValidationRuleDto } from './dto/validation-rule.dto';
+import { CreateDerivedParameterDto, UpdateDerivedParameterDto } from './dto/derived-parameter.dto';
+import { PriceMatrixRowDto } from './dto/update-price-matrix.dto';
 
 @Injectable()
 export class ProductService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricingEngine: PricingEngineService,
+    private readonly bomEngine: BomEngineService,
+  ) {}
 
   // ──────────────────────────────────────
   // Production Center
@@ -602,6 +612,129 @@ export class ProductService {
   }
 
   // ──────────────────────────────────────
+  // Validation Rule (Sprint 03 Task 04/06) — trực tiếp trên Product, không
+  // versioned (không phải công thức tính giá/vật tư, chỉ là ràng buộc kiểm tra).
+  // ──────────────────────────────────────
+
+  async findValidationRules(productId: string) {
+    await this.findOneProduct(productId);
+    return this.prisma.validationRule.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'asc' },
+    });
+  }
+
+  async createValidationRule(productId: string, dto: CreateValidationRuleDto) {
+    await this.findOneProduct(productId);
+    if (!dto.expression?.trim()) throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
+    this.validateExpression(dto.expression.trim());
+    if (!dto.message?.trim()) throw new BadRequestException('Thông báo là bắt buộc.');
+    const severity = dto.severity === 'BLOCK' ? 'BLOCK' : 'WARN';
+
+    return this.prisma.validationRule.create({
+      data: {
+        productId,
+        expression: dto.expression.trim(),
+        severity,
+        message: dto.message.trim(),
+        displayOrder: dto.displayOrder ?? 0,
+      },
+    });
+  }
+
+  async updateValidationRule(id: string, dto: UpdateValidationRuleDto) {
+    const rule = await this.prisma.validationRule.findUnique({ where: { id } });
+    if (!rule) throw new NotFoundException('Validation Rule không tồn tại.');
+    if (dto.expression !== undefined) {
+      if (!dto.expression.trim()) throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
+      this.validateExpression(dto.expression.trim());
+    }
+    if (dto.message !== undefined && !dto.message.trim()) {
+      throw new BadRequestException('Thông báo là bắt buộc.');
+    }
+
+    const data: Prisma.ValidationRuleUpdateInput = {};
+    if (dto.expression !== undefined) data.expression = dto.expression.trim();
+    if (dto.severity !== undefined) data.severity = dto.severity === 'BLOCK' ? 'BLOCK' : 'WARN';
+    if (dto.message !== undefined) data.message = dto.message.trim();
+    if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
+
+    return this.prisma.validationRule.update({ where: { id }, data });
+  }
+
+  async deleteValidationRule(id: string) {
+    const rule = await this.prisma.validationRule.findUnique({ where: { id } });
+    if (!rule) throw new NotFoundException('Validation Rule không tồn tại.');
+    return this.prisma.validationRule.delete({ where: { id } });
+  }
+
+  // ──────────────────────────────────────
+  // Derived Parameter (Sprint 03 Task 04/06) — biến phái sinh dùng chung cho
+  // cả Pricing lẫn BOM, trực tiếp trên Product, không versioned.
+  // ──────────────────────────────────────
+
+  async findDerivedParameters(productId: string) {
+    await this.findOneProduct(productId);
+    return this.prisma.derivedParameter.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'asc' },
+    });
+  }
+
+  async createDerivedParameter(productId: string, dto: CreateDerivedParameterDto) {
+    await this.findOneProduct(productId);
+    if (!dto.name?.trim()) throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
+    if (!dto.expression?.trim()) throw new BadRequestException('Công thức là bắt buộc.');
+    this.validateExpression(dto.expression.trim());
+
+    const existing = await this.prisma.derivedParameter.findFirst({
+      where: { productId, name: dto.name.trim() },
+    });
+    if (existing) throw new ConflictException('Tên biến phái sinh đã tồn tại trong sản phẩm này.');
+
+    return this.prisma.derivedParameter.create({
+      data: {
+        productId,
+        name: dto.name.trim(),
+        expression: dto.expression.trim(),
+        unit: dto.unit?.trim() || null,
+        displayOrder: dto.displayOrder ?? 0,
+      },
+    });
+  }
+
+  async updateDerivedParameter(id: string, dto: UpdateDerivedParameterDto) {
+    const param = await this.prisma.derivedParameter.findUnique({ where: { id } });
+    if (!param) throw new NotFoundException('Biến phái sinh không tồn tại.');
+
+    if (dto.name !== undefined) {
+      if (!dto.name.trim()) throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
+      const existing = await this.prisma.derivedParameter.findFirst({
+        where: { productId: param.productId, name: dto.name.trim(), id: { not: id } },
+      });
+      if (existing) throw new ConflictException('Tên biến phái sinh đã tồn tại trong sản phẩm này.');
+    }
+    if (dto.expression !== undefined) {
+      if (!dto.expression.trim()) throw new BadRequestException('Công thức là bắt buộc.');
+      this.validateExpression(dto.expression.trim());
+    }
+
+    const data: Prisma.DerivedParameterUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.expression !== undefined) data.expression = dto.expression.trim();
+    if (dto.unit !== undefined) data.unit = dto.unit?.trim() || null;
+    if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
+
+    return this.prisma.derivedParameter.update({ where: { id }, data });
+  }
+
+  async deleteDerivedParameter(id: string) {
+    const param = await this.prisma.derivedParameter.findUnique({ where: { id } });
+    if (!param) throw new NotFoundException('Biến phái sinh không tồn tại.');
+    return this.prisma.derivedParameter.delete({ where: { id } });
+  }
+
+  // ──────────────────────────────────────
   // Product Parameter
   // ──────────────────────────────────────
 
@@ -755,6 +888,7 @@ export class ProductService {
       where: { id: versionId },
       include: {
         items: { orderBy: { displayOrder: 'asc' } },
+        matrixRows: { orderBy: { displayOrder: 'asc' } },
         pricingRule: { select: { productId: true } },
       },
     });
@@ -792,6 +926,7 @@ export class ProductService {
       },
       include: {
         items: { orderBy: { displayOrder: 'asc' } },
+        matrixRows: { orderBy: { displayOrder: 'asc' } },
         pricingRule: { select: { productId: true } },
       },
     });
@@ -803,7 +938,7 @@ export class ProductService {
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể chỉnh sửa phiên bản DRAFT.');
     }
-    if (dto.expression !== undefined && dto.expression.trim()) {
+    if (dto.expression !== undefined && dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
 
@@ -819,21 +954,31 @@ export class ProductService {
       data,
       include: {
         items: { orderBy: { displayOrder: 'asc' } },
+        matrixRows: { orderBy: { displayOrder: 'asc' } },
         pricingRule: { select: { productId: true } },
       },
     });
   }
 
   async activatePricingRuleVersion(id: string) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id } });
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id },
+      include: { _count: { select: { matrixRows: true } } },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status === 'ACTIVE') {
       throw new BadRequestException('Phiên bản này đã đang hoạt động.');
     }
-    if (!version.expression?.trim()) {
-      throw new BadRequestException('Phiên bản cần có Expression trước khi kích hoạt.');
+    // Sprint 03: Bảng giá ma trận là cách tính chính; expression là fallback.
+    // Version hợp lệ khi có ít nhất một trong hai.
+    if (version._count.matrixRows === 0 && !version.expression?.trim()) {
+      throw new BadRequestException(
+        'Phiên bản cần có Bảng giá ma trận hoặc Expression trước khi kích hoạt.',
+      );
     }
-    this.validateExpression(version.expression.trim());
+    if (version.expression?.trim()) {
+      this.validateExpression(version.expression.trim());
+    }
 
     return this.prisma.$transaction(async (tx) => {
       await tx.pricingRuleVersion.updateMany({
@@ -845,6 +990,7 @@ export class ProductService {
         data: { status: 'ACTIVE' },
         include: {
           items: { orderBy: { displayOrder: 'asc' } },
+          matrixRows: { orderBy: { displayOrder: 'asc' } },
           pricingRule: { select: { productId: true } },
         },
       });
@@ -860,29 +1006,78 @@ export class ProductService {
     return this.prisma.pricingRuleVersion.delete({ where: { id } });
   }
 
+  /**
+   * Validate chung cho Rule Item (Sprint 03): 4 loại rule + condition.
+   * MIN_DIMENSION/MIN_VALUE cần targetParameter; MIN_* cần value > 0;
+   * BILLABLE_STEP cần billValue > 0 và khoảng [rangeFrom, rangeTo) hợp lệ.
+   */
+  private validatePricingRuleItemInput(input: {
+    ruleType: string;
+    targetParameter?: string | null;
+    value?: number | null;
+    condition?: string | null;
+    rangeFrom?: number | null;
+    rangeTo?: number | null;
+    billValue?: number | null;
+  }): void {
+    const validTypes = ['MIN_AREA', 'MIN_DIMENSION', 'MIN_VALUE', 'BILLABLE_STEP'];
+    if (!validTypes.includes(input.ruleType)) {
+      throw new BadRequestException(
+        `Loại Rule không hợp lệ. Chọn: ${validTypes.join(', ')}.`,
+      );
+    }
+    if (
+      (input.ruleType === 'MIN_DIMENSION' || input.ruleType === 'MIN_VALUE') &&
+      !input.targetParameter?.trim()
+    ) {
+      throw new BadRequestException(`${input.ruleType} cần chỉ định targetParameter.`);
+    }
+    if (input.ruleType !== 'BILLABLE_STEP') {
+      if (input.value === undefined || input.value === null || input.value <= 0) {
+        throw new BadRequestException('Giá trị tối thiểu phải lớn hơn 0.');
+      }
+    } else {
+      if (input.billValue === undefined || input.billValue === null || input.billValue <= 0) {
+        throw new BadRequestException('BILLABLE_STEP cần billValue lớn hơn 0.');
+      }
+      if (
+        input.rangeFrom !== null &&
+        input.rangeFrom !== undefined &&
+        input.rangeTo !== null &&
+        input.rangeTo !== undefined &&
+        input.rangeFrom >= input.rangeTo
+      ) {
+        throw new BadRequestException('BILLABLE_STEP cần rangeFrom nhỏ hơn rangeTo.');
+      }
+    }
+    if (input.condition?.trim()) {
+      this.validateExpression(input.condition.trim());
+    }
+  }
+
   async createPricingRuleItem(versionId: string, dto: CreatePricingRuleItemDto) {
     const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id: versionId } });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể thêm Rule vào phiên bản DRAFT.');
     }
-    const validTypes = ['MIN_AREA', 'MIN_DIMENSION'];
-    if (!validTypes.includes(dto.ruleType)) {
-      throw new BadRequestException('Loại Rule không hợp lệ. Chọn: MIN_AREA, MIN_DIMENSION.');
-    }
-    if (dto.ruleType === 'MIN_DIMENSION' && !dto.targetParameter?.trim()) {
-      throw new BadRequestException('MIN_DIMENSION cần chỉ định targetParameter.');
-    }
-    if (dto.value === undefined || dto.value <= 0) {
-      throw new BadRequestException('Giá trị tối thiểu phải lớn hơn 0.');
-    }
+    this.validatePricingRuleItemInput(dto);
 
+    const needsTarget = dto.ruleType === 'MIN_DIMENSION' || dto.ruleType === 'MIN_VALUE';
     return this.prisma.pricingRuleItem.create({
       data: {
         pricingRuleVersionId: versionId,
         ruleType: dto.ruleType as PricingRuleType,
-        targetParameter: dto.ruleType === 'MIN_DIMENSION' ? dto.targetParameter?.trim() || null : null,
-        value: dto.value,
+        // BILLABLE_STEP: targetParameter tùy chọn (mặc định 'area' khi tính)
+        targetParameter:
+          needsTarget || dto.ruleType === 'BILLABLE_STEP'
+            ? dto.targetParameter?.trim() || null
+            : null,
+        value: dto.value ?? 0,
+        condition: dto.condition?.trim() || null,
+        rangeFrom: dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeFrom ?? null) : null,
+        rangeTo: dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeTo ?? null) : null,
+        billValue: dto.ruleType === 'BILLABLE_STEP' ? (dto.billValue ?? null) : null,
         description: dto.description?.trim() || null,
         displayOrder: dto.displayOrder ?? 0,
       },
@@ -900,27 +1095,83 @@ export class ProductService {
     }
 
     const effectiveType = (dto.ruleType as PricingRuleType) ?? item.ruleType;
-    if (dto.ruleType && !['MIN_AREA', 'MIN_DIMENSION'].includes(dto.ruleType)) {
-      throw new BadRequestException('Loại Rule không hợp lệ.');
-    }
-    if (effectiveType === 'MIN_DIMENSION') {
-      const target = dto.targetParameter ?? item.targetParameter;
-      if (!target?.trim()) throw new BadRequestException('MIN_DIMENSION cần chỉ định targetParameter.');
-    }
-    if (dto.value !== undefined && dto.value <= 0) {
-      throw new BadRequestException('Giá trị tối thiểu phải lớn hơn 0.');
-    }
+    this.validatePricingRuleItemInput({
+      ruleType: effectiveType,
+      targetParameter: dto.targetParameter !== undefined ? dto.targetParameter : item.targetParameter,
+      value: dto.value !== undefined ? dto.value : Number(item.value),
+      condition: dto.condition !== undefined ? dto.condition : item.condition,
+      rangeFrom: dto.rangeFrom !== undefined ? dto.rangeFrom : item.rangeFrom ? Number(item.rangeFrom) : null,
+      rangeTo: dto.rangeTo !== undefined ? dto.rangeTo : item.rangeTo ? Number(item.rangeTo) : null,
+      billValue: dto.billValue !== undefined ? dto.billValue : item.billValue ? Number(item.billValue) : null,
+    });
 
     const data: Prisma.PricingRuleItemUpdateInput = {};
     if (dto.ruleType !== undefined) data.ruleType = dto.ruleType as PricingRuleType;
     if (dto.targetParameter !== undefined) {
-      data.targetParameter = effectiveType === 'MIN_DIMENSION' ? dto.targetParameter?.trim() || null : null;
+      data.targetParameter = dto.targetParameter?.trim() || null;
     }
     if (dto.value !== undefined) data.value = dto.value;
+    if (dto.condition !== undefined) data.condition = dto.condition?.trim() || null;
+    if (dto.rangeFrom !== undefined) data.rangeFrom = dto.rangeFrom;
+    if (dto.rangeTo !== undefined) data.rangeTo = dto.rangeTo;
+    if (dto.billValue !== undefined) data.billValue = dto.billValue;
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
 
     return this.prisma.pricingRuleItem.update({ where: { id }, data });
+  }
+
+  /**
+   * Bulk replace toàn bộ Bảng giá ma trận của một version DRAFT (Sprint 03 Task 10).
+   * Editor dạng Excel lưu cả bảng một lần — đơn giản và không lo lệch từng dòng.
+   */
+  async updatePriceMatrix(versionId: string, rows: PriceMatrixRowDto[]) {
+    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể sửa Bảng giá trong phiên bản DRAFT.');
+    }
+
+    const seen = new Set<string>();
+    const data = (rows ?? []).map((row, idx) => {
+      if (!row.dimensions || Object.keys(row.dimensions).length === 0) {
+        throw new BadRequestException(`Dòng ${idx + 1}: thiếu tổ hợp cấu hình.`);
+      }
+      if (!(row.unitPrice > 0)) {
+        throw new BadRequestException(`Dòng ${idx + 1}: đơn giá phải lớn hơn 0.`);
+      }
+      const configKey = Object.entries(row.dimensions)
+        .map(([k, v]) => [k.trim(), String(v).trim()] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('|');
+      if (seen.has(configKey)) {
+        throw new BadRequestException(`Dòng ${idx + 1}: tổ hợp "${configKey}" bị trùng.`);
+      }
+      seen.add(configKey);
+      return {
+        pricingRuleVersionId: versionId,
+        dimensions: row.dimensions,
+        configKey,
+        unitPrice: row.unitPrice,
+        displayOrder: row.displayOrder ?? idx,
+      };
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.priceMatrixRow.deleteMany({ where: { pricingRuleVersionId: versionId } });
+      if (data.length > 0) {
+        await tx.priceMatrixRow.createMany({ data });
+      }
+      return tx.pricingRuleVersion.findUnique({
+        where: { id: versionId },
+        include: {
+          items: { orderBy: { displayOrder: 'asc' } },
+          matrixRows: { orderBy: { displayOrder: 'asc' } },
+          pricingRule: { select: { productId: true } },
+        },
+      });
+    });
   }
 
   async deletePricingRuleItem(id: string) {
@@ -935,44 +1186,20 @@ export class ProductService {
     return this.prisma.pricingRuleItem.delete({ where: { id } });
   }
 
-  async previewPrice(versionId: string, inputParams: Record<string, number>) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({
-      where: { id: versionId },
-      include: { items: { orderBy: { displayOrder: 'asc' } } },
-    });
-    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
-    if (!version.expression?.trim()) {
-      throw new BadRequestException('Phiên bản chưa có Expression.');
-    }
+  async previewPrice(versionId: string, inputParams: Record<string, number | string>) {
+    // Preview dùng đúng pipeline của Pricing Engine (kể cả version DRAFT) —
+    // trước đây preview tự tính riêng nên lệch với giá thật (bug, fix 10/07/2026).
+    const config = await this.pricingEngine.loadConfigForVersion(versionId);
+    const result = this.pricingEngine.calculatePrice(config, { ...inputParams });
 
-    const adjustedParams: Record<string, number> = { ...inputParams };
-
-    if (adjustedParams.width !== undefined && adjustedParams.height !== undefined) {
-      adjustedParams.area = adjustedParams.width * adjustedParams.height;
-    }
-
-    for (const item of version.items) {
-      const minVal = Number(item.value);
-      if (item.ruleType === 'MIN_AREA') {
-        if (adjustedParams.area !== undefined) {
-          adjustedParams.area = Math.max(adjustedParams.area, minVal);
-        }
-      } else if (item.ruleType === 'MIN_DIMENSION' && item.targetParameter) {
-        const current = adjustedParams[item.targetParameter];
-        if (current !== undefined) {
-          adjustedParams[item.targetParameter] = Math.max(current, minVal);
-        }
-      }
-    }
-
-    const rawPrice = this.evaluateExpression(version.expression, adjustedParams);
-    const finalPrice = this.applyRounding(
-      rawPrice,
-      version.priceRoundType,
-      version.priceRoundValue ? Number(version.priceRoundValue) : null,
-    );
-
-    return { inputParams, adjustedParams, rawPrice, finalPrice };
+    return {
+      inputParams,
+      adjustedParams: result.billableParams,
+      rawPrice: result.rawPrice,
+      finalPrice: result.systemPrice,
+      unitPrice: result.unitPrice,
+      warnings: result.warnings,
+    };
   }
 
   // ──────────────────────────────────────
@@ -1135,6 +1362,9 @@ export class ProductService {
     if (!material) throw new NotFoundException('Nguyên liệu không tồn tại.');
     if (!dto.expression?.trim()) throw new BadRequestException('Expression là bắt buộc.');
     this.validateExpression(dto.expression.trim());
+    if (dto.condition?.trim()) {
+      this.validateExpression(dto.condition.trim());
+    }
     if (dto.wastePercent !== undefined && dto.wastePercent < 0) {
       throw new BadRequestException('Tỷ lệ hao hụt không được âm.');
     }
@@ -1150,6 +1380,7 @@ export class ProductService {
         materialRequirementVersionId: versionId,
         materialId: dto.materialId,
         expression: dto.expression.trim(),
+        condition: dto.condition?.trim() || null,
         wastePercent: dto.wastePercent ?? 0,
         roundType: roundType as RoundType,
         roundValue: roundValue,
@@ -1181,6 +1412,9 @@ export class ProductService {
     if (dto.expression !== undefined && dto.expression.trim()) {
       this.validateExpression(dto.expression.trim());
     }
+    if (dto.condition !== undefined && dto.condition?.trim()) {
+      this.validateExpression(dto.condition.trim());
+    }
     if (dto.wastePercent !== undefined && dto.wastePercent < 0) {
       throw new BadRequestException('Tỷ lệ hao hụt không được âm.');
     }
@@ -1191,6 +1425,7 @@ export class ProductService {
     const data: Prisma.MaterialRequirementItemUpdateInput = {};
     if (dto.materialId !== undefined) data.material = { connect: { id: dto.materialId } };
     if (dto.expression !== undefined) data.expression = dto.expression.trim();
+    if (dto.condition !== undefined) data.condition = dto.condition?.trim() || null;
     if (dto.wastePercent !== undefined) data.wastePercent = dto.wastePercent;
     if (dto.roundStep !== undefined) {
       data.roundType = dto.roundStep > 0 ? 'CEIL' : 'NONE';
@@ -1222,65 +1457,34 @@ export class ProductService {
     return this.prisma.materialRequirementItem.delete({ where: { id } });
   }
 
-  async previewMaterial(versionId: string, inputParams: Record<string, number>) {
-    const version = await this.prisma.materialRequirementVersion.findUnique({
-      where: { id: versionId },
-      include: {
-        items: {
-          orderBy: { displayOrder: 'asc' },
-          include: {
-            material: {
-              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
-            },
-          },
-        },
-      },
-    });
-    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
-    if (version.items.length === 0) {
+  async previewMaterial(versionId: string, inputParams: Record<string, number | string>) {
+    // Preview dùng đúng pipeline của BOM Engine (Filter theo condition →
+    // Formula → Waste → Round) — cùng một logic với lúc Approve sinh OrderBOM.
+    const config = await this.bomEngine.loadConfigForVersion(versionId);
+    if (config.items.length === 0) {
       throw new BadRequestException('Phiên bản chưa có Item nào.');
     }
 
-    let totalCost = 0;
-    const items = [];
+    const result = this.bomEngine.calculateBom(config, { ...inputParams });
 
-    for (const item of version.items) {
-      const baseQty = this.evaluateExpression(item.expression, inputParams);
-      const waste = Number(item.wastePercent);
-      const wastedQty = baseQty * (1 + waste / 100);
-
-      let finalQty = wastedQty;
-      const roundVal = item.roundValue ? Number(item.roundValue) : null;
-      if (item.roundType !== 'NONE' && roundVal && roundVal > 0) {
-        finalQty = this.applyRounding(wastedQty, item.roundType, roundVal);
-      }
-
-      const prices = await this.prisma.materialPrice.findMany({
-        where: { materialId: item.materialId },
-        orderBy: [{ isDefault: 'desc' }, { effectiveFrom: 'desc' }],
-        take: 1,
-      });
-      const unitPrice = prices.length > 0 ? Number(prices[0].price) : 0;
-      const itemCost = finalQty * unitPrice;
-      totalCost += itemCost;
-
-      items.push({
-        materialId: item.materialId,
-        materialCode: (item.material as any).code,
-        materialName: (item.material as any).name,
-        unit: (item.material as any).unit,
-        expression: item.expression,
-        baseQty,
-        wastePercent: waste,
-        wastedQty,
-        roundStep: roundVal,
-        finalQty,
-        unitPrice,
-        itemCost,
-      });
-    }
-
-    return { inputParams, items, totalCost };
+    return {
+      inputParams,
+      items: result.lines.map((line) => ({
+        materialId: line.materialId,
+        materialCode: line.materialCode,
+        materialName: line.materialName,
+        unit: line.materialUnit ? { name: line.materialUnit } : null,
+        expression: line.expression,
+        baseQty: line.baseQty,
+        wastePercent: line.wastePercent,
+        wastedQty: line.wastedQty,
+        roundStep: line.roundValue,
+        finalQty: line.finalQtyPerUnit,
+        unitPrice: line.unitPrice,
+        itemCost: line.lineTotal,
+      })),
+      totalCost: result.plannedCost,
+    };
   }
 
   // ──────────────────────────────────────
@@ -1481,42 +1685,10 @@ export class ProductService {
   // ──────────────────────────────────────
 
   private validateExpression(expression: string): void {
-    const forbidden = ['require', 'import', 'fetch', 'eval', 'process', 'global', 'window', 'document'];
-    for (const word of forbidden) {
-      if (expression.includes(word)) {
-        throw new BadRequestException(`Biểu thức không được chứa "${word}".`);
-      }
+    const result = validateExpressionSyntax(expression);
+    if (!result.valid) {
+      throw new BadRequestException(`Cú pháp biểu thức không hợp lệ: ${result.error}`);
     }
-    try {
-      // eslint-disable-next-line no-new-func
-      new Function(`"use strict"; return (${expression});`);
-    } catch {
-      throw new BadRequestException('Cú pháp biểu thức không hợp lệ.');
-    }
-  }
-
-  private evaluateExpression(expression: string, variables: Record<string, number>): number {
-    const names = Object.keys(variables);
-    const values = Object.values(variables);
-    try {
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(...names, `"use strict"; return (${expression});`);
-      const result = fn(...values);
-      if (typeof result !== 'number' || !isFinite(result)) {
-        throw new Error('Biểu thức không trả về số hợp lệ.');
-      }
-      return result;
-    } catch (err) {
-      throw new BadRequestException(`Lỗi tính toán: ${(err as Error).message}`);
-    }
-  }
-
-  private applyRounding(price: number, roundType: string, roundValue: number | null): number {
-    if (roundType === 'NONE' || !roundValue) return price;
-    if (roundType === 'CEIL') return Math.ceil(price / roundValue) * roundValue;
-    if (roundType === 'FLOOR') return Math.floor(price / roundValue) * roundValue;
-    if (roundType === 'ROUND') return Math.round(price / roundValue) * roundValue;
-    return price;
   }
 
   private async generateCode(type: string): Promise<string> {

@@ -4,6 +4,7 @@ import { CreatePricingRuleVersionDto } from './dto/create-pricing-rule-version.d
 import { UpdatePricingRuleVersionDto } from './dto/update-pricing-rule-version.dto';
 import { CreatePricingRuleItemDto } from './dto/create-pricing-rule-item.dto';
 import { UpdatePricingRuleItemDto } from './dto/update-pricing-rule-item.dto';
+import { UpdatePriceMatrixDto } from './dto/update-price-matrix.dto';
 
 @Controller('products/:productId/pricing-rule')
 export class PricingRuleController {
@@ -72,5 +73,13 @@ export class PricingRuleController {
     @Body('params') params: Record<string, number>,
   ) {
     return this.productService.previewPrice(versionId, params ?? {});
+  }
+
+  @Patch('versions/:versionId/matrix')
+  updateMatrix(
+    @Param('versionId') versionId: string,
+    @Body() dto: UpdatePriceMatrixDto,
+  ) {
+    return this.productService.updatePriceMatrix(versionId, dto.rows ?? []);
   }
 }

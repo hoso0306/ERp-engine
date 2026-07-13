@@ -31,6 +31,7 @@ interface ProductParameter {
   label: string;
   type: string;
   usedInMaterial: boolean;
+  options: { value: string; label: string | null }[];
 }
 
 interface MaterialRequirementVersion {
@@ -111,7 +112,7 @@ export default function MaterialRequirementVersionPage() {
   useEffect(() => {
     loadVersion();
     apiGet<ProductParameter[]>(`/products/${productId}/parameters`)
-      .then((data) => setParameters(data.filter((p) => p.usedInMaterial)))
+      .then((data) => setParameters(data))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -197,7 +198,7 @@ export default function MaterialRequirementVersionPage() {
   if (loading) return <Loading />;
   if (error || !version) return <ErrorState description={error ?? "Không tìm thấy."} onRetry={loadVersion} />;
 
-  const numberParams = parameters.filter((p) => p.type === "NUMBER");
+  const numberParams = parameters.filter((p) => p.type === "NUMBER" && p.usedInMaterial);
 
   return (
     <div className="space-y-6">
@@ -255,10 +256,12 @@ export default function MaterialRequirementVersionPage() {
         </div>
 
         {/* Available variables */}
-        {parameters.length > 0 && (
+        {parameters.filter((p) => p.usedInMaterial).length > 0 && (
           <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">Biến có thể dùng trong Expression:</p>
-            <p className="font-mono">{parameters.map((p) => p.name).join(", ")}</p>
+            <p className="font-medium">Biến có thể dùng trong Expression/Điều kiện:</p>
+            <p className="font-mono">
+              {parameters.filter((p) => p.usedInMaterial).map((p) => p.name).join(", ")}
+            </p>
           </div>
         )}
 
@@ -296,6 +299,7 @@ export default function MaterialRequirementVersionPage() {
                 <TableRow>
                   <TableHead>Vật tư</TableHead>
                   <TableHead>Expression</TableHead>
+                  <TableHead>Điều kiện</TableHead>
                   <TableHead className="text-right w-24">Hao hụt (%)</TableHead>
                   <TableHead className="text-right w-28">Round Step</TableHead>
                   <TableHead>Ghi chú</TableHead>
@@ -320,6 +324,9 @@ export default function MaterialRequirementVersionPage() {
                     </TableCell>
                     <TableCell className="font-mono text-xs max-w-xs truncate">
                       {item.expression}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate">
+                      {item.condition || "—"}
                     </TableCell>
                     <TableCell className="text-right text-sm">
                       {Number(item.wastePercent) > 0 ? `${item.wastePercent}%` : "—"}
@@ -470,6 +477,7 @@ export default function MaterialRequirementVersionPage() {
         onOpenChange={setItemDialogOpen}
         productId={productId}
         versionId={versionId}
+        parameters={parameters}
         item={editItem}
         onSaved={loadVersion}
       />

@@ -1,223 +1,336 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PricingEngineService } from './pricing-engine.service';
+import { PricingEngineService, PricingConfig } from './pricing-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RoundType } from '@prisma/client';
 
 // ──────────────────────────────────────
-// Helpers
+// Helpers — config thuần cho tầng Calculate (không cần DB)
 // ──────────────────────────────────────
 
-function makeVersion(overrides: Partial<{
-  id: string;
-  expression: string;
-  priceRoundType: string;
-  priceRoundValue: number | null;
-  items: any[];
-}> = {}) {
+function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
   return {
-    id: 'ver-001',
-    expression: 'area * 200000',
-    priceRoundType: 'NONE',
-    priceRoundValue: null,
-    items: [],
+    pricingRuleVersionId: 'ver-001',
+    expression: null,
+    priceRoundType: RoundType.NONE,
+    priceRoundValue: 0,
+    ruleItems: [],
+    matrixRows: [],
+    derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+    validationRules: [],
     ...overrides,
   };
 }
 
-function makeProduct(versionOverrides?: Parameters<typeof makeVersion>[0] | null) {
-  const version = versionOverrides === null ? undefined : makeVersion(versionOverrides);
-  return {
-    id: 'prod-001',
-    pricingRule: version
-      ? { versions: [version] }
-      : versionOverrides === null
-        ? { versions: [] }
-        : null,
-  };
-}
+// Bảng giá thật (ảnh bảo giá cửa lưới Hệ 30): Trắng/Cafe × 1/2 cánh
+const HE30_MATRIX = [
+  { dimensions: { maukhung: 'trang', socanh: '1' }, unitPrice: 385000, displayOrder: 0 },
+  { dimensions: { maukhung: 'trang', socanh: '2' }, unitPrice: 408000, displayOrder: 1 },
+  { dimensions: { maukhung: 'cafe', socanh: '1' }, unitPrice: 428000, displayOrder: 2 },
+  { dimensions: { maukhung: 'cafe', socanh: '2' }, unitPrice: 450000, displayOrder: 3 },
+];
 
-function mockPrisma(product: any) {
-  return {
-    product: {
-      findUnique: jest.fn().mockResolvedValue(product),
-    },
-  } as any;
+// Ghi chú bảng giá: 1 cánh rộng <70cm tính 70cm; 2 cánh rộng <100cm tính 100cm
+const HE30_MIN_RULES = [
+  {
+    ruleType: 'MIN_DIMENSION', targetParameter: 'chieurong', value: 70,
+    condition: 'socanh == 1', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 0,
+  },
+  {
+    ruleType: 'MIN_DIMENSION', targetParameter: 'chieurong', value: 100,
+    condition: 'socanh == 2', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 1,
+  },
+];
+
+function service(): PricingEngineService {
+  return new PricingEngineService({} as PrismaService);
 }
 
 // ──────────────────────────────────────
-// Tests
+// Matrix lookup (bảng giá thật)
 // ──────────────────────────────────────
 
-describe('PricingEngineService', () => {
-  let service: PricingEngineService;
+describe('PricingEngine.calculatePrice — Matrix lookup', () => {
+  it('Hệ 30 Cafe 2 cánh, 250×200cm → 5m² × 450.000 = 2.250.000', () => {
+    const result = service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
+      chieurong: 250,
+      chieucao: 200,
+      maukhung: 'cafe',
+      socanh: 2,
+    });
 
-  async function build(prisma: any): Promise<PricingEngineService> {
+    expect(result.unitPrice).toBe(450000);
+    expect(result.systemPrice).toBe(2_250_000);
+    expect(result.billableParams.area).toBe(5);
+  });
+
+  it('đổi màu Trắng 1 cánh → tra đúng đơn giá khác (385.000)', () => {
+    const result = service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
+      chieurong: 100,
+      chieucao: 100,
+      maukhung: 'trang',
+      socanh: 1,
+    });
+    expect(result.unitPrice).toBe(385000);
+    expect(result.systemPrice).toBe(385000); // 1m²
+  });
+
+  it('tổ hợp chưa có giá → lỗi nêu rõ tổ hợp', () => {
+    expect(() =>
+      service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
+        chieurong: 100, chieucao: 100, maukhung: 'van_go', socanh: 1,
+      }),
+    ).toThrow(/van_go/);
+  });
+
+  it('sản phẩm dùng matrix nhưng thiếu derived param area → lỗi hướng dẫn cấu hình', () => {
+    expect(() =>
+      service().calculatePrice(
+        makeConfig({ matrixRows: HE30_MATRIX, derivedParameters: [] }),
+        { chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1 },
+      ),
+    ).toThrow(/area/);
+  });
+});
+
+// ──────────────────────────────────────
+// Normalize — min rule có condition, bậc thang, billable ≠ raw
+// ──────────────────────────────────────
+
+describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
+  it('cửa 1 cánh rộng 60cm → tính tiền theo 70cm (diện tích tính lại từ chiều đã nâng)', () => {
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 },
+    );
+
+    // billable: chieurong 60 → 70; area = 70*200/10000 = 1.4m²
+    expect(result.billableParams.chieurong).toBe(70);
+    expect(result.billableParams.area).toBeCloseTo(1.4);
+    expect(result.systemPrice).toBe(Math.round(1.4 * 428000));
+  });
+
+  it('rule min 1 cánh KHÔNG áp cho cửa 2 cánh (condition) — 2 cánh dùng min 100cm', () => {
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      { chieurong: 80, chieucao: 200, maukhung: 'cafe', socanh: 2 },
+    );
+
+    // 2 cánh: min 100cm áp dụng (80 → 100); min 70 (1 cánh) bị bỏ qua
+    expect(result.billableParams.chieurong).toBe(100);
+    expect(result.systemPrice).toBe(Math.round(2 * 450000)); // 100*200/10000 = 2m²
+  });
+
+  it('KHÔNG ghi đè tham số gốc — rawParams giữ nguyên (billable ≠ actual)', () => {
+    const raw = { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 };
+    service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      raw,
+    );
+    expect(raw.chieurong).toBe(60); // xưởng vẫn cắt theo 60cm
+  });
+
+  it('BILLABLE_STEP (rèm kéo đứng): 0,85m² rơi vào bậc [0.7, 1) → tính 1m²', () => {
+    const stepRules = [
+      {
+        ruleType: 'BILLABLE_STEP', targetParameter: null, value: 0,
+        condition: null, rangeFrom: 0, rangeTo: 0.7, billValue: 0.7, displayOrder: 0,
+      },
+      {
+        ruleType: 'BILLABLE_STEP', targetParameter: null, value: 0,
+        condition: null, rangeFrom: 0.7, rangeTo: 1, billValue: 1, displayOrder: 1,
+      },
+    ];
+    const config = makeConfig({ expression: 'area * 415000', ruleItems: stepRules });
+
+    // 0.85m² → bậc 1m²
+    const mid = service().calculatePrice(config, { chieurong: 85, chieucao: 100 });
+    expect(mid.billableParams.area).toBe(1);
+    expect(mid.systemPrice).toBe(415000);
+
+    // 0.5m² → bậc 0.7m²
+    const small = service().calculatePrice(config, { chieurong: 50, chieucao: 100 });
+    expect(small.billableParams.area).toBe(0.7);
+
+    // 2.5m² → giữ nguyên
+    const large = service().calculatePrice(config, { chieurong: 125, chieucao: 200 });
+    expect(large.billableParams.area).toBe(2.5);
+  });
+
+  it('condition của rule lỗi → throw, không âm thầm bỏ rule', () => {
+    const badRule = [{
+      ruleType: 'MIN_AREA', targetParameter: null, value: 0.7,
+      condition: 'bienkhongton >', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 0,
+    }];
+    expect(() =>
+      service().calculatePrice(
+        makeConfig({ expression: 'area * 100000', ruleItems: badRule }),
+        { chieurong: 100, chieucao: 100 },
+      ),
+    ).toThrow(BadRequestException);
+  });
+});
+
+// ──────────────────────────────────────
+// Expression fallback + rounding (tương thích sản phẩm cũ)
+// ──────────────────────────────────────
+
+describe('PricingEngine.calculatePrice — Expression fallback', () => {
+  it('không có matrix → dùng expression (sản phẩm cũ chạy nguyên trạng)', () => {
+    const result = service().calculatePrice(
+      makeConfig({ expression: '(chieucao/100)*(chieurong/100)*328000 + 5000' }),
+      { chieurong: 100, chieucao: 200 },
+    );
+    expect(result.unitPrice).toBeNull();
+    expect(result.systemPrice).toBe(2 * 328000 + 5000);
+  });
+
+  it('làm tròn CEIL theo bước 10.000', () => {
+    const result = service().calculatePrice(
+      makeConfig({
+        expression: 'area * 210000',
+        priceRoundType: RoundType.CEIL,
+        priceRoundValue: 10000,
+      }),
+      { chieurong: 100, chieucao: 150 }, // 1.5m² → 315.000 → CEIL 320.000
+    );
+    expect(result.systemPrice).toBe(320_000);
+  });
+
+  it('không có matrix lẫn expression → lỗi rõ ràng', () => {
+    expect(() =>
+      service().calculatePrice(makeConfig(), { chieurong: 100, chieucao: 100 }),
+    ).toThrow(/chưa có Bảng giá/);
+  });
+
+  it('giá âm → lỗi', () => {
+    expect(() =>
+      service().calculatePrice(makeConfig({ expression: 'area * 100000 - 999999999' }), {
+        chieurong: 100, chieucao: 100,
+      }),
+    ).toThrow(/số âm/);
+  });
+});
+
+// ──────────────────────────────────────
+// Validation Rule trong pipeline
+// ──────────────────────────────────────
+
+describe('PricingEngine.calculatePrice — Validation', () => {
+  it('rule hệ xích (WARN): cao > 2×rộng → warnings, vẫn tính giá', () => {
+    const result = service().calculatePrice(
+      makeConfig({
+        expression: 'area * 100000',
+        validationRules: [{
+          expression: 'chieucao > 2 * chieurong',
+          severity: 'WARN',
+          message: 'Chiều cao vượt quá 2 lần chiều rộng — kiểm tra lại với xưởng.',
+        }],
+      }),
+      { chieurong: 100, chieucao: 300 },
+    );
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('2 lần chiều rộng');
+    expect(result.systemPrice).toBeGreaterThan(0);
+  });
+
+  it('rule BLOCK vi phạm → throw message của rule', () => {
+    expect(() =>
+      service().calculatePrice(
+        makeConfig({
+          expression: 'area * 100000',
+          validationRules: [{
+            expression: 'chieurong > 500',
+            severity: 'BLOCK',
+            message: 'Chiều rộng vượt khổ tối đa 5m.',
+          }],
+        }),
+        { chieurong: 600, chieucao: 100 },
+      ),
+    ).toThrow('Chiều rộng vượt khổ tối đa 5m.');
+  });
+
+  it('không vi phạm → warnings rỗng', () => {
+    const result = service().calculatePrice(
+      makeConfig({
+        expression: 'area * 100000',
+        validationRules: [{
+          expression: 'chieucao > 2 * chieurong', severity: 'WARN', message: 'x',
+        }],
+      }),
+      { chieurong: 100, chieucao: 150 },
+    );
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+// ──────────────────────────────────────
+// Tầng Load + API calculate(dto) — mock Prisma
+// ──────────────────────────────────────
+
+describe('PricingEngineService.calculate (load + calc)', () => {
+  async function build(prisma: unknown): Promise<PricingEngineService> {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PricingEngineService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [PricingEngineService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     return module.get(PricingEngineService);
   }
 
-  // ──────────────────────────────────────
-  // Tính đúng giá cơ bản
-  // ──────────────────────────────────────
+  function mockProduct(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'prod-001',
+      derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+      validationRules: [],
+      pricingRule: {
+        versions: [{
+          id: 'ver-001',
+          expression: null,
+          priceRoundType: 'NONE',
+          priceRoundValue: null,
+          items: [],
+          matrixRows: HE30_MATRIX,
+        }],
+      },
+      ...overrides,
+    };
+  }
 
-  it('tính systemPrice đúng với expression area * 200000', async () => {
-    service = await build(mockPrisma(makeProduct()));
+  it('end-to-end: coerce tham số (ENUM giữ chuỗi, số thành number) + matrix lookup', async () => {
+    const svc = await build({
+      product: { findUnique: jest.fn().mockResolvedValue(mockProduct()) },
+    });
 
-    const result = await service.calculate({
+    const result = await svc.calculate({
       productId: 'prod-001',
       parameters: [
-        { name: 'width', value: '1000' },   // 1000mm
-        { name: 'height', value: '2000' },  // 2000mm → area = 2m²
+        { name: 'chieurong', value: '250' },
+        { name: 'chieucao', value: '200' },
+        { name: 'maukhung', value: 'cafe' }, // ENUM — phải giữ nguyên chuỗi
+        { name: 'socanh', value: '2' },
       ],
     });
 
-    // area = 1000 * 2000 / 1_000_000 = 2 m²
-    // price = 2 * 200000 = 400_000
-    expect(result.systemPrice).toBe(400_000);
+    expect(result.systemPrice).toBe(2_250_000);
+    expect(result.unitPrice).toBe(450000);
     expect(result.pricingRuleVersionId).toBe('ver-001');
+    expect(result.warnings).toEqual([]);
   });
 
-  // ──────────────────────────────────────
-  // MIN_AREA rule
-  // ──────────────────────────────────────
+  it('sản phẩm không tồn tại → NotFoundException', async () => {
+    const svc = await build({ product: { findUnique: jest.fn().mockResolvedValue(null) } });
+    await expect(svc.calculate({ productId: 'x', parameters: [] })).rejects.toThrow(
+      NotFoundException,
+    );
+  });
 
-  it('áp dụng MIN_AREA: diện tích nhỏ hơn tối thiểu → dùng minValue', async () => {
-    service = await build(mockPrisma(makeProduct({
-      expression: 'area * 200000',
-      items: [{ ruleType: 'MIN_AREA', targetParameter: null, value: 0.7, displayOrder: 0 }],
-    })));
-
-    const result = await service.calculate({
-      productId: 'prod-001',
-      parameters: [
-        { name: 'width', value: '400' },   // 400mm
-        { name: 'height', value: '500' },  // 500mm → area = 0.2m² < 0.7
-      ],
+  it('chưa có version ACTIVE → BadRequestException', async () => {
+    const svc = await build({
+      product: {
+        findUnique: jest.fn().mockResolvedValue(mockProduct({ pricingRule: { versions: [] } })),
+      },
     });
-
-    // area được floor lên 0.7 → price = 0.7 * 200000 = 140_000
-    expect(result.systemPrice).toBe(140_000);
-    expect(result.adjustedVariables['area']).toBe(0.7);
-  });
-
-  // ──────────────────────────────────────
-  // MIN_DIMENSION rule
-  // ──────────────────────────────────────
-
-  it('áp dụng MIN_DIMENSION: width nhỏ hơn tối thiểu → dùng minValue', async () => {
-    service = await build(mockPrisma(makeProduct({
-      expression: 'width * 100',
-      items: [{ ruleType: 'MIN_DIMENSION', targetParameter: 'width', value: 600, displayOrder: 0 }],
-    })));
-
-    const result = await service.calculate({
-      productId: 'prod-001',
-      parameters: [{ name: 'width', value: '400' }],  // 400 < 600
-    });
-
-    // width được floor lên 600 → price = 600 * 100 = 60_000
-    expect(result.systemPrice).toBe(60_000);
-  });
-
-  // ──────────────────────────────────────
-  // Làm tròn CEIL
-  // ──────────────────────────────────────
-
-  it('làm tròn CEIL theo priceRoundValue', async () => {
-    service = await build(mockPrisma(makeProduct({
-      expression: 'area * 200000',
-      priceRoundType: 'CEIL',
-      priceRoundValue: 10000,
-      items: [],
-    })));
-
-    const result = await service.calculate({
-      productId: 'prod-001',
-      parameters: [
-        { name: 'width', value: '1000' },
-        { name: 'height', value: '1500' },  // area = 1.5m² → 300_000
-      ],
-    });
-
-    // price = 300_000 đã là bội số của 10_000 → không đổi
-    expect(result.systemPrice).toBe(300_000);
-  });
-
-  it('làm tròn CEIL lên bội số gần nhất', async () => {
-    service = await build(mockPrisma(makeProduct({
-      expression: 'area * 210000',   // 1.5 * 210000 = 315_000
-      priceRoundType: 'CEIL',
-      priceRoundValue: 10000,
-      items: [],
-    })));
-
-    const result = await service.calculate({
-      productId: 'prod-001',
-      parameters: [
-        { name: 'width', value: '1000' },
-        { name: 'height', value: '1500' },
-      ],
-    });
-
-    // 315_000 → ceil lên bội số 10_000 → 320_000
-    expect(result.systemPrice).toBe(320_000);
-  });
-
-  // ──────────────────────────────────────
-  // Lỗi: sản phẩm không tồn tại
-  // ──────────────────────────────────────
-
-  it('ném NotFoundException khi productId không tồn tại', async () => {
-    service = await build(mockPrisma(null));
-
-    await expect(
-      service.calculate({ productId: 'not-found', parameters: [] }),
-    ).rejects.toThrow(NotFoundException);
-  });
-
-  // ──────────────────────────────────────
-  // Lỗi: không có Pricing Rule
-  // ──────────────────────────────────────
-
-  it('ném BadRequestException khi sản phẩm chưa có Pricing Rule', async () => {
-    const productWithoutRule = { id: 'prod-001', pricingRule: null };
-    service = await build(mockPrisma(productWithoutRule));
-
-    await expect(
-      service.calculate({ productId: 'prod-001', parameters: [] }),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  // ──────────────────────────────────────
-  // Lỗi: không có version ACTIVE
-  // ──────────────────────────────────────
-
-  it('ném BadRequestException khi không có Pricing Rule Version ACTIVE', async () => {
-    const productNoActive = { id: 'prod-001', pricingRule: { versions: [] } };
-    service = await build(mockPrisma(productNoActive));
-
-    await expect(
-      service.calculate({ productId: 'prod-001', parameters: [] }),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  // ──────────────────────────────────────
-  // Lỗi: expression sai cú pháp
-  // ──────────────────────────────────────
-
-  it('ném BadRequestException khi expression có cú pháp sai', async () => {
-    service = await build(mockPrisma(makeProduct({ expression: 'width *' })));
-
-    await expect(
-      service.calculate({
-        productId: 'prod-001',
-        parameters: [{ name: 'width', value: '1000' }],
-      }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(svc.calculate({ productId: 'prod-001', parameters: [] })).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

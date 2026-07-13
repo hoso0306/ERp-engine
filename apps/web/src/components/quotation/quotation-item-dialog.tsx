@@ -85,6 +85,9 @@ export function QuotationItemDialog({
   const [discountBy, setDiscountBy] = useState("");
 
   const [systemPrice, setSystemPrice] = useState<number | null>(null);
+  const [unitPrice, setUnitPrice] = useState<number | null>(null);
+  const [adjustedVariables, setAdjustedVariables] = useState<Record<string, number>>({});
+  const [priceWarnings, setPriceWarnings] = useState<string[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -135,6 +138,9 @@ export function QuotationItemDialog({
       setDiscountBy("");
       setSystemPrice(null);
     }
+    setUnitPrice(null);
+    setAdjustedVariables({});
+    setPriceWarnings([]);
   }, [open, item]);
 
   // Sync selectedProduct (with parameters) when products load or productId changes
@@ -157,13 +163,21 @@ export function QuotationItemDialog({
 
     setPriceLoading(true);
     try {
-      const data = await apiPost<{ systemPrice: number }>("/pricing-engine/calculate", {
-        productId,
-        parameters,
-      });
+      const data = await apiPost<{
+        systemPrice: number;
+        unitPrice: number | null;
+        adjustedVariables: Record<string, number>;
+        warnings: string[];
+      }>("/pricing-engine/calculate", { productId, parameters });
       setSystemPrice(data.systemPrice);
+      setUnitPrice(data.unitPrice);
+      setAdjustedVariables(data.adjustedVariables ?? {});
+      setPriceWarnings(data.warnings ?? []);
     } catch {
       setSystemPrice(null);
+      setUnitPrice(null);
+      setAdjustedVariables({});
+      setPriceWarnings([]);
     } finally {
       setPriceLoading(false);
     }
@@ -178,6 +192,9 @@ export function QuotationItemDialog({
   async function handleProductChange(id: string | null) {
     setProductId(id ?? "");
     setSystemPrice(null);
+    setUnitPrice(null);
+    setAdjustedVariables({});
+    setPriceWarnings([]);
     if (!id) {
       setSelectedProduct(null);
       setParamValues({});
@@ -388,9 +405,35 @@ export function QuotationItemDialog({
             </div>
           )}
 
+          {/* Cảnh báo Validation Rule (Task 11) */}
+          {priceWarnings.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-1">
+              {priceWarnings.map((w, idx) => (
+                <p key={idx} className="text-xs text-amber-800">⚠ {w}</p>
+              ))}
+            </div>
+          )}
+
           {/* Price preview */}
           {productId && (
             <div className="rounded-md bg-muted p-3 space-y-1.5 text-sm">
+              {unitPrice !== null && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Đơn giá</span>
+                  <span className="font-mono">{formatMoney(unitPrice)}/m²</span>
+                </div>
+              )}
+              {Object.entries(adjustedVariables).map(([key, adjustedValue]) => {
+                const rawValue = Number(paramValues[key]);
+                const wasAdjusted = !isNaN(rawValue) && rawValue !== adjustedValue;
+                if (!wasAdjusted) return null;
+                const label = selectedProduct?.parameters.find((p) => p.name === key)?.label ?? key;
+                return (
+                  <p key={key} className="text-xs text-muted-foreground">
+                    Tính theo tối thiểu — {label}: {rawValue} → {adjustedValue}
+                  </p>
+                );
+              })}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Giá hệ thống</span>
                 <span className="font-mono">

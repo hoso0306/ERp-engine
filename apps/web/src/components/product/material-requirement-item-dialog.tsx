@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
+import { ConditionBuilder, type ConditionParameter } from "./condition-builder";
 
 interface Material {
   id: string;
@@ -34,6 +35,7 @@ export interface MaterialRequirementItem {
   materialId: string;
   material: { id: string; code: string; name: string; unit: { id: string; name: string } | null };
   expression: string;
+  condition: string | null;
   wastePercent: number;
   roundType: string;
   roundValue: number | null;
@@ -46,6 +48,7 @@ interface MaterialRequirementItemDialogProps {
   onOpenChange: (open: boolean) => void;
   productId: string;
   versionId: string;
+  parameters: ConditionParameter[];
   item?: MaterialRequirementItem | null;
   onSaved: () => void;
 }
@@ -55,6 +58,7 @@ export function MaterialRequirementItemDialog({
   onOpenChange,
   productId,
   versionId,
+  parameters,
   item,
   onSaved,
 }: MaterialRequirementItemDialogProps) {
@@ -65,6 +69,7 @@ export function MaterialRequirementItemDialog({
 
   const [materialId, setMaterialId] = useState("");
   const [expression, setExpression] = useState("");
+  const [condition, setCondition] = useState("");
   const [wastePercent, setWastePercent] = useState("0");
   const [roundStep, setRoundStep] = useState("");
   const [note, setNote] = useState("");
@@ -80,12 +85,14 @@ export function MaterialRequirementItemDialog({
     if (item) {
       setMaterialId(item.materialId);
       setExpression(item.expression);
+      setCondition(item.condition ?? "");
       setWastePercent(String(item.wastePercent));
       setRoundStep(item.roundValue !== null ? String(item.roundValue) : "");
       setNote(item.note ?? "");
     } else {
       setMaterialId("");
       setExpression("");
+      setCondition("");
       setWastePercent("0");
       setRoundStep("");
       setNote("");
@@ -117,6 +124,7 @@ export function MaterialRequirementItemDialog({
     const body: Record<string, unknown> = {
       materialId,
       expression: expression.trim(),
+      condition: condition.trim() || null,
       wastePercent: waste,
       roundStep: rs || 0,
       note: note.trim() || null,
@@ -184,6 +192,8 @@ export function MaterialRequirementItemDialog({
               Công thức tính số lượng vật tư. Dùng tên biến của thông số sản phẩm.
             </p>
           </div>
+
+          <ConditionBuilder value={condition} onChange={setCondition} parameters={parameters} />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

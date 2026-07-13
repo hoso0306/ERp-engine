@@ -51,8 +51,14 @@ enum PricingRuleType {
   MIN_AREA
   MIN_DIMENSION
   MIN_VALUE
+  BILLABLE_STEP
   ROUND
   CUSTOM
+}
+
+enum ValidationSeverity {
+  WARN
+  BLOCK
 }
 
 enum QuotationStatus {
@@ -469,6 +475,8 @@ model Product {
   pricingRule         PricingRule?
   materialRequirement MaterialRequirement?
   quotationItems      QuotationItem[]
+  validationRules     ValidationRule[]
+  derivedParameters   DerivedParameter[]
 
   @@index([productTypeId])
   @@index([productionCenterId])
@@ -549,10 +557,34 @@ model PricingRuleVersion {
 
   pricingRule PricingRule       @relation(fields: [pricingRuleId], references: [id])
   items       PricingRuleItem[]
+  matrixRows  PriceMatrixRow[]
 
   @@unique([pricingRuleId, versionNumber])
   @@index([pricingRuleId, status])
   @@map("pricing_rule_versions")
+}
+
+// Ma trận đơn giá theo tổ hợp Configuration (Sprint 03 Task 04).
+// Version chung một aggregate với PricingRuleVersion — một lần activate là
+// một bảng giá hoàn chỉnh (matrix + rules + rounding), một ID để snapshot.
+model PriceMatrixRow {
+  id                   String   @id @default(cuid())
+  pricingRuleVersionId String   @map("pricing_rule_version_id")
+  // Tổ hợp config: map tên parameter → value, ví dụ {"maukhung":"cafe","socanh":"2"}
+  dimensions           Json
+  // Khóa chuẩn hóa từ dimensions (sort theo tên, "maukhung=cafe|socanh=2") —
+  // Json không đánh unique trực tiếp được nên unique qua khóa này.
+  configKey            String   @map("config_key")
+  unitPrice            Decimal  @map("unit_price") @db.Decimal(15, 0)
+  displayOrder         Int      @default(0) @map("display_order")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  pricingRuleVersion PricingRuleVersion @relation(fields: [pricingRuleVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([pricingRuleVersionId, configKey])
+  @@index([pricingRuleVersionId])
+  @@map("price_matrix_rows")
 }
 
 model PricingRuleItem {
@@ -561,6 +593,13 @@ model PricingRuleItem {
   ruleType             PricingRuleType @map("rule_type")
   targetParameter      String?         @map("target_parameter")
   value                Decimal         @db.Decimal(15, 4)
+  // Rule Language chung (Sprint 03): expression boolean, null = luôn áp dụng.
+  // Ví dụ: socanh == 2 && maukhung == "cafe"
+  condition            String?
+  // BILLABLE_STEP (bậc thang): targetParameter trong [rangeFrom, rangeTo) → tính bằng billValue.
+  rangeFrom            Decimal?        @map("range_from") @db.Decimal(15, 4)
+  rangeTo              Decimal?        @map("range_to") @db.Decimal(15, 4)
+  billValue            Decimal?        @map("bill_value") @db.Decimal(15, 4)
   displayOrder         Int             @default(0) @map("display_order")
   description          String?
   createdAt            DateTime        @default(now()) @map("created_at")
@@ -611,6 +650,9 @@ model MaterialRequirementItem {
   materialRequirementVersionId String    @map("material_requirement_version_id")
   materialId                   String    @map("material_id")
   expression                   String
+  // Chọn vật tư theo Configuration (Sprint 03): expression boolean, null = dòng
+  // luôn được dùng. Ví dụ: maukhung == "cafe" → dòng AL30-CAFE.
+  condition                    String?
   wastePercent                 Decimal   @default(0) @map("waste_percent") @db.Decimal(5, 2)
   roundType                    RoundType @default(NONE) @map("round_type")
   roundValue                   Decimal?  @map("round_value") @db.Decimal(15, 4)
@@ -625,6 +667,48 @@ model MaterialRequirementItem {
   @@index([materialRequirementVersionId])
   @@index([materialId])
   @@map("material_requirement_items")
+}
+
+// ──────────────────────────────────────
+// Validation Rule & Derived Parameter (Sprint 03 Task 04)
+// ──────────────────────────────────────
+
+// Ràng buộc kích thước/cấu hình khi tạo báo giá. Expression mô tả điều kiện
+// VI PHẠM (true → cảnh báo/chặn). Ví dụ hệ xích: height > 2 * width.
+// Nghiệp vụ hiện tại chỉ dùng WARN (chốt 10/07/2026); BLOCK để sẵn cho tương lai.
+model ValidationRule {
+  id           String             @id @default(cuid())
+  productId    String             @map("product_id")
+  expression   String
+  severity     ValidationSeverity @default(WARN)
+  message      String
+  displayOrder Int                @default(0) @map("display_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, displayOrder])
+  @@map("validation_rules")
+}
+
+// Biến phái sinh tính từ tham số gốc, định nghĩa MỘT chỗ, cấp cho cả Pricing
+// lẫn BOM. Ví dụ: area = chieurong * chieucao / 10000 (cm → m²).
+model DerivedParameter {
+  id           String   @id @default(cuid())
+  productId    String   @map("product_id")
+  name         String
+  expression   String
+  unit         String?
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@index([productId, displayOrder])
+  @@map("derived_parameters")
 }
 
 // ──────────────────────────────────────
@@ -732,6 +816,10 @@ model QuotationItem {
   discountBy                String? @map("discount_by")
   finalPrice                Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
   subtotal                  Decimal @default(0) @db.Decimal(15, 0)
+
+  // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này
+  // (Sprint 03 Task 06) — mảng string, in được trên báo giá, không đọc lại rule.
+  warnings Json?
 
   displayOrder Int      @default(0) @map("display_order")
   createdAt    DateTime @default(now()) @map("created_at")
