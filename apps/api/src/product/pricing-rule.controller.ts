@@ -1,4 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller, Get, Post, Patch, Delete,
+  Body, Param, Res, UploadedFile, UseInterceptors, UseGuards,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ProductService } from './product.service';
 import { CreatePricingRuleVersionDto } from './dto/create-pricing-rule-version.dto';
 import { UpdatePricingRuleVersionDto } from './dto/update-pricing-rule-version.dto';
@@ -56,6 +61,12 @@ export class PricingRuleController {
     return this.productService.deletePricingRuleVersion(versionId);
   }
 
+  @Post('versions/:versionId/duplicate')
+  @RequirePermission('product.create')
+  duplicateVersion(@Param('versionId') versionId: string) {
+    return this.productService.duplicatePricingRuleVersion(versionId);
+  }
+
   @Post('versions/:versionId/items')
   @RequirePermission('product.create')
   createItem(
@@ -96,5 +107,21 @@ export class PricingRuleController {
     @Body() dto: UpdatePriceMatrixDto,
   ) {
     return this.productService.updatePriceMatrix(versionId, dto.rows ?? []);
+  }
+
+  @Get('versions/:versionId/matrix/template')
+  @RequirePermission('product.update')
+  exportMatrixTemplate(@Param('versionId') versionId: string, @Res() res: Response) {
+    return this.productService.exportPriceMatrixTemplate(versionId, res);
+  }
+
+  @Post('versions/:versionId/matrix/import-preview')
+  @RequirePermission('product.update')
+  @UseInterceptors(FileInterceptor('file'))
+  importMatrixPreview(
+    @Param('versionId') versionId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.productService.previewPriceMatrixImport(versionId, file.buffer);
   }
 }

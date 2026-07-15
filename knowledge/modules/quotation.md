@@ -168,8 +168,8 @@ Mỗi thông số sản phẩm được lưu thành một bản sao độc lập
 ```text
 QuotationItem
   └── QuotationItemParameter (snapshot)
-        chieucao  = 200   (cm)
-        chieurong = 120   (cm)
+        chieucao  = 2.00   (m)
+        chieurong = 1.20   (m)
         color     = Trắng
 ```
 

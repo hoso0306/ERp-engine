@@ -1,9 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller, Get, Post, Patch, Put, Delete,
+  Param, Body, Res, UploadedFile, UseInterceptors, UseGuards,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ProductService } from './product.service';
 import { CreateMaterialRequirementVersionDto } from './dto/create-material-requirement-version.dto';
 import { UpdateMaterialRequirementVersionDto } from './dto/update-material-requirement-version.dto';
 import { CreateMaterialRequirementItemDto } from './dto/create-material-requirement-item.dto';
 import { UpdateMaterialRequirementItemDto } from './dto/update-material-requirement-item.dto';
+import { BulkUpsertMaterialRequirementItemsDto } from './dto/bulk-upsert-material-requirement-items.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -55,6 +61,12 @@ export class MaterialRequirementController {
     return this.productService.deleteMaterialRequirementVersion(versionId);
   }
 
+  @Post('versions/:versionId/duplicate')
+  @RequirePermission('product.create')
+  duplicateVersion(@Param('versionId') versionId: string) {
+    return this.productService.duplicateMaterialRequirementVersion(versionId);
+  }
+
   @Post('versions/:versionId/items')
   @RequirePermission('product.create')
   createItem(
@@ -86,5 +98,30 @@ export class MaterialRequirementController {
     @Body() inputParams: Record<string, number>,
   ) {
     return this.productService.previewMaterial(versionId, inputParams);
+  }
+
+  @Get('versions/:versionId/items/template')
+  @RequirePermission('product.update')
+  exportItemsTemplate(@Param('versionId') versionId: string, @Res() res: Response) {
+    return this.productService.exportMaterialRequirementTemplate(versionId, res);
+  }
+
+  @Post('versions/:versionId/items/import-preview')
+  @RequirePermission('product.update')
+  @UseInterceptors(FileInterceptor('file'))
+  importItemsPreview(
+    @Param('versionId') versionId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.productService.previewMaterialRequirementImport(versionId, file.buffer);
+  }
+
+  @Put('versions/:versionId/items')
+  @RequirePermission('product.update')
+  bulkUpsertItems(
+    @Param('versionId') versionId: string,
+    @Body() dto: BulkUpsertMaterialRequirementItemsDto,
+  ) {
+    return this.productService.bulkUpsertMaterialRequirementItems(versionId, dto.rows ?? []);
   }
 }

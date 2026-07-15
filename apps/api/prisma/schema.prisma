@@ -693,7 +693,7 @@ model ValidationRule {
 }
 
 // Biến phái sinh tính từ tham số gốc, định nghĩa MỘT chỗ, cấp cho cả Pricing
-// lẫn BOM. Ví dụ: area = chieurong * chieucao / 10000 (cm → m²).
+// lẫn BOM. Ví dụ: area = chieurong * chieucao (kích thước nhập theo mét, m²).
 model DerivedParameter {
   id           String   @id @default(cuid())
   productId    String   @map("product_id")

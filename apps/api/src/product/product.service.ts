@@ -5,9 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
+import { ExcelService } from '../shared/excel/excel.service';
 import { validate as validateExpressionSyntax } from '../shared/expression';
 import { Prisma, ProductStatus, ParameterType, RoundType, PricingRuleType } from '@prisma/client';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -44,6 +46,7 @@ export class ProductService {
     private readonly prisma: PrismaService,
     private readonly pricingEngine: PricingEngineService,
     private readonly bomEngine: BomEngineService,
+    private readonly excel: ExcelService,
   ) {}
 
   // ──────────────────────────────────────
@@ -1007,6 +1010,82 @@ export class ProductService {
   }
 
   /**
+   * "Sửa" một version ACTIVE/ARCHIVED = nhân bản toàn bộ dữ liệu (field + rule
+   * items + matrix rows) thành version DRAFT mới kế tiếp. Version nguồn giữ
+   * nguyên không đổi (nguyên tắc Versioning — không sửa version đang dùng).
+   * Người dùng tiếp tục sửa version DRAFT mới bằng các API sửa-DRAFT có sẵn.
+   */
+  async duplicatePricingRuleVersion(sourceVersionId: string) {
+    const source = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id: sourceVersionId },
+      include: {
+        items: { orderBy: { displayOrder: 'asc' } },
+        matrixRows: { orderBy: { displayOrder: 'asc' } },
+      },
+    });
+    if (!source) throw new NotFoundException('Phiên bản không tồn tại.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const lastVersion = await tx.pricingRuleVersion.findFirst({
+        where: { pricingRuleId: source.pricingRuleId },
+        orderBy: { versionNumber: 'desc' },
+      });
+      const nextVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
+
+      const newVersion = await tx.pricingRuleVersion.create({
+        data: {
+          pricingRuleId: source.pricingRuleId,
+          versionNumber: nextVersionNumber,
+          name: source.name,
+          expression: source.expression,
+          priceRoundType: source.priceRoundType,
+          priceRoundValue: source.priceRoundValue,
+          status: 'DRAFT',
+          note: source.note,
+        },
+      });
+
+      if (source.matrixRows.length > 0) {
+        await tx.priceMatrixRow.createMany({
+          data: source.matrixRows.map((row) => ({
+            pricingRuleVersionId: newVersion.id,
+            dimensions: row.dimensions as Prisma.InputJsonValue,
+            configKey: row.configKey,
+            unitPrice: row.unitPrice,
+            displayOrder: row.displayOrder,
+          })),
+        });
+      }
+
+      if (source.items.length > 0) {
+        await tx.pricingRuleItem.createMany({
+          data: source.items.map((item) => ({
+            pricingRuleVersionId: newVersion.id,
+            ruleType: item.ruleType,
+            targetParameter: item.targetParameter,
+            value: item.value,
+            condition: item.condition,
+            rangeFrom: item.rangeFrom,
+            rangeTo: item.rangeTo,
+            billValue: item.billValue,
+            description: item.description,
+            displayOrder: item.displayOrder,
+          })),
+        });
+      }
+
+      return tx.pricingRuleVersion.findUnique({
+        where: { id: newVersion.id },
+        include: {
+          items: { orderBy: { displayOrder: 'asc' } },
+          matrixRows: { orderBy: { displayOrder: 'asc' } },
+          pricingRule: { select: { productId: true } },
+        },
+      });
+    });
+  }
+
+  /**
    * Validate chung cho Rule Item (Sprint 03): 4 loại rule + condition.
    * MIN_DIMENSION/MIN_VALUE cần targetParameter; MIN_* cần value > 0;
    * BILLABLE_STEP cần billValue > 0 và khoảng [rangeFrom, rangeTo) hợp lệ.
@@ -1172,6 +1251,130 @@ export class ProductService {
         },
       });
     });
+  }
+
+  /** Cột = tham số ENUM dùng cho báo giá + "Đơn giá", điền sẵn dữ liệu Matrix hiện có (nếu có). */
+  private async loadEnumParamsForPricing(productId: string) {
+    const enumParams = await this.prisma.productParameter.findMany({
+      where: { productId, type: 'ENUM', usedInPricing: true },
+      orderBy: { displayOrder: 'asc' },
+      include: { options: { orderBy: { displayOrder: 'asc' } } },
+    });
+    if (enumParams.length === 0) {
+      throw new BadRequestException('Sản phẩm chưa có thông số ENUM dùng cho báo giá.');
+    }
+    return enumParams;
+  }
+
+  async exportPriceMatrixTemplate(versionId: string, res: Response) {
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        pricingRule: { select: { productId: true } },
+        matrixRows: { orderBy: { displayOrder: 'asc' } },
+      },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+
+    const enumParams = await this.loadEnumParamsForPricing(version.pricingRule.productId);
+
+    const columns = [
+      ...enumParams.map((p) => ({ header: p.label, key: p.name, width: 20 })),
+      { header: 'Đơn giá', key: 'unitPrice', width: 16 },
+    ];
+
+    const rows = version.matrixRows.map((row) => {
+      const dims = row.dimensions as Record<string, string>;
+      const record: Record<string, unknown> = {};
+      for (const param of enumParams) {
+        const rawValue = dims[param.name] ?? '';
+        const option = param.options.find((o) => o.value === rawValue);
+        record[param.name] = option?.label ?? option?.value ?? rawValue;
+      }
+      record.unitPrice = Number(row.unitPrice);
+      return record;
+    });
+
+    await this.excel.export(res, `mau-bang-gia-v${version.versionNumber}`, columns, rows);
+  }
+
+  /**
+   * Parse + validate toàn bộ file, gom hết lỗi (không dừng ở lỗi đầu) —
+   * KHÔNG ghi DB. FE hiển thị bảng lỗi nếu có, chỉ cho Áp dụng (PATCH .../matrix
+   * có sẵn) khi 0 lỗi.
+   */
+  async previewPriceMatrixImport(versionId: string, buffer: Buffer) {
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id: versionId },
+      include: { pricingRule: { select: { productId: true } } },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể import Bảng giá vào phiên bản DRAFT.');
+    }
+
+    const enumParams = await this.loadEnumParamsForPricing(version.pricingRule.productId);
+    const sheet = await this.excel.readFile(buffer);
+
+    const errors: { row: number; message: string }[] = [];
+    const rows: { dimensions: Record<string, string>; unitPrice: number; displayOrder: number }[] = [];
+    const seenKeys = new Set<string>();
+    const priceCellIdx = enumParams.length + 1;
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const cell = (col: number) => String(row.getCell(col).value ?? '').trim();
+
+      const isEmptyRow = enumParams.every((_, i) => !cell(i + 1)) && !cell(priceCellIdx);
+      if (isEmptyRow) return;
+
+      const dimensions: Record<string, string> = {};
+      let hasError = false;
+      enumParams.forEach((param, i) => {
+        const text = cell(i + 1);
+        if (!text) {
+          errors.push({ row: rowNumber, message: `Thiếu giá trị cho "${param.label}".` });
+          hasError = true;
+          return;
+        }
+        const match =
+          param.options.find((o) => o.value === text) ??
+          param.options.find((o) => (o.label ?? o.value).toLowerCase() === text.toLowerCase());
+        if (!match) {
+          const validLabels = param.options.map((o) => o.label ?? o.value).join(', ');
+          errors.push({
+            row: rowNumber,
+            message: `Giá trị "${text}" không hợp lệ cho "${param.label}" (hợp lệ: ${validLabels}).`,
+          });
+          hasError = true;
+          return;
+        }
+        dimensions[param.name] = match.value;
+      });
+
+      const priceText = cell(priceCellIdx);
+      const unitPrice = Number(priceText);
+      if (!priceText || isNaN(unitPrice) || unitPrice <= 0) {
+        errors.push({ row: rowNumber, message: `Đơn giá "${priceText}" không hợp lệ — phải là số lớn hơn 0.` });
+        hasError = true;
+      }
+
+      if (hasError) return;
+
+      const configKey = Object.entries(dimensions)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('|');
+      if (seenKeys.has(configKey)) {
+        errors.push({ row: rowNumber, message: `Tổ hợp "${configKey}" bị trùng với dòng khác trong file.` });
+        return;
+      }
+      seenKeys.add(configKey);
+
+      rows.push({ dimensions, unitPrice, displayOrder: rows.length });
+    });
+
+    return { rows, errors };
   }
 
   async deletePricingRuleItem(id: string) {
@@ -1351,6 +1554,71 @@ export class ProductService {
     return this.prisma.materialRequirementVersion.delete({ where: { id } });
   }
 
+  /**
+   * "Sửa" một version ACTIVE/ARCHIVED = nhân bản toàn bộ dữ liệu (field + items)
+   * thành version DRAFT mới kế tiếp. Version nguồn giữ nguyên không đổi
+   * (nguyên tắc Versioning). Người dùng tiếp tục sửa version DRAFT mới bằng
+   * các API sửa-DRAFT có sẵn.
+   */
+  async duplicateMaterialRequirementVersion(sourceVersionId: string) {
+    const source = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: sourceVersionId },
+      include: {
+        items: { orderBy: { displayOrder: 'asc' } },
+      },
+    });
+    if (!source) throw new NotFoundException('Phiên bản không tồn tại.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const lastVersion = await tx.materialRequirementVersion.findFirst({
+        where: { materialRequirementId: source.materialRequirementId },
+        orderBy: { versionNumber: 'desc' },
+      });
+      const nextVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
+
+      const newVersion = await tx.materialRequirementVersion.create({
+        data: {
+          materialRequirementId: source.materialRequirementId,
+          versionNumber: nextVersionNumber,
+          name: source.name,
+          status: 'DRAFT',
+          note: source.note,
+        },
+      });
+
+      if (source.items.length > 0) {
+        await tx.materialRequirementItem.createMany({
+          data: source.items.map((item) => ({
+            materialRequirementVersionId: newVersion.id,
+            materialId: item.materialId,
+            expression: item.expression,
+            condition: item.condition,
+            wastePercent: item.wastePercent,
+            roundType: item.roundType,
+            roundValue: item.roundValue,
+            note: item.note,
+            displayOrder: item.displayOrder,
+          })),
+        });
+      }
+
+      return tx.materialRequirementVersion.findUnique({
+        where: { id: newVersion.id },
+        include: {
+          items: {
+            orderBy: { displayOrder: 'asc' },
+            include: {
+              material: {
+                select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+              },
+            },
+          },
+          materialRequirement: { select: { productId: true } },
+        },
+      });
+    });
+  }
+
   async createMaterialRequirementItem(versionId: string, dto: CreateMaterialRequirementItemDto) {
     const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id: versionId } });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
@@ -1455,6 +1723,248 @@ export class ProductService {
       throw new BadRequestException('Chỉ có thể xoá Item trong phiên bản DRAFT.');
     }
     return this.prisma.materialRequirementItem.delete({ where: { id } });
+  }
+
+  async exportMaterialRequirementTemplate(versionId: string, res: Response) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: { material: { select: { code: true } } },
+        },
+      },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+
+    const columns = [
+      { header: 'Mã vật tư', key: 'materialCode', width: 16 },
+      { header: 'Expression', key: 'expression', width: 30 },
+      { header: 'Condition', key: 'condition', width: 25 },
+      { header: 'Hao hụt (%)', key: 'wastePercent', width: 12 },
+      { header: 'Round Step', key: 'roundStep', width: 12 },
+      { header: 'Ghi chú', key: 'note', width: 25 },
+    ];
+
+    const rows = version.items.map((item) => ({
+      materialCode: item.material.code,
+      expression: item.expression,
+      condition: item.condition ?? '',
+      wastePercent: Number(item.wastePercent),
+      roundStep: item.roundValue !== null ? Number(item.roundValue) : '',
+      note: item.note ?? '',
+    }));
+
+    await this.excel.export(res, `mau-dinh-muc-v${version.versionNumber}`, columns, rows);
+  }
+
+  /**
+   * Parse + validate toàn bộ file, gom hết lỗi — KHÔNG ghi DB. Khớp "Mã vật tư"
+   * với Material có sẵn, KHÔNG tự tạo Material mới nếu mã không tồn tại.
+   */
+  async previewMaterialRequirementImport(versionId: string, buffer: Buffer) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể import Định mức vào phiên bản DRAFT.');
+    }
+
+    const materials = await this.prisma.material.findMany({ select: { id: true, code: true, name: true } });
+    const materialByCode = new Map(materials.map((m) => [m.code.toLowerCase(), m]));
+
+    const sheet = await this.excel.readFile(buffer);
+    const errors: { row: number; message: string }[] = [];
+    const rows: Array<{
+      materialId: string;
+      materialCode: string;
+      materialName: string;
+      expression: string;
+      condition: string | null;
+      wastePercent: number;
+      roundStep: number | null;
+      note: string | null;
+      displayOrder: number;
+    }> = [];
+    const seenMaterialIds = new Set<string>();
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const cell = (col: number) => String(row.getCell(col).value ?? '').trim();
+      const numCell = (col: number) => {
+        const v = row.getCell(col).value;
+        return v !== null && v !== undefined && v !== '' ? Number(v) : undefined;
+      };
+
+      const materialCode = cell(1);
+      const expression = cell(2);
+      const condition = cell(3);
+      const wastePercent = numCell(4);
+      const roundStep = numCell(5);
+      const note = cell(6);
+
+      const isEmptyRow =
+        !materialCode && !expression && !condition && wastePercent === undefined && roundStep === undefined && !note;
+      if (isEmptyRow) return;
+
+      if (!materialCode) {
+        errors.push({ row: rowNumber, message: 'Mã vật tư là bắt buộc.' });
+        return;
+      }
+      const material = materialByCode.get(materialCode.toLowerCase());
+      if (!material) {
+        errors.push({ row: rowNumber, message: `Mã vật tư "${materialCode}" không tồn tại.` });
+        return;
+      }
+      if (seenMaterialIds.has(material.id)) {
+        errors.push({ row: rowNumber, message: `Vật tư "${materialCode}" bị trùng với dòng khác trong file.` });
+        return;
+      }
+
+      if (!expression) {
+        errors.push({ row: rowNumber, message: 'Expression là bắt buộc.' });
+        return;
+      }
+      try {
+        this.validateExpression(expression);
+      } catch (e) {
+        errors.push({ row: rowNumber, message: `Expression lỗi: ${(e as Error).message}` });
+        return;
+      }
+      if (condition) {
+        try {
+          this.validateExpression(condition);
+        } catch (e) {
+          errors.push({ row: rowNumber, message: `Condition lỗi: ${(e as Error).message}` });
+          return;
+        }
+      }
+      if (wastePercent !== undefined && wastePercent < 0) {
+        errors.push({ row: rowNumber, message: 'Hao hụt (%) không được âm.' });
+        return;
+      }
+      if (roundStep !== undefined && roundStep < 0) {
+        errors.push({ row: rowNumber, message: 'Round Step không được âm.' });
+        return;
+      }
+
+      seenMaterialIds.add(material.id);
+      rows.push({
+        materialId: material.id,
+        materialCode: material.code,
+        materialName: material.name,
+        expression,
+        condition: condition || null,
+        wastePercent: wastePercent ?? 0,
+        roundStep: roundStep && roundStep > 0 ? roundStep : null,
+        note: note || null,
+        displayOrder: rows.length,
+      });
+    });
+
+    return { rows, errors };
+  }
+
+  /**
+   * Áp dụng danh sách đã preview: upsert theo materialId (chốt Sprint 03 —
+   * dòng vật tư có sẵn không nằm trong file thì GIỮ NGUYÊN, không xoá).
+   */
+  async bulkUpsertMaterialRequirementItems(
+    versionId: string,
+    rows: Array<{
+      materialId: string;
+      expression: string;
+      condition?: string | null;
+      wastePercent?: number;
+      roundStep?: number | null;
+      note?: string | null;
+    }>,
+  ) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+      include: { items: true },
+    });
+    if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    if (version.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ có thể sửa Định mức trong phiên bản DRAFT.');
+    }
+    if (!rows || rows.length === 0) {
+      throw new BadRequestException('Danh sách vật tư trống.');
+    }
+
+    const seen = new Set<string>();
+    for (const [idx, row] of rows.entries()) {
+      if (!row.materialId) throw new BadRequestException(`Dòng ${idx + 1}: thiếu materialId.`);
+      if (seen.has(row.materialId)) {
+        throw new BadRequestException(`Dòng ${idx + 1}: vật tư bị trùng trong danh sách.`);
+      }
+      seen.add(row.materialId);
+      if (!row.expression?.trim()) throw new BadRequestException(`Dòng ${idx + 1}: Expression là bắt buộc.`);
+      this.validateExpression(row.expression.trim());
+      if (row.condition?.trim()) this.validateExpression(row.condition.trim());
+    }
+
+    const validMaterials = await this.prisma.material.findMany({
+      where: { id: { in: rows.map((r) => r.materialId) } },
+      select: { id: true },
+    });
+    const validIds = new Set(validMaterials.map((m) => m.id));
+    for (const row of rows) {
+      if (!validIds.has(row.materialId)) {
+        throw new BadRequestException(`Nguyên liệu "${row.materialId}" không tồn tại.`);
+      }
+    }
+
+    const existingByMaterialId = new Map(version.items.map((i) => [i.materialId, i]));
+    let nextDisplayOrder =
+      version.items.length > 0 ? Math.max(...version.items.map((i) => i.displayOrder)) + 1 : 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const roundType = row.roundStep && row.roundStep > 0 ? 'CEIL' : 'NONE';
+        const roundValue = row.roundStep && row.roundStep > 0 ? row.roundStep : null;
+        const existing = existingByMaterialId.get(row.materialId);
+        if (existing) {
+          await tx.materialRequirementItem.update({
+            where: { id: existing.id },
+            data: {
+              expression: row.expression.trim(),
+              condition: row.condition?.trim() || null,
+              wastePercent: row.wastePercent ?? 0,
+              roundType: roundType as RoundType,
+              roundValue,
+              note: row.note?.trim() || null,
+            },
+          });
+        } else {
+          await tx.materialRequirementItem.create({
+            data: {
+              materialRequirementVersionId: versionId,
+              materialId: row.materialId,
+              expression: row.expression.trim(),
+              condition: row.condition?.trim() || null,
+              wastePercent: row.wastePercent ?? 0,
+              roundType: roundType as RoundType,
+              roundValue,
+              note: row.note?.trim() || null,
+              displayOrder: nextDisplayOrder++,
+            },
+          });
+        }
+      }
+    });
+
+    return this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        items: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            material: { select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } } },
+          },
+        },
+        materialRequirement: { select: { productId: true } },
+      },
+    });
   }
 
   async previewMaterial(versionId: string, inputParams: Record<string, number | string>) {

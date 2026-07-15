@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +105,7 @@ export default function PricingRuleVersionPage() {
   const [formNote, setFormNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   // Rule Item dialog
   const [itemAddOpen, setItemAddOpen] = useState(false);
@@ -189,6 +190,24 @@ export default function PricingRuleVersionPage() {
     }
   }
 
+  async function handleDuplicate() {
+    if (!version) return;
+    setDuplicating(true);
+    try {
+      const newVersion = await apiPost<PricingRuleVersion>(
+        `/products/${productId}/pricing-rule/versions/${versionId}/duplicate`,
+      );
+      toast.success(
+        `Đã tạo phiên bản Nháp mới (v${newVersion.versionNumber}) từ v${version.versionNumber}, tiếp tục chỉnh sửa tại đây.`,
+      );
+      router.push(`/products/${productId}/pricing-rule/versions/${newVersion.id}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể tạo phiên bản nháp.");
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   async function handleDeleteVersion() {
     try {
       await apiDelete(`/products/${productId}/pricing-rule/versions/${versionId}`);
@@ -263,7 +282,7 @@ export default function PricingRuleVersionPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {isDraft && (
+          {isDraft ? (
             <>
               <Button onClick={handleActivate} disabled={activating}>
                 {activating ? "Đang kích hoạt..." : "Kích hoạt"}
@@ -276,6 +295,11 @@ export default function PricingRuleVersionPage() {
                 Xoá
               </Button>
             </>
+          ) : (
+            <Button onClick={handleDuplicate} disabled={duplicating}>
+              <Copy className="mr-1 h-4 w-4" />
+              {duplicating ? "Đang tạo bản nháp..." : "Sửa"}
+            </Button>
           )}
         </div>
       </div>

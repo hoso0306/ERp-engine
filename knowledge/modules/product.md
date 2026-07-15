@@ -343,6 +343,10 @@ Frontend sẽ tự sinh Form từ Product Parameter.
 
 Không hard-code giao diện.
 
+### Quy ước đơn vị kích thước (chốt 14/07/2026)
+
+Mọi thông số kích thước (chiều cao, chiều rộng, ...) nhập theo **mét (m)**, cho phép số thập phân (ví dụ `1.546`). Biến phái sinh diện tích (`area`) vì vậy tính trực tiếp `chiều rộng × chiều cao` mà không cần quy đổi — kết quả đã là m².
+
 ---
 
 # Thông tin sản phẩm

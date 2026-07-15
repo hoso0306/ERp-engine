@@ -94,7 +94,7 @@ fix(permission): gắn AuthGuard/PermissionGuard cho toàn bộ ProductModule
 
 ---
 
-# Việc 2 — Import Excel cho Price Matrix + BOM
+# Việc 2 — Import Excel cho Price Matrix + BOM ✅ HOÀN THÀNH (14/07/2026)
 
 ## Nguyên tắc chung (đã chốt)
 
@@ -122,6 +122,41 @@ fix(permission): gắn AuthGuard/PermissionGuard cho toàn bộ ProductModule
 3. 2 endpoint `import-preview` (Matrix + BOM) + 1 endpoint `PUT` bulk items mới cho BOM.
 4. FE: component Upload dùng chung (dialog chọn file → gọi preview → bảng kết quả, dòng lỗi tô đỏ kèm lý do → nút "Áp dụng" chỉ bật khi sạch lỗi).
 5. Test: file hợp lệ áp dụng đúng dữ liệu; file có ít nhất 1 dòng sai → toàn bộ bị chặn, không ghi phần đúng; import BOM giữ nguyên dòng cũ không có trong file (đúng rule upsert).
+
+## Kết quả thực hiện
+
+**File đã sửa/thêm:**
+- `apps/api/src/product/product.service.ts` — inject `ExcelService`; thêm `loadEnumParamsForPricing()` (helper), `exportPriceMatrixTemplate()`, `previewPriceMatrixImport()`, `exportMaterialRequirementTemplate()`, `previewMaterialRequirementImport()`, `bulkUpsertMaterialRequirementItems()`.
+- `apps/api/src/product/dto/bulk-upsert-material-requirement-items.dto.ts` (mới).
+- `apps/api/src/product/pricing-rule.controller.ts` — thêm `GET .../matrix/template`, `POST .../matrix/import-preview` (permission `product.update`, FileInterceptor).
+- `apps/api/src/product/material-requirement.controller.ts` — thêm `GET .../items/template`, `POST .../items/import-preview`, `PUT .../items` (bulk upsert) — cùng permission `product.update`.
+- `apps/api/src/product/product-excel-import.service.spec.ts` (mới, 20 test case) — build workbook thật bằng ExcelJS (không mock `ExcelService`), test round-trip đọc/parse/validate cho cả Matrix và BOM, cùng bulk upsert (update tồn tại + tạo mới + giữ nguyên dòng không có trong file).
+- `apps/web/src/components/product/excel-import-dialog.tsx` (mới) — dialog dùng chung generic `<T>`: đọc file → gọi API preview → bảng preview + bảng lỗi đỏ → nút Áp dụng chỉ bật khi 0 lỗi → `onApply` gọi API ghi riêng của từng màn hình.
+- `apps/web/src/components/product/price-matrix-editor.tsx` — thêm nút "Nhập từ Excel", gắn `ExcelImportDialog`, áp dụng qua `PATCH .../matrix` có sẵn.
+- `apps/web/src/app/products/[id]/material-requirement/versions/[versionId]/page.tsx` — thêm nút "Nhập từ Excel", gắn `ExcelImportDialog`, áp dụng qua `PUT .../items` mới.
+
+**Quyết định khi code (không lệch thiết kế, chỉ cụ thể hoá):**
+- Template Matrix hiển thị theo **label** của option ENUM (dễ đọc/nhập tay hơn value dạng code), khi import khớp theo cả value lẫn label (không phân biệt hoa/thường) để linh hoạt.
+- `import-preview` của cả Matrix lẫn BOM đều kiểm tra version phải DRAFT trước khi parse — tránh preview vô nghĩa trên version không sửa được.
+- Endpoint template + import-preview dùng permission `product.update` (không dùng `product.view`) — vì hai endpoint này chỉ có giá trị đi kèm khả năng sửa/áp dụng, nhất quán với quyền của `PATCH .../matrix`.
+- Dòng trống hoàn toàn ở cuối file Excel được bỏ qua âm thầm (không tính là lỗi) — tránh dòng thừa Excel hay giữ lại gây lỗi giả.
+
+**Test:**
+- 20 test mới (`product-excel-import.service.spec.ts`) + toàn bộ suite cũ: **217/217 pass**. `tsc --noEmit` sạch cả API lẫn Web.
+- Verify API thật (JWT thật, gọi qua server đang chạy): Matrix — preview đúng 4/4 dòng hợp lệ, phát hiện đúng giá trị ENUM sai, Apply qua `PATCH .../matrix` ghi đúng 4 dòng. BOM — preview đúng 1 dòng hợp lệ + báo lỗi rõ mã vật tư không tồn tại (không tự tạo), Apply qua `PUT .../items` upsert đúng: dòng có sẵn được update, 4 dòng khác không nằm trong file **giữ nguyên** (đúng rule upsert, không xoá).
+- Verify UI thật bằng Playwright (screenshot xem trực tiếp): dialog mở đúng, đọc file hiển thị bảng preview + toast, trường hợp có lỗi hiển thị đúng dòng/lý do màu đỏ và khoá nút Áp dụng, trường hợp hợp lệ bấm Áp dụng ghi đúng dữ liệu và đóng dialog.
+- Đã xoá toàn bộ version DRAFT/file Excel tạm sinh ra trong lúc test.
+
+**Đề xuất commit message:**
+```
+feat(product): import Excel cho Price Matrix và Material Requirement
+
+- Thêm luồng Upload → Preview (validate, không ghi DB) → Áp dụng khi 0 lỗi
+- Price Matrix: khớp tổ hợp ENUM theo value/label, tái dùng PATCH .../matrix có sẵn
+- BOM: khớp Mã vật tư có sẵn (không tự tạo), upsert qua PUT .../items mới,
+  giữ nguyên dòng không có trong file
+- Component ExcelImportDialog dùng chung cho cả 2 màn hình
+```
 
 ---
 

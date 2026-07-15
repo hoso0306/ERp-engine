@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { apiPatch, ApiError } from "@/lib/api";
+import { ExcelImportDialog } from "./excel-import-dialog";
 
 interface EnumParameter {
   name: string;
@@ -25,6 +27,10 @@ interface EnumParameter {
 export interface PriceMatrixRow {
   dimensions: Record<string, string>;
   unitPrice: number;
+}
+
+interface ImportedMatrixRow extends PriceMatrixRow {
+  displayOrder: number;
 }
 
 /**
@@ -69,6 +75,7 @@ export function PriceMatrixEditor({
 
   const [prices, setPrices] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const next: Record<number, string> = {};
@@ -102,6 +109,14 @@ export function PriceMatrixEditor({
     }
   }
 
+  async function handleApplyImport(rows: ImportedMatrixRow[]) {
+    await apiPatch(`/products/${productId}/pricing-rule/versions/${versionId}/matrix`, {
+      rows: rows.map(({ dimensions, unitPrice, displayOrder }) => ({ dimensions, unitPrice, displayOrder })),
+    });
+    toast.success(`Đã áp dụng ${rows.length} dòng từ Excel.`);
+    onSaved();
+  }
+
   if (enumParams.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -113,6 +128,15 @@ export function PriceMatrixEditor({
 
   return (
     <div className="space-y-3">
+      {isDraft && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="mr-1 h-4 w-4" />
+            Nhập từ Excel
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-md border max-h-[28rem] overflow-auto">
         <Table>
           <TableHeader>
@@ -158,6 +182,23 @@ export function PriceMatrixEditor({
           </Button>
         </div>
       )}
+
+      <ExcelImportDialog<ImportedMatrixRow>
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Nhập Bảng giá ma trận từ Excel"
+        description="File Excel yêu cầu cấu trúc giống file mẫu bên dưới. Chỉ áp dụng được khi file không còn dòng lỗi nào."
+        templateUrl={`/products/${productId}/pricing-rule/versions/${versionId}/matrix/template`}
+        previewUrl={`/products/${productId}/pricing-rule/versions/${versionId}/matrix/import-preview`}
+        columns={[
+          ...enumParams.map((p) => ({
+            header: p.label,
+            render: (row: ImportedMatrixRow) => optionLabel(p, row.dimensions[p.name]),
+          })),
+          { header: "Đơn giá", render: (row: ImportedMatrixRow) => row.unitPrice.toLocaleString("vi-VN") },
+        ]}
+        onApply={handleApplyImport}
+      />
     </div>
   );
 }
