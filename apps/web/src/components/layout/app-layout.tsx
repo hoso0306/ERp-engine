@@ -7,6 +7,7 @@ import { Header } from "./header";
 import { useAuth } from "@/context/auth-context";
 import { Loading } from "@/components/shared";
 import { ForcedChangePasswordScreen } from "@/components/auth/forced-change-password-screen";
+import { BreadcrumbProvider } from "@/context/breadcrumb-context";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,12 +31,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <Header />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <BreadcrumbProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <Header />
+          <main className="flex-1 overflow-auto p-6">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </BreadcrumbProvider>
   );
 }

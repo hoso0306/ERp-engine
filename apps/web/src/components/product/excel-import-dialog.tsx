@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { apiPost, apiUrl, ApiError } from "@/lib/api";
+import { downloadAuthenticatedFile } from "@/lib/download";
 
 interface ImportError {
   row: number;
@@ -65,7 +66,19 @@ export function ExcelImportDialog<T>({
   const [previewed, setPreviewed] = useState(false);
   const [rows, setRows] = useState<T[]>([]);
   const [errors, setErrors] = useState<ImportError[]>([]);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      await downloadAuthenticatedFile(apiUrl(templateUrl), "mau-import.xlsx");
+    } catch {
+      toast.error("Không thể tải file mẫu.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   function reset() {
     setRows([]);
@@ -136,10 +149,11 @@ export function ExcelImportDialog<T>({
         <Button
           variant="outline"
           className="w-full justify-start"
-          onClick={() => window.open(apiUrl(templateUrl), "_blank")}
+          onClick={handleDownloadTemplate}
+          disabled={downloadingTemplate}
         >
           <Download className="mr-2 h-4 w-4" />
-          Tải file mẫu (.xlsx)
+          {downloadingTemplate ? "Đang tải..." : "Tải file mẫu (.xlsx)"}
         </Button>
 
         <div className="flex gap-2">

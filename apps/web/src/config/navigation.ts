@@ -44,7 +44,7 @@ export const navigation: NavGroup[] = [
   {
     label: "Điều hành",
     items: [
-      { title: "Dashboard", href: "/", icon: LayoutDashboard, requiredPermission: "dashboard.view" },
+      { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "dashboard.view" },
     ],
   },
   {

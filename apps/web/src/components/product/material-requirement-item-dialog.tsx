@@ -12,23 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
+import { apiPost, apiPatch, ApiError } from "@/lib/api";
 import { ConditionBuilder, type ConditionParameter } from "./condition-builder";
-
-interface Material {
-  id: string;
-  code: string;
-  name: string;
-  unit: { id: string; name: string } | null;
-}
+import { MaterialTypeahead, type MaterialOption } from "@/components/warehouse/material-typeahead";
 
 export interface MaterialRequirementItem {
   id: string;
@@ -64,10 +51,8 @@ export function MaterialRequirementItemDialog({
 }: MaterialRequirementItemDialogProps) {
   const isEdit = !!item;
   const [submitting, setSubmitting] = useState(false);
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [loadingMaterials, setLoadingMaterials] = useState(false);
 
-  const [materialId, setMaterialId] = useState("");
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialOption | null>(null);
   const [expression, setExpression] = useState("");
   const [condition, setCondition] = useState("");
   const [wastePercent, setWastePercent] = useState("0");
@@ -76,21 +61,16 @@ export function MaterialRequirementItemDialog({
 
   useEffect(() => {
     if (!open) return;
-    setLoadingMaterials(true);
-    apiGet<{ data: Material[] }>("/materials?limit=200")
-      .then((d) => setMaterials(d.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoadingMaterials(false));
 
     if (item) {
-      setMaterialId(item.materialId);
+      setSelectedMaterial(item.material);
       setExpression(item.expression);
       setCondition(item.condition ?? "");
       setWastePercent(String(item.wastePercent));
       setRoundStep(item.roundValue !== null ? String(item.roundValue) : "");
       setNote(item.note ?? "");
     } else {
-      setMaterialId("");
+      setSelectedMaterial(null);
       setExpression("");
       setCondition("");
       setWastePercent("0");
@@ -99,14 +79,16 @@ export function MaterialRequirementItemDialog({
     }
   }, [open, item]);
 
+  const materialVariables = parameters.filter((p) => p.usedInMaterial);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!materialId) {
+    if (!selectedMaterial) {
       toast.error("Vui lòng chọn vật tư.");
       return;
     }
     if (!expression.trim()) {
-      toast.error("Expression là bắt buộc.");
+      toast.error("Công thức là bắt buộc.");
       return;
     }
     const waste = parseFloat(wastePercent) || 0;
@@ -122,7 +104,7 @@ export function MaterialRequirementItemDialog({
 
     setSubmitting(true);
     const body: Record<string, unknown> = {
-      materialId,
+      materialId: selectedMaterial.id,
       expression: expression.trim(),
       condition: condition.trim() || null,
       wastePercent: waste,
@@ -143,11 +125,11 @@ export function MaterialRequirementItemDialog({
         );
       }
 
-      toast.success(isEdit ? "Cập nhật thành công." : "Thêm Item thành công.");
+      toast.success(isEdit ? "Cập nhật thành công." : "Thêm công thức vật tư thành công.");
       onOpenChange(false);
       onSaved();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Không thể lưu Item.");
+      toast.error(err instanceof ApiError ? err.message : "Không thể lưu công thức vật tư.");
     } finally {
       setSubmitting(false);
     }
@@ -157,29 +139,17 @@ export function MaterialRequirementItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Chỉnh sửa Item" : "Thêm Item"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Sửa công thức vật tư" : "Thêm công thức vật tư"}</DialogTitle>
         </DialogHeader>
 
         <form id="mat-req-item-form" onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Vật tư *</Label>
-            <Select value={materialId} onValueChange={(v) => setMaterialId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder={loadingMaterials ? "Đang tải..." : "Chọn vật tư..."} />
-              </SelectTrigger>
-              <SelectContent>
-                {materials.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.code} — {m.name}
-                    {m.unit ? ` (${m.unit.name})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MaterialTypeahead value={selectedMaterial} onChange={setSelectedMaterial} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mri-expr">Expression *</Label>
+            <Label htmlFor="mri-expr">Công thức *</Label>
             <Textarea
               id="mri-expr"
               value={expression}
@@ -191,6 +161,12 @@ export function MaterialRequirementItemDialog({
             <p className="text-xs text-muted-foreground">
               Công thức tính số lượng vật tư. Dùng tên biến của thông số sản phẩm.
             </p>
+            {materialVariables.length > 0 && (
+              <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">Biến có thể dùng:</p>
+                <p className="font-mono">{materialVariables.map((p) => p.name).join(", ")}</p>
+              </div>
+            )}
           </div>
 
           <ConditionBuilder value={condition} onChange={setCondition} parameters={parameters} />
@@ -241,7 +217,7 @@ export function MaterialRequirementItemDialog({
             Huỷ
           </Button>
           <Button type="submit" form="mat-req-item-form" disabled={submitting}>
-            {submitting ? "Đang lưu..." : isEdit ? "Lưu thay đổi" : "Thêm Item"}
+            {submitting ? "Đang lưu..." : isEdit ? "Lưu thay đổi" : "Thêm công thức vật tư"}
           </Button>
         </DialogFooter>
       </DialogContent>

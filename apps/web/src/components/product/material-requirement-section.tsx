@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, History } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
@@ -30,11 +30,62 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
   ARCHIVED: { label: "Lưu trữ", variant: "secondary" },
 };
 
+function VersionTable({
+  productId,
+  versions,
+}: {
+  productId: string;
+  versions: MaterialRequirementVersion[];
+}) {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20">Version</TableHead>
+            <TableHead>Tên</TableHead>
+            <TableHead className="text-center w-28">Trạng thái</TableHead>
+            <TableHead className="w-12" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {versions.map((v) => {
+            const st = statusMap[v.status] ?? statusMap.DRAFT;
+            return (
+              <TableRow key={v.id}>
+                <TableCell className="font-mono text-sm">v{v.versionNumber}</TableCell>
+                <TableCell className="text-sm">{v.name || "—"}</TableCell>
+                <TableCell className="text-center">
+                  <Badge variant={st.variant}>{st.label}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    render={
+                      <Link
+                        href={`/products/${productId}/material-requirement/versions/${v.id}`}
+                      />
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 export function MaterialRequirementSection({ productId }: { productId: string }) {
   const router = useRouter();
   const [versions, setVersions] = useState<MaterialRequirementVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -68,6 +119,9 @@ export function MaterialRequirementSection({ productId }: { productId: string })
     }
   }
 
+  const currentVersions = versions.filter((v) => v.status !== "ARCHIVED");
+  const archivedVersions = versions.filter((v) => v.status === "ARCHIVED");
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -83,45 +137,28 @@ export function MaterialRequirementSection({ productId }: { productId: string })
       ) : versions.length === 0 ? (
         <p className="text-sm text-muted-foreground">Chưa có version nào.</p>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Version</TableHead>
-                <TableHead>Tên</TableHead>
-                <TableHead className="text-center w-28">Trạng thái</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {versions.map((v) => {
-                const st = statusMap[v.status] ?? statusMap.DRAFT;
-                return (
-                  <TableRow key={v.id}>
-                    <TableCell className="font-mono text-sm">v{v.versionNumber}</TableCell>
-                    <TableCell className="text-sm">{v.name || "—"}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={st.variant}>{st.label}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        render={
-                          <Link
-                            href={`/products/${productId}/material-requirement/versions/${v.id}`}
-                          />
-                        }
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {currentVersions.length > 0 ? (
+            <VersionTable productId={productId} versions={currentVersions} />
+          ) : (
+            <p className="text-sm text-muted-foreground">Chưa có version đang Nháp/Đang dùng.</p>
+          )}
+
+          {archivedVersions.length > 0 && (
+            <div className="space-y-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowArchived((v) => !v)}
+                className="text-muted-foreground"
+              >
+                <History className="mr-1 h-4 w-4" />
+                {showArchived ? "Ẩn lịch sử" : `Xem lịch sử (${archivedVersions.length} phiên bản cũ)`}
+              </Button>
+              {showArchived && <VersionTable productId={productId} versions={archivedVersions} />}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -32,6 +32,7 @@ import {
 import { PriceMatrixEditor, type PriceMatrixRow } from "@/components/product/price-matrix-editor";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "@/lib/api";
+import { useSetBreadcrumbExtra } from "@/context/breadcrumb-context";
 
 interface ProductParameter {
   id: string;
@@ -94,8 +95,11 @@ export default function PricingRuleVersionPage() {
 
   const [version, setVersion] = useState<PricingRuleVersion | null>(null);
   const [parameters, setParameters] = useState<ProductParameter[]>([]);
+  const [productName, setProductName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useSetBreadcrumbExtra(productName ? { label: productName, href: `/products/${productId}` } : null);
 
   // Form state (for DRAFT editing)
   const [formName, setFormName] = useState("");
@@ -149,6 +153,9 @@ export default function PricingRuleVersionPage() {
           .forEach((p) => { init[p.name] = ""; });
         setPreviewParams(init);
       })
+      .catch(() => {});
+    apiGet<{ name: string }>(`/products/${productId}`)
+      .then((data) => setProductName(data.name))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -322,7 +329,7 @@ export default function PricingRuleVersionPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="v-expr">Expression *</Label>
+          <Label htmlFor="v-expr">Công thức *</Label>
           {parameters.length > 0 && (
             <p className="text-xs text-muted-foreground">
               Biến có thể dùng:{" "}

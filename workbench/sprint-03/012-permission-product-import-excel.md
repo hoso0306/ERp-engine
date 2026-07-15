@@ -147,6 +147,14 @@ fix(permission): gắn AuthGuard/PermissionGuard cho toàn bộ ProductModule
 - Verify UI thật bằng Playwright (screenshot xem trực tiếp): dialog mở đúng, đọc file hiển thị bảng preview + toast, trường hợp có lỗi hiển thị đúng dòng/lý do màu đỏ và khoá nút Áp dụng, trường hợp hợp lệ bấm Áp dụng ghi đúng dữ liệu và đóng dialog.
 - Đã xoá toàn bộ version DRAFT/file Excel tạm sinh ra trong lúc test.
 
+**Bug thật phát hiện khi user test tay (14/07/2026), đã sửa toàn bộ:** nút "Tải file mẫu" dùng `window.open(apiUrl(...))` → luôn 401, vì token JWT lưu ở cookie riêng (không httpOnly) chỉ được đính kèm thủ công qua header `Authorization` trong `request()` của `lib/api.ts` — điều hướng trình duyệt thuần (`window.open`/`<a href>`) không tự gắn header này.
+
+Cùng gốc bug này có ở 2 chỗ khác (`customer-import-dialog.tsx` — nút tải mẫu, `customers/page.tsx` — nút Export) và 1 chỗ vốn đã làm đúng từ trước (`products/[id]/page.tsx` — nút Export sản phẩm, tự fetch kèm token). Theo yêu cầu người dùng, đã sửa dứt điểm cả 4 chỗ:
+- Tách logic tải file dùng chung vào `apps/web/src/lib/download.ts` (`downloadAuthenticatedFile`) — fetch kèm token → lấy blob → trigger download qua `<a download>`, đọc tên file thật từ header `Content-Disposition`.
+- `excel-import-dialog.tsx`, `customer-import-dialog.tsx`, `customers/page.tsx`, `products/[id]/page.tsx` đều gọi hàm dùng chung này (loại bỏ code trùng lặp, kể cả bản đã đúng ở `products/[id]/page.tsx`).
+- `main.ts` — thêm `exposedHeaders: ['Content-Disposition']` vào CORS để FE đọc được tên file thật từ response thay vì tên fallback (áp dụng chung cho mọi endpoint export/template, không riêng Product).
+- Verify lại bằng Playwright cả 4 nút (Product export, Product template Matrix, Customer export, Customer template) — không còn 401, đúng tên file, đúng dữ liệu. `npm test` (217/217) và `tsc` cả API/Web vẫn sạch.
+
 **Đề xuất commit message:**
 ```
 feat(product): import Excel cho Price Matrix và Material Requirement

@@ -14,7 +14,7 @@ import { ValidationRuleSection } from "@/components/product/validation-rule-sect
 import { DerivedParameterSection } from "@/components/product/derived-parameter-section";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiDelete, apiUrl, ApiError } from "@/lib/api";
-import { getStoredToken } from "@/lib/auth-cookie";
+import { downloadAuthenticatedFile } from "@/lib/download";
 
 interface Product {
   id: string;
@@ -102,23 +102,12 @@ export default function ProductDetailPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      const token = getStoredToken();
-      const res = await fetch(apiUrl(`/products/${params.id}/export`), {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) {
-        toast.error("Không thể xuất file.");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `product-${product?.code ?? params.id}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadAuthenticatedFile(
+        apiUrl(`/products/${params.id}/export`),
+        `product-${product?.code ?? params.id}.xlsx`,
+      );
     } catch {
-      toast.error("Lỗi kết nối server.");
+      toast.error("Không thể xuất file.");
     } finally {
       setExporting(false);
     }

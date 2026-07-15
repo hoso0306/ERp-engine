@@ -25,6 +25,7 @@ import {
 import { ExcelImportDialog } from "@/components/product/excel-import-dialog";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiPut, apiDelete, ApiError } from "@/lib/api";
+import { useSetBreadcrumbExtra } from "@/context/breadcrumb-context";
 
 interface ImportedMaterialRequirementRow {
   materialId: string;
@@ -70,8 +71,11 @@ export default function MaterialRequirementVersionPage() {
 
   const [version, setVersion] = useState<MaterialRequirementVersion | null>(null);
   const [parameters, setParameters] = useState<ProductParameter[]>([]);
+  const [productName, setProductName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useSetBreadcrumbExtra(productName ? { label: productName, href: `/products/${productId}` } : null);
 
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -127,6 +131,9 @@ export default function MaterialRequirementVersionPage() {
     loadVersion();
     apiGet<ProductParameter[]>(`/products/${productId}/parameters`)
       .then((data) => setParameters(data))
+      .catch(() => {});
+    apiGet<{ name: string }>(`/products/${productId}`)
+      .then((data) => setProductName(data.name))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -198,10 +205,10 @@ export default function MaterialRequirementVersionPage() {
       await apiDelete(
         `/products/${productId}/material-requirement/versions/${versionId}/items/${deleteItemTarget.id}`,
       );
-      toast.success("Đã xoá Item.");
+      toast.success("Đã xoá công thức vật tư.");
       loadVersion();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Không thể xoá Item.");
+      toast.error(err instanceof ApiError ? err.message : "Không thể xoá công thức vật tư.");
     }
   }
 
@@ -310,7 +317,7 @@ export default function MaterialRequirementVersionPage() {
         {/* Available variables */}
         {parameters.filter((p) => p.usedInMaterial).length > 0 && (
           <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">Biến có thể dùng trong Expression/Điều kiện:</p>
+            <p className="font-medium">Biến có thể dùng trong Công thức/Điều kiện:</p>
             <p className="font-mono">
               {parameters.filter((p) => p.usedInMaterial).map((p) => p.name).join(", ")}
             </p>
@@ -342,7 +349,7 @@ export default function MaterialRequirementVersionPage() {
                 }}
               >
                 <Plus className="mr-1 h-4 w-4" />
-                Thêm Item
+                Thêm công thức vật tư
               </Button>
             </div>
           )}
@@ -356,7 +363,7 @@ export default function MaterialRequirementVersionPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vật tư</TableHead>
-                  <TableHead>Expression</TableHead>
+                  <TableHead>Công thức</TableHead>
                   <TableHead>Điều kiện</TableHead>
                   <TableHead className="text-right w-24">Hao hụt (%)</TableHead>
                   <TableHead className="text-right w-28">Round Step</TableHead>
@@ -543,7 +550,7 @@ export default function MaterialRequirementVersionPage() {
       <ConfirmDialog
         open={deleteItemOpen}
         onOpenChange={setDeleteItemOpen}
-        title="Xoá Item"
+        title="Xoá công thức vật tư"
         description={`Xoá vật tư "${deleteItemTarget?.material.name}"?`}
         confirmLabel="Xoá"
         variant="destructive"
@@ -569,7 +576,7 @@ export default function MaterialRequirementVersionPage() {
         previewUrl={`/products/${productId}/material-requirement/versions/${versionId}/items/import-preview`}
         columns={[
           { header: "Mã vật tư", render: (row) => `${row.materialCode} — ${row.materialName}` },
-          { header: "Expression", render: (row) => <span className="font-mono text-xs">{row.expression}</span> },
+          { header: "Công thức", render: (row) => <span className="font-mono text-xs">{row.expression}</span> },
           { header: "Condition", render: (row) => <span className="font-mono text-xs">{row.condition || "—"}</span> },
           { header: "Hao hụt (%)", render: (row) => row.wastePercent },
           { header: "Round Step", render: (row) => row.roundStep ?? "—" },

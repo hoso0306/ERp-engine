@@ -4,7 +4,10 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  // exposedHeaders: Content-Disposition mặc định KHÔNG lộ ra cho JS ở origin
+  // khác (CORS) — cần thiết để FE đọc tên file thật khi tải template/export
+  // qua fetch (không dùng window.open vì cần đính kèm Authorization header).
+  app.enableCors({ exposedHeaders: ['Content-Disposition'] });
   app.setGlobalPrefix('api');
   await app.listen(process.env.PORT ?? 3001);
 }

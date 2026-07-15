@@ -11,7 +11,9 @@ import { CustomerTable } from "@/components/customer/customer-table";
 import { CustomerDeletedTable } from "@/components/customer/customer-deleted-table";
 import { CustomerImportDialog } from "@/components/customer/customer-import-dialog";
 import { apiGet, apiUrl } from "@/lib/api";
+import { downloadAuthenticatedFile } from "@/lib/download";
 import { useAuth } from "@/context/auth-context";
+import { toast } from "sonner";
 
 interface FilterOption {
   id: string;
@@ -40,6 +42,22 @@ export default function CustomersPage() {
   const [deletedPage, setDeletedPage] = useState(1);
   const [deletedLoading, setDeletedLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (groupId !== "all") params.set("customerGroupId", groupId);
+      if (routeId !== "all") params.set("deliveryRouteId", routeId);
+      await downloadAuthenticatedFile(apiUrl(`/customers/export?${params}`), "khach-hang.xlsx");
+    } catch {
+      toast.error("Không thể xuất file.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
@@ -114,18 +132,9 @@ export default function CustomersPage() {
               </Button>
             )}
             {hasPermission("customer.export") && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (search) params.set("search", search);
-                  if (groupId !== "all") params.set("customerGroupId", groupId);
-                  if (routeId !== "all") params.set("deliveryRouteId", routeId);
-                  window.open(apiUrl(`/customers/export?${params}`), "_blank");
-                }}
-              >
+              <Button variant="outline" onClick={handleExport} disabled={exporting}>
                 <Download className="mr-2 h-4 w-4" />
-                Export
+                {exporting ? "Đang xuất..." : "Export"}
               </Button>
             )}
             {hasPermission("customer.create") && (

@@ -80,6 +80,7 @@ export default function ReceivableDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={`Công nợ — ${receivable.salesOrder.code}`}
+        breadcrumbLabel={receivable.salesOrder.code}
         description={`Khách hàng ${receivable.salesOrder.customerName}`}
         actions={
           <div className="flex gap-2 flex-wrap justify-end">

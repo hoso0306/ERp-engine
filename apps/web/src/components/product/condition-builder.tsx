@@ -18,6 +18,9 @@ export interface ConditionParameter {
   label: string;
   type: string;
   options: { value: string; label: string | null }[];
+  // Optional — chỉ dùng ở nơi cần lọc theo phạm vi dùng (vd gợi ý biến cho
+  // Công thức Định mức vật liệu). Không phá các chỗ khác đang dùng type này.
+  usedInMaterial?: boolean;
 }
 
 interface Clause {

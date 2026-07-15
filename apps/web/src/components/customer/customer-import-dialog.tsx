@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { apiPost, apiUrl, ApiError } from "@/lib/api";
+import { downloadAuthenticatedFile } from "@/lib/download";
 
 interface ImportError {
   row: number;
@@ -28,8 +29,20 @@ interface CustomerImportDialogProps {
 
 export function CustomerImportDialog({ open, onOpenChange, onImported }: CustomerImportDialogProps) {
   const [uploading, setUploading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [errors, setErrors] = useState<ImportError[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      await downloadAuthenticatedFile(apiUrl("/customers/template"), "mau-import-khach-hang.xlsx");
+    } catch {
+      toast.error("Không thể tải file mẫu.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   async function handleImport() {
     const file = fileRef.current?.files?.[0];
@@ -79,10 +92,11 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
         <Button
           variant="outline"
           className="w-full justify-start"
-          onClick={() => window.open(apiUrl("/customers/template"), "_blank")}
+          onClick={handleDownloadTemplate}
+          disabled={downloadingTemplate}
         >
           <Download className="mr-2 h-4 w-4" />
-          Tải file mẫu (.xlsx)
+          {downloadingTemplate ? "Đang tải..." : "Tải file mẫu (.xlsx)"}
         </Button>
 
         <Input ref={fileRef} type="file" accept=".xlsx,.xls" />

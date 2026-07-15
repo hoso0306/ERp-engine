@@ -1,77 +1,63 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
-import { Button } from "@/components/ui/button";
-import { apiGet } from "@/lib/api";
-import { SalesOverviewPanel, type SalesOverview } from "@/components/dashboard/sales-overview-panel";
-import { ProductionOverviewPanel, type ProductionOverview } from "@/components/dashboard/production-overview-panel";
-import { WarehouseOverviewPanel, type WarehouseOverview } from "@/components/dashboard/warehouse-overview-panel";
-import { DebtOverviewPanel, type DebtOverview } from "@/components/dashboard/debt-overview-panel";
-import { ReturnOverviewPanel, type ReturnOverview } from "@/components/dashboard/return-overview-panel";
-import { AlertsPanel, type AlertsData } from "@/components/dashboard/alerts-panel";
+import Link from "next/link";
+import { navigation } from "@/config/navigation";
+import { useAuth } from "@/context/auth-context";
+import { EmptyState } from "@/components/shared";
 
-// Field permission-gated (production/warehouse/debt/returns) trả về null nếu
-// user thiếu quyền view tương ứng — xem apps/api/src/dashboard/dashboard.controller.ts.
-// `sales` và `alerts.delayedOrders` hiện không bị ẩn theo quyền (ghi nhận, không tự sửa BE).
-interface DashboardOverview {
-  sales: SalesOverview;
-  production: ProductionOverview | null;
-  warehouse: WarehouseOverview | null;
-  debt: DebtOverview | null;
-  returns: ReturnOverview | null;
-  alerts: AlertsData;
-}
+export default function HomePage() {
+  const { hasPermission } = useAuth();
 
-export default function DashboardPage() {
-  const [data, setData] = useState<DashboardOverview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const groups = navigation
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.requiredPermission || hasPermission(item.requiredPermission),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
-  const fetchOverview = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const json = await apiGet<DashboardOverview>("/dashboard/overview");
-      setData(json);
-    } catch {
-      setError("Không thể tải dữ liệu dashboard.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchOverview();
-  }, [fetchOverview]);
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        title="Chưa có quyền truy cập"
+        description="Tài khoản của bạn chưa được cấp quyền truy cập tính năng nào — liên hệ Owner/Admin."
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        description="Tổng quan tình hình kinh doanh, sản xuất, kho và công nợ"
-        actions={
-          <Button variant="outline" size="sm" onClick={fetchOverview} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Làm mới
-          </Button>
-        }
-      />
-
-      {loading && !data && <Loading />}
-      {error && !data && <ErrorState description={error} onRetry={fetchOverview} />}
-
-      {data && (
-        <div className="space-y-8">
-          <SalesOverviewPanel sales={data.sales} />
-          {data.production && <ProductionOverviewPanel production={data.production} />}
-          {data.warehouse && <WarehouseOverviewPanel warehouse={data.warehouse} />}
-          {data.debt && <DebtOverviewPanel debt={data.debt} />}
-          {data.returns && <ReturnOverviewPanel returns={data.returns} />}
-          <AlertsPanel alerts={data.alerts} />
+    <div className="space-y-8">
+      {groups.map((group) => (
+        <div key={group.label} className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground">{group.label}</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {group.items.map((item) =>
+              item.disabled ? (
+                <div
+                  key={item.href}
+                  className="flex cursor-not-allowed flex-col items-center gap-2 rounded-lg border p-4 text-center opacity-50"
+                >
+                  <item.icon className="h-6 w-6" />
+                  <span className="text-sm font-medium">{item.title}</span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                    Đang phát triển
+                  </span>
+                </div>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-colors hover:bg-muted/50"
+                >
+                  <item.icon className="h-6 w-6" />
+                  <span className="text-sm font-medium">{item.title}</span>
+                </Link>
+              ),
+            )}
+          </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }
