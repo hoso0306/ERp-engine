@@ -21,6 +21,7 @@ function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
     ],
     validationRules: [],
     enumParameterNames: [],
+    vatRate: 0,
     ...overrides,
   };
 }
@@ -314,6 +315,29 @@ describe('PricingEngine.calculatePrice — Expression fallback', () => {
         },
       ),
     ).toThrow(/số âm/);
+  });
+});
+
+// ──────────────────────────────────────
+// VAT — pass-through, không tính vào systemPrice/rawPrice
+// ──────────────────────────────────────
+
+describe('PricingEngine.calculatePrice — VAT pass-through', () => {
+  it('trả đúng vatRate từ config, KHÔNG cộng vào systemPrice', () => {
+    const result = service().calculatePrice(
+      makeConfig({ expression: 'area * 300000', vatRate: 10 }),
+      { chieurong: 100, chieucao: 150 }, // 1.5m² × 300.000 = 450.000
+    );
+    expect(result.vatRate).toBe(10);
+    expect(result.systemPrice).toBe(450_000);
+  });
+
+  it('vatRate mặc định 0 khi config không set', () => {
+    const result = service().calculatePrice(
+      makeConfig({ expression: 'area * 300000' }),
+      { chieurong: 100, chieucao: 150 },
+    );
+    expect(result.vatRate).toBe(0);
   });
 });
 

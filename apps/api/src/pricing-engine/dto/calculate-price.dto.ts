@@ -16,6 +16,12 @@ export class CalculatePriceResultDto {
   /** Giá trước làm tròn. */
   rawPrice: number;
   /**
+   * Thuế suất VAT (%) snapshot từ Pricing Rule Version — KHÔNG tính vào
+   * systemPrice. Nơi gọi (Quotation) tự cộng vatAmount sau khi áp dụng
+   * chiết khấu (Discount Engine).
+   */
+  vatRate: number;
+  /**
    * Kích thước/biến TÍNH TIỀN sau khi áp min-rule/bậc thang.
    * CHỈ để hiển thị/giải trình — KHÔNG BAO GIỜ truyền sang BOM Engine
    * (BOM luôn dùng kích thước gốc — nguyên tắc billable ≠ actual).

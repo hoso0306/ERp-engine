@@ -40,6 +40,7 @@ interface ExistingItem {
   discountReason: string | null;
   discountBy: string | null;
   finalPrice: number;
+  vatRate: number;
   parameters: { name: string; label: string; value: string; unit: string | null }[];
 }
 
@@ -80,6 +81,7 @@ export function QuotationItemDialog({
 
   const [systemPrice, setSystemPrice] = useState<number | null>(null);
   const [unitPrice, setUnitPrice] = useState<number | null>(null);
+  const [vatRate, setVatRate] = useState<number>(0);
   const [adjustedVariables, setAdjustedVariables] = useState<Record<string, number>>({});
   const [priceWarnings, setPriceWarnings] = useState<string[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
@@ -108,6 +110,7 @@ export function QuotationItemDialog({
         .catch(() => setPickedProduct(null));
       setQuantity(String(item.quantity));
       setSystemPrice(item.systemPrice);
+      setVatRate(item.vatRate ?? 0);
       setAddlDiscountPct(String(item.additionalDiscountPercent ?? 0));
       setAddlDiscountAmt(String(item.additionalDiscountAmount ?? 0));
       setDiscountReason(item.discountReason ?? "");
@@ -126,6 +129,7 @@ export function QuotationItemDialog({
       setDiscountReason("");
       setDiscountBy("");
       setSystemPrice(null);
+      setVatRate(0);
     }
     setUnitPrice(null);
     setAdjustedVariables({});
@@ -154,16 +158,19 @@ export function QuotationItemDialog({
       const data = await apiPost<{
         systemPrice: number;
         unitPrice: number | null;
+        vatRate: number;
         adjustedVariables: Record<string, number>;
         warnings: string[];
       }>("/pricing-engine/calculate", { productId, parameters });
       setSystemPrice(data.systemPrice);
       setUnitPrice(data.unitPrice);
+      setVatRate(data.vatRate ?? 0);
       setAdjustedVariables(data.adjustedVariables ?? {});
       setPriceWarnings(data.warnings ?? []);
     } catch {
       setSystemPrice(null);
       setUnitPrice(null);
+      setVatRate(0);
       setAdjustedVariables({});
       setPriceWarnings([]);
     } finally {
@@ -182,6 +189,7 @@ export function QuotationItemDialog({
     setProductId(product?.id ?? "");
     setSystemPrice(null);
     setUnitPrice(null);
+    setVatRate(0);
     setAdjustedVariables({});
     setPriceWarnings([]);
     if (!product) {
@@ -202,6 +210,11 @@ export function QuotationItemDialog({
   const finalPriceSafe = finalPrice !== null ? Math.max(0, Math.round(finalPrice)) : null;
   const subtotal = finalPriceSafe !== null ? Math.round(finalPriceSafe * qty) : null;
   const finalNegative = finalPrice !== null && finalPrice < 0;
+
+  // VAT tính SAU chiết khấu (trên subtotal), mirror calcVatAmount() ở BE
+  // (quotation-workflow.service.ts) — chỉ để preview trước khi submit.
+  const vatAmount = subtotal !== null ? Math.round(subtotal * (vatRate / 100)) : null;
+  const grandTotal = subtotal !== null && vatAmount !== null ? subtotal + vatAmount : null;
 
   const hasAddlDiscount = pct > 0 || amt > 0;
 
@@ -456,6 +469,22 @@ export function QuotationItemDialog({
                     {subtotal !== null ? formatMoney(subtotal) : "—"}
                   </span>
                 </div>
+              )}
+              {qty > 0 && !finalNegative && vatRate > 0 && (
+                <>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>VAT ({vatRate}%)</span>
+                    <span className="font-mono">
+                      {vatAmount !== null ? formatMoney(vatAmount) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1.5 font-semibold">
+                    <span>Tổng thanh toán</span>
+                    <span className="font-mono">
+                      {grandTotal !== null ? formatMoney(grandTotal) : "—"}
+                    </span>
+                  </div>
+                </>
               )}
             </div>
           )}

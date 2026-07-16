@@ -22,6 +22,8 @@ interface QuotationItem {
   discountReason: string | null;
   finalPrice: number;
   subtotal: number;
+  vatRate: number;
+  vatAmount: number;
   // Snapshot tại thời điểm thêm/sửa dòng — bản in đọc từ đây, không đọc Product.
   productCode: string;
   productName: string;
@@ -128,6 +130,7 @@ export default function QuotationPrintPage() {
   }
 
   const grandTotal = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
+  const totalVat = quotation.items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
   const groupDiscount = Number(quotation.customer.customerGroup?.discountPercent ?? 0);
   const customerAddress = [
     quotation.customer.address,
@@ -272,6 +275,7 @@ export default function QuotationPrintPage() {
               <th style={{ width: 100, textAlign: "right" }}>Giá bán</th>
               <th style={{ width: 50, textAlign: "right" }}>SL</th>
               <th style={{ width: 110, textAlign: "right" }}>Thành tiền</th>
+              <th style={{ width: 90, textAlign: "right" }}>VAT</th>
             </tr>
           </thead>
           <tbody>
@@ -300,19 +304,53 @@ export default function QuotationPrintPage() {
                   <td style={{ textAlign: "right", fontWeight: "bold" }}>{fmt(Number(item.finalPrice))}</td>
                   <td style={{ textAlign: "right" }}>{Number(item.quantity)}</td>
                   <td style={{ textAlign: "right", fontWeight: "bold" }}>{fmt(Number(item.subtotal))}</td>
+                  <td style={{ textAlign: "right", fontSize: 11 }}>
+                    {Number(item.vatRate) > 0
+                      ? `${item.vatRate}%  ${fmt(Number(item.vatAmount))}`
+                      : "—"}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
-            <tr>
-              <td colSpan={7} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
-                TỔNG CỘNG
-              </td>
-              <td style={{ textAlign: "right", fontWeight: "bold", fontSize: 15, border: "1px solid #333" }}>
-                {fmt(grandTotal)} ₫
-              </td>
-            </tr>
+            {totalVat > 0 ? (
+              <>
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                    Tổng tiền hàng
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                    {fmt(grandTotal)} ₫
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                    Tổng VAT
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                    {fmt(totalVat)} ₫
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                    TỔNG THANH TOÁN
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: "bold", fontSize: 15, border: "1px solid #333" }}>
+                    {fmt(grandTotal + totalVat)} ₫
+                  </td>
+                </tr>
+              </>
+            ) : (
+              <tr>
+                <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                  TỔNG CỘNG
+                </td>
+                <td style={{ textAlign: "right", fontWeight: "bold", fontSize: 15, border: "1px solid #333" }}>
+                  {fmt(grandTotal)} ₫
+                </td>
+              </tr>
+            )}
           </tfoot>
         </table>
 

@@ -3,5 +3,6 @@ export class UpdatePricingRuleVersionDto {
   expression?: string | null;
   priceRoundType?: string;
   priceRoundValue?: number | null;
+  vatRate?: number;
   note?: string | null;
 }

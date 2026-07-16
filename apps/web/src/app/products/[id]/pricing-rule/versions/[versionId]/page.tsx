@@ -52,6 +52,7 @@ interface PricingRuleVersion {
   expression: string | null;
   priceRoundType: string;
   priceRoundValue: number | null;
+  vatRate: number;
   status: string;
   note: string | null;
   items: PricingRuleItem[];
@@ -66,6 +67,9 @@ interface PreviewResult {
   finalPrice: number;
   unitPrice: number | null;
   warnings: string[];
+  vatRate: number;
+  vatAmount: number;
+  priceWithVat: number;
   priceRoundType: string;
   priceRoundValue: number | null;
 }
@@ -110,6 +114,7 @@ export default function PricingRuleVersionPage() {
   const [formExpr, setFormExpr] = useState("");
   const [formRoundType, setFormRoundType] = useState("NONE");
   const [formRoundValue, setFormRoundValue] = useState("");
+  const [formVatRate, setFormVatRate] = useState("0");
   const [formNote, setFormNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -138,6 +143,7 @@ export default function PricingRuleVersionPage() {
       setFormExpr(data.expression ?? "");
       setFormRoundType(data.priceRoundType);
       setFormRoundValue(data.priceRoundValue != null ? String(data.priceRoundValue) : "");
+      setFormVatRate(String(data.vatRate ?? 0));
       setFormNote(data.note ?? "");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Không tìm thấy phiên bản.");
@@ -174,6 +180,7 @@ export default function PricingRuleVersionPage() {
         expression: formExpr.trim() || null,
         priceRoundType: formRoundType,
         priceRoundValue: formRoundValue ? Number(formRoundValue) : null,
+        vatRate: formVatRate ? Number(formVatRate) : 0,
         note: formNote.trim() || null,
       };
       const updated = await apiPatch<PricingRuleVersion>(
@@ -417,6 +424,23 @@ export default function PricingRuleVersionPage() {
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="v-vat">Thuế VAT (%)</Label>
+            <Input
+              id="v-vat"
+              type="number"
+              value={formVatRate}
+              onChange={(e) => setFormVatRate(e.target.value)}
+              placeholder="ví dụ: 10"
+              min={0}
+              max={100}
+              step="0.01"
+              disabled={!isDraft}
+            />
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="v-note">Ghi chú</Label>
           <Textarea
@@ -623,6 +647,20 @@ export default function PricingRuleVersionPage() {
                       {previewResult.finalPrice.toLocaleString("vi-VN")} đ
                     </span>
                   </div>
+                  {previewResult.vatRate > 0 && (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>VAT ({previewResult.vatRate}%):</span>
+                        <span>{previewResult.vatAmount.toLocaleString("vi-VN")} đ</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1.5 font-semibold text-base">
+                        <span>Giá đã gồm VAT:</span>
+                        <span className="text-green-600">
+                          {previewResult.priceWithVat.toLocaleString("vi-VN")} đ
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {previewResult.warnings.length > 0 && (

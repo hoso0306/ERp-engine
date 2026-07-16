@@ -71,6 +71,10 @@ export interface PricingConfig {
   derivedParameters: DerivedParameterDef[];
   validationRules: ValidationRuleDef[];
   enumParameterNames: string[];
+  // Thuế suất VAT (%) — pass-through, KHÔNG tính vào rawPrice/systemPrice.
+  // Nơi tiêu thụ (Preview sản phẩm, Discount Engine ở Quotation) tự tính
+  // vatAmount đúng điểm cần trong pipeline của mình.
+  vatRate: number;
 }
 
 export interface PricingCalcResult {
@@ -80,6 +84,7 @@ export interface PricingCalcResult {
   billableParams: Record<string, number>;
   warnings: string[];
   pricingRuleVersionId: string;
+  vatRate: number;
 }
 
 const VERSION_INCLUDE = {
@@ -161,6 +166,7 @@ export class PricingEngineService {
       expression: string | null;
       priceRoundType: RoundType;
       priceRoundValue: unknown;
+      vatRate: unknown;
       items: Array<{
         ruleType: string;
         targetParameter: string | null;
@@ -194,6 +200,7 @@ export class PricingEngineService {
       priceRoundValue: version.priceRoundValue
         ? Number(version.priceRoundValue)
         : 0,
+      vatRate: Number(version.vatRate ?? 0),
       ruleItems: version.items.map((i) => ({
         ruleType: i.ruleType,
         targetParameter: i.targetParameter,
@@ -301,6 +308,7 @@ export class PricingEngineService {
       billableParams: this.numericOnly(billable),
       warnings,
       pricingRuleVersionId: config.pricingRuleVersionId,
+      vatRate: config.vatRate,
     };
   }
 
@@ -422,6 +430,7 @@ export class PricingEngineService {
       pricingRuleVersionId: result.pricingRuleVersionId,
       unitPrice: result.unitPrice,
       rawPrice: result.rawPrice,
+      vatRate: result.vatRate,
       adjustedVariables: result.billableParams,
       warnings: result.warnings,
     };

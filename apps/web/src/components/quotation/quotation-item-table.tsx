@@ -25,6 +25,8 @@ interface QuotationItemRow {
   discountBy: string | null;
   finalPrice: number;
   subtotal: number;
+  vatRate: number;
+  vatAmount: number;
   // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
   productCode: string;
   productName: string;
@@ -60,6 +62,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
   }
 
   const grandTotal = items.reduce((s, i) => s + Number(i.subtotal), 0);
+  const totalVat = items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
 
   return (
     <div className="rounded-md border">
@@ -73,6 +76,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
             <TableHead className="text-right">Giá bán</TableHead>
             <TableHead className="text-right">SL</TableHead>
             <TableHead className="text-right">Thành tiền</TableHead>
+            <TableHead className="text-right">VAT</TableHead>
             {editable && <TableHead className="w-20" />}
           </TableRow>
         </TableHeader>
@@ -108,6 +112,11 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
               <TableCell className="text-right font-mono text-sm font-semibold">
                 {formatMoney(Number(item.subtotal))}
               </TableCell>
+              <TableCell className="text-right text-xs text-muted-foreground">
+                {Number(item.vatRate) > 0
+                  ? `${item.vatRate}% · ${formatMoney(Number(item.vatAmount))}`
+                  : "—"}
+              </TableCell>
               {editable && (
                 <TableCell>
                   <div className="flex gap-1 justify-end">
@@ -122,15 +131,47 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete }: Quotat
               )}
             </TableRow>
           ))}
-          <TableRow className="bg-muted/50">
-            <TableCell colSpan={editable ? 6 : 5} className="text-right text-sm font-medium">
-              Tổng cộng
-            </TableCell>
-            <TableCell className="text-right font-mono font-bold">
-              {formatMoney(grandTotal)}
-            </TableCell>
-            {editable && <TableCell />}
-          </TableRow>
+          {totalVat > 0 ? (
+            <>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={editable ? 7 : 6} className="text-right text-sm font-medium">
+                  Tổng tiền hàng
+                </TableCell>
+                <TableCell className="text-right font-mono font-medium">
+                  {formatMoney(grandTotal)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={editable ? 7 : 6} className="text-right text-sm text-muted-foreground">
+                  Tổng VAT
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatMoney(totalVat)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={editable ? 7 : 6} className="text-right text-sm font-semibold">
+                  Tổng thanh toán
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold">
+                  {formatMoney(grandTotal + totalVat)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+            </>
+          ) : (
+            <TableRow className="bg-muted/50">
+              <TableCell colSpan={editable ? 7 : 6} className="text-right text-sm font-medium">
+                Tổng cộng
+              </TableCell>
+              <TableCell className="text-right font-mono font-bold">
+                {formatMoney(grandTotal)}
+              </TableCell>
+              {editable && <TableCell />}
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

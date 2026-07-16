@@ -219,6 +219,7 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
       ],
       validationRules: [],
       enumParameterNames: [],
+      vatRate: 0,
     };
     const price = new PricingEngineService({} as PrismaService).calculatePrice(
       pricingConfig,

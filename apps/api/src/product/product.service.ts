@@ -1108,6 +1108,7 @@ export class ProductService {
     if (dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
+    this.validateVatRate(dto.vatRate);
 
     return this.prisma.pricingRuleVersion.create({
       data: {
@@ -1117,6 +1118,7 @@ export class ProductService {
         expression: dto.expression?.trim() || null,
         priceRoundType: (dto.priceRoundType as RoundType) ?? 'NONE',
         priceRoundValue: dto.priceRoundValue ?? null,
+        vatRate: dto.vatRate ?? 0,
         status: 'DRAFT',
         note: dto.note?.trim() || null,
       },
@@ -1139,6 +1141,7 @@ export class ProductService {
     if (dto.expression !== undefined && dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
+    if (dto.vatRate !== undefined) this.validateVatRate(dto.vatRate);
 
     const data: Prisma.PricingRuleVersionUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name?.trim() || null;
@@ -1148,6 +1151,7 @@ export class ProductService {
       data.priceRoundType = dto.priceRoundType as RoundType;
     if ('priceRoundValue' in dto)
       data.priceRoundValue = dto.priceRoundValue ?? null;
+    if (dto.vatRate !== undefined) data.vatRate = dto.vatRate;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
 
     return this.prisma.pricingRuleVersion.update({
@@ -1246,6 +1250,7 @@ export class ProductService {
           expression: source.expression,
           priceRoundType: source.priceRoundType,
           priceRoundValue: source.priceRoundValue,
+          vatRate: source.vatRate,
           status: 'DRAFT',
           note: source.note,
         },
@@ -1718,6 +1723,11 @@ export class ProductService {
       ...inputParams,
     });
 
+    // Preview không có Discount Engine (không gắn với khách hàng/báo giá cụ
+    // thể) — VAT tính thẳng trên systemPrice, khác với Quotation (tính SAU
+    // chiết khấu, xem quotation-workflow.service.ts).
+    const vatAmount = Math.round(result.systemPrice * (result.vatRate / 100));
+
     return {
       inputParams,
       adjustedParams: result.billableParams,
@@ -1725,6 +1735,9 @@ export class ProductService {
       finalPrice: result.systemPrice,
       unitPrice: result.unitPrice,
       warnings: result.warnings,
+      vatRate: result.vatRate,
+      vatAmount,
+      priceWithVat: result.systemPrice + vatAmount,
       // Trả về đúng cấu hình làm tròn ĐÃ DÙNG để tính (từ version đã lưu) — FE không
       // được lấy giá trị đang gõ dở trên form để hiển thị, tránh lệch với finalPrice
       // (bug 16/07/2026: nhãn hiện "Làm tròn lên 1000" nhưng giá không đổi vì DB đang NONE).
@@ -2686,6 +2699,13 @@ export class ProductService {
       throw new BadRequestException(
         `Cú pháp biểu thức không hợp lệ: ${result.error}`,
       );
+    }
+  }
+
+  private validateVatRate(vatRate: number | null | undefined): void {
+    if (vatRate === null || vatRate === undefined) return;
+    if (vatRate < 0 || vatRate > 100) {
+      throw new BadRequestException('Thuế suất VAT phải từ 0 đến 100.');
     }
   }
 

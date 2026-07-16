@@ -43,6 +43,8 @@ interface QuotationItem {
   discountBy: string | null;
   finalPrice: number;
   subtotal: number;
+  vatRate: number;
+  vatAmount: number;
   // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
   productCode: string;
   productName: string;

@@ -304,6 +304,8 @@ export class QuotationWorkflowService {
       additionalDiscountAmount,
     );
     const subtotal = this.calcSubtotal(finalPrice, dto.quantity);
+    const vatRate = priceResult.vatRate;
+    const vatAmount = this.calcVatAmount(subtotal, vatRate);
 
     const paramMap = new Map(product.parameters.map((p) => [p.name, p]));
     const displayOrder = dto.displayOrder ?? quotation.items.length;
@@ -326,6 +328,8 @@ export class QuotationWorkflowService {
         discountBy: dto.discountBy?.trim() || null,
         finalPrice,
         subtotal,
+        vatRate,
+        vatAmount,
         // Snapshot cảnh báo Validation Rule tại thời điểm tính giá (Task 06)
         warnings: priceResult.warnings,
         displayOrder,
@@ -398,6 +402,7 @@ export class QuotationWorkflowService {
     let systemPrice = Number(item.systemPrice);
     let pricingRuleVersionId = item.pricingRuleVersionId;
     let warnings = item.warnings as string[] | null;
+    let vatRate = Number(item.vatRate);
     const newParameters = dto.parameters;
 
     if (dto.parameters !== undefined) {
@@ -408,6 +413,7 @@ export class QuotationWorkflowService {
       systemPrice = priceResult.systemPrice;
       pricingRuleVersionId = priceResult.pricingRuleVersionId;
       warnings = priceResult.warnings;
+      vatRate = priceResult.vatRate;
     }
 
     const groupDiscount = Number(item.groupDiscount);
@@ -417,7 +423,10 @@ export class QuotationWorkflowService {
       additionalDiscountPercent,
       additionalDiscountAmount,
     );
+    // subtotal (và do đó vatAmount) luôn tính lại dù tham số không đổi —
+    // số lượng/chiết khấu có thể đổi độc lập với tham số sản phẩm.
     const subtotal = this.calcSubtotal(finalPrice, quantity);
+    const vatAmount = this.calcVatAmount(subtotal, vatRate);
 
     // Snapshot Rule (quotation.md): snapshot productCode/productName tại thời
     // điểm thêm/SỬA dòng — refresh lại mỗi lần sửa khi còn Draft/Sent.
@@ -472,6 +481,8 @@ export class QuotationWorkflowService {
           discountBy,
           finalPrice,
           subtotal,
+          vatRate,
+          vatAmount,
           warnings: warnings ?? [],
           ...(dto.displayOrder !== undefined
             ? { displayOrder: dto.displayOrder }
@@ -586,6 +597,8 @@ export class QuotationWorkflowService {
       pricingRuleVersionId: string;
       finalPrice: number;
       subtotal: number;
+      vatRate: number;
+      vatAmount: number;
       warnings: string[];
     }> = [];
 
@@ -609,6 +622,7 @@ export class QuotationWorkflowService {
         newFinalPrice,
         Number(item.quantity),
       );
+      const newVatAmount = this.calcVatAmount(newSubtotal, priceResult.vatRate);
 
       changes.push({
         itemId: item.id,
@@ -628,6 +642,8 @@ export class QuotationWorkflowService {
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         finalPrice: newFinalPrice,
         subtotal: newSubtotal,
+        vatRate: priceResult.vatRate,
+        vatAmount: newVatAmount,
         warnings: priceResult.warnings,
       });
     }
@@ -641,6 +657,8 @@ export class QuotationWorkflowService {
             pricingRuleVersionId: u.pricingRuleVersionId,
             finalPrice: u.finalPrice,
             subtotal: u.subtotal,
+            vatRate: u.vatRate,
+            vatAmount: u.vatAmount,
             warnings: u.warnings,
           },
         });
@@ -1270,5 +1288,11 @@ export class QuotationWorkflowService {
 
   private calcSubtotal(finalPrice: number, quantity: number): number {
     return Math.round(finalPrice * quantity);
+  }
+
+  // VAT tính SAU Discount Engine (chốt 16/07/2026) — trên subtotal đã chiết
+  // khấu và extend theo số lượng, không phải trên systemPrice gốc.
+  private calcVatAmount(subtotal: number, vatRate: number): number {
+    return Math.round(subtotal * (vatRate / 100));
   }
 }

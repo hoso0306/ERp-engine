@@ -550,6 +550,9 @@ model PricingRuleVersion {
   expression      String?
   priceRoundType  RoundType     @default(NONE) @map("price_round_type")
   priceRoundValue Decimal?      @map("price_round_value") @db.Decimal(15, 0)
+  // Thuế suất VAT (%) — snapshot xuống QuotationItem.vatRate khi tính giá,
+  // tính SAU Discount Engine (Quotation module), không gộp vào systemPrice.
+  vatRate         Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)
   status          VersionStatus @default(DRAFT)
   note            String?
   createdAt       DateTime      @default(now()) @map("created_at")
@@ -816,6 +819,11 @@ model QuotationItem {
   discountBy                String? @map("discount_by")
   finalPrice                Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
   subtotal                  Decimal @default(0) @db.Decimal(15, 0)
+
+  // VAT (%) — snapshot từ PricingRuleVersion.vatRate tại thời điểm tính giá.
+  // vatAmount tính SAU Discount Engine: round(subtotal × vatRate / 100).
+  vatRate   Decimal @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount Decimal @default(0) @map("vat_amount") @db.Decimal(15, 0)
 
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này
   // (Sprint 03 Task 06) — mảng string, in được trên báo giá, không đọc lại rule.
