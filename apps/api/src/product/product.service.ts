@@ -972,11 +972,17 @@ export class ProductService {
     if (version.status === 'ACTIVE') {
       throw new BadRequestException('Phiên bản này đã đang hoạt động.');
     }
-    // Sprint 03: Bảng giá ma trận là cách tính chính; expression là fallback.
-    // Version hợp lệ khi có ít nhất một trong hai.
+    // Chốt 16/07/2026: Ma trận và Công thức phối hợp, không loại trừ nhau —
+    // có Ma trận thì bắt buộc phải có Công thức (dùng biến unitPrice tra được
+    // từ Ma trận). Không có Ma trận thì vẫn cần ít nhất Công thức.
     if (version._count.matrixRows === 0 && !version.expression?.trim()) {
       throw new BadRequestException(
-        'Phiên bản cần có Bảng giá ma trận hoặc Expression trước khi kích hoạt.',
+        'Phiên bản cần có Bảng giá ma trận hoặc Công thức trước khi kích hoạt.',
+      );
+    }
+    if (version._count.matrixRows > 0 && !version.expression?.trim()) {
+      throw new BadRequestException(
+        'Sản phẩm dùng Bảng giá ma trận bắt buộc phải có Công thức (vd: unitPrice * area) trước khi kích hoạt.',
       );
     }
     if (version.expression?.trim()) {

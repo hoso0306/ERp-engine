@@ -139,7 +139,7 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
     // Pricing: min 70cm được áp → tính tiền theo 70cm
     const pricingConfig: PricingConfig = {
       pricingRuleVersionId: 'ver-1',
-      expression: null,
+      expression: 'unitPrice * area',
       priceRoundType: RoundType.NONE,
       priceRoundValue: 0,
       ruleItems: [{
@@ -149,6 +149,7 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
       matrixRows: [{ dimensions: { maukhung: 'cafe', socanh: '1' }, unitPrice: 428000, displayOrder: 0 }],
       derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
       validationRules: [],
+      enumParameterNames: [],
     };
     const price = new PricingEngineService({} as PrismaService).calculatePrice(
       pricingConfig,

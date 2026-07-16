@@ -18,54 +18,64 @@ File này liệt kê chi tiết hai nhóm trên để review phạm vi trước 
 
 ---
 
+# Thứ tự thực hiện (chốt 16/07/2026)
+
+Không đợi "hoàn thiện tất cả tính năng" mới bắt đầu, cũng không làm toàn bộ song song với code hiện tại — tách theo tính chất từng việc:
+
+**🟢 Làm ngay, song song với code tính năng** — không phụ thuộc nghiệp vụ, đóng gói code hiện có nên làm sớm để tránh dồn việc cuối dự án và bắt lỗi build/tsc sớm: 2.1 (CI), 2.2 (Dockerfile production), 2.6 (kỷ luật `migrate deploy`).
+
+**🔴 Chờ gần go-live** (ít nhất xong Module Báo cáo + Import Excel, tính năng tương đối ổn định) — vì làm sớm sẽ phải làm lại: UI còn đổi thì UAT/đào tạo mất công lặp lại; hạ tầng thật (domain/SSL/backup lịch/monitoring) nên gắn với thời điểm gần go-live thay vì cấu hình rồi bỏ không; dữ liệu thật nhập sớm dễ bị rác theo các thay đổi schema đang diễn ra: 2.3, 2.4, 2.5, 2.7, 2.8, và **toàn bộ Nhóm 3**.
+
+---
+
 # Nhóm 2 — Triển khai / Vận hành (DevOps)
 
-## 2.1 CI (kiểm tra tự động trước khi merge)
+## 2.1 CI (kiểm tra tự động trước khi merge) 🟢 làm ngay
 
 - `.github/workflows/ci.yml`: chạy `pnpm install`, `tsc --noEmit`, `eslint`, test API (`jest`) trên mỗi PR/push vào `main`.
 - Chưa cần deploy tự động (CD) ở bước này — chỉ chặn merge code lỗi.
 
-## 2.2 Production Build
+## 2.2 Production Build 🟢 làm ngay
 
 - Dockerfile multi-stage cho `apps/api` (NestJS build → `node dist/main.js`).
 - Dockerfile multi-stage cho `apps/web` (Next.js `build` → `next start` hoặc export tuỳ mô hình host).
 - `docker-compose.prod.yml` (tách khỏi `docker-compose.yml` hiện tại chỉ dùng cho dev DB): API + Web + Postgres + Nginx.
 
-## 2.3 Nginx (thư mục `docker/nginx` đang rỗng)
+## 2.3 Nginx (thư mục `docker/nginx` đang rỗng) 🔴 chờ gần go-live
 
 - Reverse proxy: `/api/*` → API container, còn lại → Web container.
 - Gzip, security headers cơ bản.
 - SSL termination — **cần xác nhận:** dùng Let's Encrypt/certbot tự động hay khách đã có chứng chỉ sẵn qua nhà cung cấp hosting?
 
-## 2.4 Environment & Secrets
+## 2.4 Environment & Secrets 🔴 chờ gần go-live
 
 - `.env.production` template — tách biệt secret thật (`JWT_SECRET`, `DB_PASSWORD`) khỏi `.env.example` (hiện `JWT_SECRET` mặc định là placeholder, **không được deploy với giá trị này**).
 - **Cần xác nhận:** hạ tầng host ở đâu (VPS riêng, cloud provider nào, hay khách tự có server)? Ảnh hưởng trực tiếp cách quản lý secret (file `.env` trên server vs secret manager).
 
-## 2.5 Database Backup
+## 2.5 Database Backup 🔴 chờ gần go-live
 
 - `pg_dump` định kỳ (cron), lưu ít nhất N bản gần nhất — **cần chốt:** tần suất (hàng ngày?) và nơi lưu (local disk / cloud storage).
 - Thử khôi phục (restore drill) ít nhất 1 lần trước khi bàn giao — xác nhận backup thật sự dùng được, không chỉ chạy lệnh cho có.
 
-## 2.6 Migration Workflow
+## 2.6 Migration Workflow 🟢 làm ngay
 
 - Production phải chạy `prisma migrate deploy` (áp dụng migration đã có), **không** dùng `prisma db push` (lệnh này dùng cho dev, có thể làm mất dữ liệu không cảnh báo).
 - Quy trình rollback nếu migration lỗi giữa chừng.
 
-## 2.7 Logging & Monitoring
+## 2.7 Logging & Monitoring 🔴 chờ gần go-live
 
 - Log có cấu trúc (JSON) thay vì `console.log` rải rác — **cần rà soát mức độ hiện tại**.
 - Error tracking — **cần xác nhận:** có dùng công cụ ngoài (Sentry, hoặc tương đương) hay chỉ log file + kiểm tra thủ công ở giai đoạn đầu (phù hợp quy mô 1 xưởng, tránh chi phí không cần thiết)?
 - `GET /health` đã có sẵn (`health.controller.ts`, không cần đăng nhập) — dùng cho uptime check, chỉ cần trỏ công cụ giám sát (hoặc cron đơn giản gọi + cảnh báo) vào endpoint này.
 
-## 2.8 Trước khi Go-live
+## 2.8 Trước khi Go-live 🔴 chờ gần go-live
 
 - Kiểm tra tải cơ bản (không cần load test chuyên sâu, quy mô 1 xưởng) — xác nhận các luồng chính (tạo báo giá, activate pricing version, hoàn thành SX) chạy ổn với dữ liệu gần với thật.
 - Domain + HTTPS hoạt động đúng end-to-end.
 
 ---
 
-# Nhóm 3 — Bàn giao khách hàng
+# Nhóm 3 — Bàn giao khách hàng 🔴 toàn bộ chờ gần go-live
 
 ## 3.1 Dữ liệu thật thay dữ liệu demo/test
 
@@ -105,17 +115,25 @@ File này liệt kê chi tiết hai nhóm trên để review phạm vi trước 
 
 ---
 
-# Việc cần làm ngay (không chờ xác nhận thêm)
+# Việc cần làm ngay (🟢, không chờ xác nhận thêm)
 
-Những mục dưới đây không phụ thuộc quyết định của khách, có thể lên kế hoạch code cụ thể ngay khi được duyệt:
+Những mục dưới đây không phụ thuộc quyết định của khách và không phụ thuộc tính năng đã xong hay chưa — có thể lên kế hoạch code cụ thể ngay khi được duyệt, làm song song với code tính năng/giao diện:
 
 1. CI cơ bản (2.1).
-2. Dockerfile production cho API + Web (2.2).
-3. Nginx reverse proxy config (2.3, sau khi biết SSL dùng cách nào).
-4. `.env.production` template + rà soát không còn secret placeholder mặc định (2.4).
-5. Script backup + restore drill (2.5).
-6. Đảm bảo quy trình deploy dùng `migrate deploy`, không dùng `db push` (2.6).
-7. Xoá dữ liệu test/dev còn sót (3.1 phần dọn dẹp) trước khi seed dữ liệu thật.
+2. Dockerfile production cho API + Web — chỉ phần build, chưa cần compose gắn domain/SSL thật (2.2).
+3. Đảm bảo quy trình deploy dùng `migrate deploy`, không dùng `db push` (2.6).
+
+# Việc chờ gần go-live (🔴, ít nhất xong Báo cáo + Import Excel)
+
+Không làm ngay để tránh phải làm lại khi tính năng còn đổi:
+
+1. Nginx reverse proxy config, gắn SSL thật (2.3).
+2. `.env.production` template thật + secret thật (2.4) — phụ thuộc hạ tầng host đã chọn.
+3. Script backup + restore drill với lịch thật (2.5).
+4. Logging/monitoring thật (2.7).
+5. Checklist trước go-live (2.8).
+6. Xoá dữ liệu test/dev còn sót (3.1 phần dọn dẹp) rồi mới seed dữ liệu thật — làm sát ngày go-live để tránh dữ liệu thật bị ảnh hưởng bởi các migration/thay đổi schema còn diễn ra trong lúc code tính năng.
+7. Toàn bộ Nhóm 3 còn lại (3.2 → 3.7).
 
 ---
 

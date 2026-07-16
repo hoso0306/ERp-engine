@@ -18,6 +18,7 @@ function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
     matrixRows: [],
     derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
     validationRules: [],
+    enumParameterNames: [],
     ...overrides,
   };
 }
@@ -52,12 +53,10 @@ function service(): PricingEngineService {
 
 describe('PricingEngine.calculatePrice — Matrix lookup', () => {
   it('Hệ 30 Cafe 2 cánh, 250×200cm → 5m² × 450.000 = 2.250.000', () => {
-    const result = service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
-      chieurong: 250,
-      chieucao: 200,
-      maukhung: 'cafe',
-      socanh: 2,
-    });
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+      { chieurong: 250, chieucao: 200, maukhung: 'cafe', socanh: 2 },
+    );
 
     expect(result.unitPrice).toBe(450000);
     expect(result.systemPrice).toBe(2_250_000);
@@ -65,28 +64,44 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
   });
 
   it('đổi màu Trắng 1 cánh → tra đúng đơn giá khác (385.000)', () => {
-    const result = service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
-      chieurong: 100,
-      chieucao: 100,
-      maukhung: 'trang',
-      socanh: 1,
-    });
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+      { chieurong: 100, chieucao: 100, maukhung: 'trang', socanh: 1 },
+    );
     expect(result.unitPrice).toBe(385000);
     expect(result.systemPrice).toBe(385000); // 1m²
   });
 
+  it('Công thức dùng unitPrice kết hợp thêm phụ phí cố định', () => {
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area + 20000' }),
+      { chieurong: 100, chieucao: 100, maukhung: 'trang', socanh: 1 },
+    );
+    expect(result.unitPrice).toBe(385000);
+    expect(result.systemPrice).toBe(385000 + 20000);
+  });
+
   it('tổ hợp chưa có giá → lỗi nêu rõ tổ hợp', () => {
     expect(() =>
-      service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
-        chieurong: 100, chieucao: 100, maukhung: 'van_go', socanh: 1,
-      }),
+      service().calculatePrice(
+        makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+        { chieurong: 100, chieucao: 100, maukhung: 'van_go', socanh: 1 },
+      ),
     ).toThrow(/van_go/);
   });
 
-  it('sản phẩm dùng matrix nhưng thiếu derived param area → lỗi hướng dẫn cấu hình', () => {
+  it('có Ma trận nhưng KHÔNG có Công thức → lỗi bắt buộc phải có Công thức', () => {
+    expect(() =>
+      service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
+        chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1,
+      }),
+    ).toThrow(/cần có Công thức/);
+  });
+
+  it('sản phẩm dùng matrix nhưng thiếu derived param area → Công thức lỗi biến "area" không tồn tại', () => {
     expect(() =>
       service().calculatePrice(
-        makeConfig({ matrixRows: HE30_MATRIX, derivedParameters: [] }),
+        makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area', derivedParameters: [] }),
         { chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1 },
       ),
     ).toThrow(/area/);
@@ -100,7 +115,7 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
 describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
   it('cửa 1 cánh rộng 60cm → tính tiền theo 70cm (diện tích tính lại từ chiều đã nâng)', () => {
     const result = service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
       { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 },
     );
 
@@ -112,7 +127,7 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
 
   it('rule min 1 cánh KHÔNG áp cho cửa 2 cánh (condition) — 2 cánh dùng min 100cm', () => {
     const result = service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
       { chieurong: 80, chieucao: 200, maukhung: 'cafe', socanh: 2 },
     );
 
@@ -124,7 +139,7 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
   it('KHÔNG ghi đè tham số gốc — rawParams giữ nguyên (billable ≠ actual)', () => {
     const raw = { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 };
     service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES }),
+      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
       raw,
     );
     expect(raw.chieurong).toBe(60); // xưởng vẫn cắt theo 60cm
@@ -281,10 +296,11 @@ describe('PricingEngineService.calculate (load + calc)', () => {
       id: 'prod-001',
       derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
       validationRules: [],
+      parameters: [{ name: 'maukhung' }, { name: 'socanh' }],
       pricingRule: {
         versions: [{
           id: 'ver-001',
-          expression: null,
+          expression: 'unitPrice * area',
           priceRoundType: 'NONE',
           priceRoundValue: null,
           items: [],

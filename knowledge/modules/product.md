@@ -427,9 +427,12 @@ Quy tắc báo giá dùng để tính giá bán cho khách hàng.
 
 Mỗi Pricing Rule Version gồm:
 
-- Expression — công thức tính giá
+- Bảng giá ma trận (Price Matrix) — tra đơn giá (`unitPrice`) theo tổ hợp tham số ENUM (tùy chọn — không phải sản phẩm nào cũng cần)
+- Expression (Công thức) — công thức tính giá bán cuối cùng
 - Danh sách Pricing Rule Item — quy tắc điều chỉnh thông số trước khi tính
 - Price Round Step — làm tròn giá bán lên (tùy chọn, đơn vị: VND)
+
+**Quan hệ Ma trận và Công thức (chốt 16/07/2026):** hai cơ chế PHỐI HỢP, không loại trừ nhau. Sản phẩm có cấu hình phức tạp (nhiều màu/kiểu mở...) dùng Ma trận để tra `unitPrice` theo đúng tổ hợp, sau đó Công thức dùng `unitPrice` (biến thật, cùng các biến khác) để tính ra giá bán — ví dụ đơn giản nhất: `unitPrice * area`. **Sản phẩm có Ma trận thì Công thức là bắt buộc**, không được để trống. Sản phẩm không dùng Ma trận thì Công thức chạy độc lập như bình thường (không có biến `unitPrice`).
 
 ## Pricing Rule Item
 
@@ -448,31 +451,47 @@ Loại quy tắc hỗ trợ trong V1:
 ## Thứ tự tính giá
 
 ```text
-Thông số khách nhập (width, height, ...)
+Thông số khách nhập (chiều cao, chiều rộng... theo mét)
+↓
+Tính biến phái sinh (vd area = chiều rộng × chiều cao)
 ↓
 Áp dụng Pricing Rule Items (điều chỉnh nếu vi phạm giới hạn tối thiểu)
 ↓
-Tính Expression với giá trị đã điều chỉnh
+Có Ma trận? → Tra unitPrice theo tổ hợp tham số ENUM
+↓
+Tính Expression (có unitPrice nếu có Ma trận) với giá trị đã điều chỉnh
 ↓
 Làm tròn lên theo Price Round Step (nếu có)
 ↓
 Giá bán
 ```
 
-Ví dụ:
+Ví dụ (sản phẩm dùng Ma trận):
 
 ```text
-Khách nhập: width=400mm, height=500mm
+Khách nhập: chieucao=2m, chieurong=1.5m, mausac=Cafe
+
+area = 1.5 × 2 = 3m²
+
+Ma trận tra unitPrice theo mausac=Cafe → 328.000đ/m²
+
+Expression: unitPrice * area
+  = 328.000 × 3 = 984.000 VND
+
+Price Round Step = 1.000 VND:
+  → Giá bán = 984.000 VND
+```
+
+Ví dụ (sản phẩm KHÔNG dùng Ma trận, Expression độc lập):
+
+```text
+Khách nhập: chieucao=1.5m, chieurong=1m
 
 Rule MIN_AREA = 0.7m²:
-  area = 400 × 500 / 1,000,000 = 0.2m²
-  0.2m² < 0.7m² → tính như 0.7m²
+  area = 1.5 × 1 = 1.5m² (không bị nâng vì đã > 0.7m²)
 
-Expression: area × unitPrice
-  = 0.7 × 200,000 = 140,000 VND
-
-Price Round Step = 1,000 VND:
-  → Giá bán = 140,000 VND
+Expression: area * 300000
+  = 1.5 × 300.000 = 450.000 VND
 ```
 
 Khi thay đổi phải tạo Version mới.

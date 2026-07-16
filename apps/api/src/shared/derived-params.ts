@@ -20,12 +20,23 @@ export interface DerivedParameterDef {
  * Chuyển tham số dạng chuỗi (QuotationItemParameter.value) sang context typed:
  * parse được số hữu hạn → number, còn lại giữ string (phục vụ condition ENUM,
  * ví dụ maukhung == "cafe").
+ *
+ * `enumParamNames`: tên các tham số kiểu ENUM — LUÔN giữ nguyên dạng chuỗi dù
+ * giá trị trông giống số (vd "Số cánh" có option "1"/"2") — nếu không, so sánh
+ * `==` với literal chuỗi trong Condition/Rule sẽ lệch kiểu (số vs chuỗi) và
+ * lỗi. Phát hiện lúc verify Ma trận+Công thức cho sản phẩm cửa lưới (16/07/2026).
  */
 export function coerceParameters(
   parameters: Array<{ name: string; value: string }>,
+  enumParamNames?: string[] | Set<string>,
 ): ExpressionContext {
+  const enumNames = enumParamNames instanceof Set ? enumParamNames : new Set(enumParamNames ?? []);
   const ctx: ExpressionContext = {};
   for (const p of parameters) {
+    if (enumNames.has(p.name)) {
+      ctx[p.name] = p.value;
+      continue;
+    }
     const num = Number(p.value);
     ctx[p.name] = p.value.trim() !== '' && isFinite(num) ? num : p.value;
   }

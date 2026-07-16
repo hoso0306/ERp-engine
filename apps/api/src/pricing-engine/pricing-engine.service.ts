@@ -19,7 +19,12 @@ import {
  * Pricing Engine (Sprint 03 Task 07) — pipeline:
  *
  *   Validate → Derive → Normalize (min/bậc thang, có condition)
- *   → Matrix Lookup (fallback: expression) → Round
+ *   → Matrix Lookup (unitPrice) → Công thức (dùng unitPrice + biến khác) → Round
+ *
+ * Chốt 16/07/2026: Ma trận và Công thức PHỐI HỢP, không loại trừ nhau — sản
+ * phẩm có Ma trận bắt buộc phải có Công thức, `unitPrice` (đơn giá tra được
+ * từ Ma trận) được truyền vào làm biến thật trong Công thức. Sản phẩm KHÔNG
+ * có Ma trận thì Công thức chạy độc lập như trước (không có unitPrice).
  *
  * Tách 2 tầng: loadConfig (đọc DB) và calculatePrice (hàm thuần, không DB) —
  * test không cần mock Prisma, và bước Approve có thể tính lại từ config đã
@@ -55,6 +60,7 @@ export interface PricingConfig {
   matrixRows: PriceMatrixRowConfig[];
   derivedParameters: DerivedParameterDef[];
   validationRules: ValidationRuleDef[];
+  enumParameterNames: string[];
 }
 
 export interface PricingCalcResult {
@@ -74,6 +80,10 @@ const VERSION_INCLUDE = {
 const PRODUCT_LEVEL_INCLUDE = {
   derivedParameters: { orderBy: { displayOrder: 'asc' as const } },
   validationRules: { orderBy: { displayOrder: 'asc' as const } },
+  // Chỉ lấy tên — dùng để coerceParameters() biết KHÔNG được ép ENUM có giá
+  // trị dạng số (vd "1"/"2") thành number, tránh lệch kiểu khi so sánh == với
+  // literal chuỗi trong Condition/Rule (phát hiện lúc verify unitPrice migrate).
+  parameters: { where: { type: 'ENUM' as const }, select: { name: true } },
 } as const;
 
 @Injectable()
@@ -156,6 +166,7 @@ export class PricingEngineService {
     product: {
       derivedParameters: Array<{ name: string; expression: string }>;
       validationRules: Array<{ expression: string; severity: string; message: string }>;
+      parameters: Array<{ name: string }>;
     },
   ): PricingConfig {
     return {
@@ -187,6 +198,7 @@ export class PricingEngineService {
         severity: v.severity as 'WARN' | 'BLOCK',
         message: v.message,
       })),
+      enumParameterNames: product.parameters.map((p) => p.name),
     };
   }
 
@@ -204,19 +216,26 @@ export class PricingEngineService {
     // 3. Normalize — tạo billable params (bản sao, không ghi đè raw)
     const billable = this.normalize(config, ctx);
 
-    // 4. Đơn giá: Matrix lookup, fallback expression
+    // 4. Đơn giá: Matrix lookup → unitPrice trở thành biến thật, Công thức
+    // dùng unitPrice (+ các biến khác) để tính giá bán cuối cùng. Ma trận và
+    // Công thức PHỐI HỢP với nhau (không loại trừ nhau) — sản phẩm dùng Ma
+    // trận bắt buộc phải có Công thức (chốt 16/07/2026, đảo lại quyết định
+    // "matrix thắng" cũ ở workbench/sprint-03/011-pricing-bom-engine.md).
     let rawPrice: number;
     let unitPrice: number | null = null;
 
     if (config.matrixRows.length > 0) {
       unitPrice = this.lookupMatrix(config.matrixRows, ctx);
-      const billableArea = billable['area'];
-      if (typeof billableArea !== 'number') {
+      if (!config.expression?.trim()) {
         throw new BadRequestException(
-          'Sản phẩm dùng Bảng giá ma trận cần biến phái sinh "area" — kiểm tra cấu hình Tham số phái sinh.',
+          'Sản phẩm dùng Bảng giá ma trận cần có Công thức để tính giá bán từ đơn giá tra được (vd: unitPrice * area).',
         );
       }
-      rawPrice = unitPrice * billableArea;
+      try {
+        rawPrice = evaluateNumber(config.expression, { ...billable, unitPrice });
+      } catch (e) {
+        throw new BadRequestException(`Lỗi tính giá: ${(e as Error).message}`);
+      }
     } else if (config.expression) {
       try {
         rawPrice = evaluateNumber(config.expression, billable);
@@ -340,7 +359,10 @@ export class PricingEngineService {
 
   async calculate(dto: CalculatePriceDto): Promise<CalculatePriceResultDto> {
     const config = await this.loadConfig(dto.productId);
-    const result = this.calculatePrice(config, coerceParameters(dto.parameters));
+    const result = this.calculatePrice(
+      config,
+      coerceParameters(dto.parameters, config.enumParameterNames),
+    );
     return {
       systemPrice: result.systemPrice,
       pricingRuleVersionId: result.pricingRuleVersionId,

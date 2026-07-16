@@ -30,6 +30,7 @@ import {
   type PricingRuleItem,
 } from "@/components/product/pricing-rule-item-dialog";
 import { PriceMatrixEditor, type PriceMatrixRow } from "@/components/product/price-matrix-editor";
+import type { DerivedParameter } from "@/components/product/derived-parameter-dialog";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "@/lib/api";
 import { useSetBreadcrumbExtra } from "@/context/breadcrumb-context";
@@ -95,6 +96,7 @@ export default function PricingRuleVersionPage() {
 
   const [version, setVersion] = useState<PricingRuleVersion | null>(null);
   const [parameters, setParameters] = useState<ProductParameter[]>([]);
+  const [derivedParameters, setDerivedParameters] = useState<DerivedParameter[]>([]);
   const [productName, setProductName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,6 +158,9 @@ export default function PricingRuleVersionPage() {
       .catch(() => {});
     apiGet<{ name: string }>(`/products/${productId}`)
       .then((data) => setProductName(data.name))
+      .catch(() => {});
+    apiGet<DerivedParameter[]>(`/products/${productId}/derived-parameters`)
+      .then((data) => setDerivedParameters(data))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -268,6 +273,13 @@ export default function PricingRuleVersionPage() {
   const st = statusMap[version.status] ?? statusMap.DRAFT;
   const numberParams = parameters.filter((p) => p.type === "NUMBER" || p.type === "ENUM");
 
+  const hasMatrix = version.matrixRows.length > 0;
+  const exprPlaceholder = hasMatrix
+    ? "ví dụ: unitPrice * area"
+    : derivedParameters.some((dp) => dp.name === "area")
+      ? "ví dụ: area * 300000"
+      : "ví dụ: (chieucao/100) * (chieurong/100) * 300000";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -330,27 +342,38 @@ export default function PricingRuleVersionPage() {
 
         <div className="space-y-2">
           <Label htmlFor="v-expr">Công thức *</Label>
-          {parameters.length > 0 && (
+          {(parameters.length > 0 || derivedParameters.length > 0 || hasMatrix) && (
+            <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium">Biến có thể dùng:</p>
+              {parameters.length > 0 && (
+                <p className="font-mono">{parameters.map((p) => p.name).join(", ")}</p>
+              )}
+              {derivedParameters.map((dp) => (
+                <p key={dp.id}>
+                  <code className="font-mono">{dp.name}</code>{" "}
+                  <span>(= {dp.expression}, tự tính)</span>
+                </p>
+              ))}
+              {hasMatrix && (
+                <p>
+                  <code className="font-mono">unitPrice</code>{" "}
+                  <span>(= đơn giá tra được từ Bảng giá ma trận theo tổ hợp cấu hình)</span>
+                </p>
+              )}
+            </div>
+          )}
+          {hasMatrix && (
             <p className="text-xs text-muted-foreground">
-              Biến có thể dùng:{" "}
-              <code className="font-mono">
-                {parameters.map((p) => p.name).join(", ")}
-              </code>
-              {parameters.some((p) => p.name === "width") &&
-                parameters.some((p) => p.name === "height") && (
-                  <>
-                    ,{" "}
-                    <code className="font-mono">area</code>{" "}
-                    (= width × height, tự tính)
-                  </>
-                )}
+              Sản phẩm đang dùng Bảng giá ma trận — Công thức bắt buộc phải có, dùng để tính giá bán
+              cuối cùng từ <code className="font-mono">unitPrice</code> tra được (vd: nhân với diện
+              tích, cộng phụ phí...).
             </p>
           )}
           <Textarea
             id="v-expr"
             value={formExpr}
             onChange={(e) => setFormExpr(e.target.value)}
-            placeholder="ví dụ: area * unitPrice"
+            placeholder={exprPlaceholder}
             rows={3}
             className="font-mono"
             disabled={!isDraft}
