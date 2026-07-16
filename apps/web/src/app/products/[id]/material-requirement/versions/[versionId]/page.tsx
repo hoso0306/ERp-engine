@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -97,7 +104,7 @@ export default function MaterialRequirementVersionPage() {
   const [previewInputs, setPreviewInputs] = useState<Record<string, string>>({});
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState<{
-    inputParams: Record<string, number>;
+    inputParams: Record<string, number | string>;
     items: {
       materialCode: string;
       materialName: string;
@@ -233,10 +240,11 @@ export default function MaterialRequirementVersionPage() {
   }
 
   async function handlePreview() {
-    const params: Record<string, number> = {};
+    const paramTypes = new Map(parameters.map((p) => [p.name, p.type]));
+    const params: Record<string, number | string> = {};
     for (const [k, v] of Object.entries(previewInputs)) {
-      const n = parseFloat(v);
-      if (!isNaN(n)) params[k] = n;
+      if (v === "") continue;
+      params[k] = paramTypes.get(k) === "NUMBER" ? Number(v) : v;
     }
 
     setPreviewing(true);
@@ -257,7 +265,9 @@ export default function MaterialRequirementVersionPage() {
   if (loading) return <Loading />;
   if (error || !version) return <ErrorState description={error ?? "Không tìm thấy."} onRetry={loadVersion} />;
 
-  const numberParams = parameters.filter((p) => p.type === "NUMBER" && p.usedInMaterial);
+  const previewParams = parameters.filter(
+    (p) => (p.type === "NUMBER" || p.type === "ENUM") && p.usedInMaterial,
+  );
 
   return (
     <div className="space-y-6">
@@ -453,29 +463,49 @@ export default function MaterialRequirementVersionPage() {
       <div className="rounded-lg border p-6 space-y-4">
         <h2 className="text-sm font-medium text-muted-foreground">Preview định mức</h2>
 
-        {numberParams.length === 0 ? (
+        {previewParams.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Không có thông số NUMBER nào được đánh dấu "Dùng cho định mức".
+            Không có thông số nào được đánh dấu "Dùng cho định mức".
           </p>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {numberParams.map((p) => (
+              {previewParams.map((p) => (
                 <div key={p.id} className="space-y-1">
                   <Label htmlFor={`preview-${p.name}`} className="text-xs">
                     {p.label}{" "}
                     <span className="font-mono text-muted-foreground">({p.name})</span>
                   </Label>
-                  <Input
-                    id={`preview-${p.name}`}
-                    type="number"
-                    step="any"
-                    value={previewInputs[p.name] ?? ""}
-                    onChange={(e) =>
-                      setPreviewInputs((prev) => ({ ...prev, [p.name]: e.target.value }))
-                    }
-                    placeholder="0"
-                  />
+                  {p.type === "ENUM" ? (
+                    <Select
+                      value={previewInputs[p.name] ?? ""}
+                      onValueChange={(v) =>
+                        setPreviewInputs((prev) => ({ ...prev, [p.name]: v ?? "" }))
+                      }
+                    >
+                      <SelectTrigger id={`preview-${p.name}`}>
+                        <SelectValue placeholder="Chọn giá trị" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {p.options.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label ?? opt.value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id={`preview-${p.name}`}
+                      type="number"
+                      step="any"
+                      value={previewInputs[p.name] ?? ""}
+                      onChange={(e) =>
+                        setPreviewInputs((prev) => ({ ...prev, [p.name]: e.target.value }))
+                      }
+                      placeholder="0"
+                    />
+                  )}
                 </div>
               ))}
             </div>
