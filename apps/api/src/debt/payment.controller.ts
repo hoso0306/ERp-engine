@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { DebtService } from './debt.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { AuthGuard } from '../auth/auth.guard';
@@ -15,7 +15,10 @@ export class PaymentController {
 
   @Post()
   @RequirePermission('debt.create-payment')
-  create(@Body() dto: CreatePaymentDto) {
-    return this.debtService.createPayment(dto);
+  create(
+    @Body() dto: CreatePaymentDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.debtService.createPayment(dto, req.user?.userId ?? null);
   }
 }

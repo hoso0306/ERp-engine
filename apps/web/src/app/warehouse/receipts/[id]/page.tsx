@@ -25,7 +25,7 @@ interface MaterialReceipt {
   items: MaterialReceiptItem[];
   supplierName: string | null;
   note: string | null;
-  createdBy: string | null;
+  createdByName: string | null;
   createdAt: string;
 }
 
@@ -75,7 +75,7 @@ export default function MaterialReceiptDetailPage() {
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Người tạo</span>
-            <span>{receipt.createdBy ?? "—"}</span>
+            <span>{receipt.createdByName ?? "—"}</span>
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Ngày tạo</span>

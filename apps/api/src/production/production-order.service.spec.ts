@@ -39,6 +39,7 @@ describe('ProductionOrderService', () => {
       update: jest.Mock;
     };
     productionOrderTimeline: { create: jest.Mock };
+    user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let salesOrderService: { syncProductionProgress: jest.Mock };
@@ -54,6 +55,7 @@ describe('ProductionOrderService', () => {
       productionOrderTimeline: {
         create: jest.fn(),
       },
+      user: { findUnique: jest.fn() },
       $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
         fn(prisma),
       ),
@@ -139,6 +141,55 @@ describe('ProductionOrderService', () => {
       expect(prisma.productionOrder.update).not.toHaveBeenCalled();
       expect(prisma.productionOrderTimeline.create).not.toHaveBeenCalled();
     });
+
+    it('ghi createdBy/createdByName từ userId (JWT) vào STARTED timeline', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder(),
+      );
+      prisma.productionOrder.findUniqueOrThrow.mockResolvedValue(
+        makeProductionOrder({ status: 'IN_PRODUCTION' }),
+      );
+      prisma.user.findUnique.mockResolvedValue({
+        name: 'Trần Thị Bình',
+        email: 'binh@acme.vn',
+      });
+
+      await service.start('po-1', 'user-1');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { name: true, email: true },
+      });
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: 'user-1',
+            createdByName: 'Trần Thị Bình',
+          }),
+        }),
+      );
+    });
+
+    it('createdBy/createdByName đều null khi không có userId', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder(),
+      );
+      prisma.productionOrder.findUniqueOrThrow.mockResolvedValue(
+        makeProductionOrder({ status: 'IN_PRODUCTION' }),
+      );
+
+      await service.start('po-1');
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: null,
+            createdByName: null,
+          }),
+        }),
+      );
+    });
   });
 
   describe('complete()', () => {
@@ -187,6 +238,30 @@ describe('ProductionOrderService', () => {
       expect(salesOrderService.syncProductionProgress).toHaveBeenCalledWith(
         'so-1',
         prisma,
+      );
+    });
+
+    it('ghi createdBy/createdByName từ userId (JWT) vào COMPLETED timeline, fallback email khi name null', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder({ status: 'IN_PRODUCTION', startedAt: new Date() }),
+      );
+      prisma.productionOrder.findUniqueOrThrow.mockResolvedValue(
+        makeProductionOrder({ status: 'PRODUCTION_COMPLETED' }),
+      );
+      prisma.user.findUnique.mockResolvedValue({
+        name: null,
+        email: 'binh@acme.vn',
+      });
+
+      await service.complete('po-1', 'user-1');
+
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: 'user-1',
+            createdByName: 'binh@acme.vn',
+          }),
+        }),
       );
     });
   });

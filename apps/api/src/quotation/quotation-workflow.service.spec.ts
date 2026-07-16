@@ -78,6 +78,7 @@ describe('QuotationWorkflowService.approve()', () => {
   let service: QuotationWorkflowService;
   let prisma: {
     quotation: { findUnique: jest.Mock; update: jest.Mock };
+    user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   // BomEngineService thật (logic Filter/Formula chạy thật) với Prisma mock riêng
@@ -89,6 +90,7 @@ describe('QuotationWorkflowService.approve()', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      user: { findUnique: jest.fn() },
       $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn({})),
     };
     bomPrisma = { materialRequirementVersion: { findUnique: jest.fn() } };
@@ -295,12 +297,17 @@ describe('QuotationWorkflowService.approve()', () => {
       quotation: { update: jest.fn().mockResolvedValue({ id: 'q-1' }) },
       quotationTimeline: { create: jest.fn() },
       salesOrderTimeline: { create: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Lê Văn Duyệt', email: 'duyet@acme.vn' }),
+      },
     };
     prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
       fn(tx),
     );
 
-    await service.approve('q-1');
+    await service.approve('q-1', 'approver-1');
 
     expect(orderBomCreate).toHaveBeenCalledTimes(1);
     const bomData = orderBomCreate.mock.calls[0][0].data;
@@ -311,5 +318,269 @@ describe('QuotationWorkflowService.approve()', () => {
     // 2 × 250cm / 100 = 5m × quantity 2 = 10m
     expect(bomData.items.create[0].quantity).toBeCloseTo(10);
     expect(bomData.plannedCost).toBe(100_000); // 10m × 10.000
+
+    // Sprint 04 (005-nguoi-thuc-hien-lich-su-hoat-dong.md) — QUOTATION_APPROVED
+    // timeline snapshot đúng approverUserId, không phải owner.
+    expect(tx.quotationTimeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          createdBy: 'approver-1',
+          createdByName: 'Lê Văn Duyệt',
+        }),
+      }),
+    );
+  });
+});
+
+// Sprint 04 (005-nguoi-thuc-hien-lich-su-hoat-dong.md) — createdByName/
+// discountByName snapshot từ JWT userId, dùng resolveActorName() dùng chung.
+describe('QuotationWorkflowService — actor name snapshot', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    quotationItem: {
+      create: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+    };
+    quotationItemParameter: { deleteMany: jest.Mock; createMany: jest.Mock };
+    quotationTimeline: { create: jest.Mock };
+    customer: { findFirst: jest.Mock; findUnique: jest.Mock };
+    product: { findUnique: jest.Mock };
+    runningNumber: { update: jest.Mock };
+    user: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let pricingEngine: { calculate: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      quotationItem: {
+        create: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+      quotationItemParameter: { deleteMany: jest.fn(), createMany: jest.fn() },
+      quotationTimeline: { create: jest.fn() },
+      customer: { findFirst: jest.fn(), findUnique: jest.fn() },
+      product: { findUnique: jest.fn() },
+      runningNumber: {
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'BG', lastNumber: 1, paddingLength: 6 }),
+      },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Nguyễn Văn An', email: 'an@acme.vn' }),
+      },
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
+    };
+    pricingEngine = { calculate: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: pricingEngine },
+        {
+          provide: BomEngineService,
+          useValue: { loadConfigForVersion: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('create(): ghi createdBy/createdByName từ JWT userId', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.quotation.create.mockResolvedValue(makeQuotation());
+
+    await service.create({ customerId: 'cust-1' }, 'user-1');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      select: { name: true, email: true },
+    });
+    expect(prisma.quotationTimeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          createdBy: 'user-1',
+          createdByName: 'Nguyễn Văn An',
+        }),
+      }),
+    );
+  });
+
+  it('send(): createdByName null khi userId null (không gọi user.findUnique)', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+
+    await service.send('q-1', null);
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('cancel(): ghi createdBy/createdByName từ JWT userId', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'SENT', salesOrderId: null }),
+    );
+
+    await service.cancel('q-1', { reason: 'Khách đổi ý' }, 'user-1');
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      select: { name: true, email: true },
+    });
+  });
+
+  it('override(): không còn overrideBy trong payload, createdBy/createdByName lấy từ JWT', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT', salesOrderId: null }),
+    );
+
+    await service.override(
+      'q-1',
+      { newStatus: 'SENT', reason: 'Sửa lại' },
+      'user-1',
+    );
+
+    expect(prisma.quotationTimeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          createdBy: 'user-1',
+          createdByName: 'Nguyễn Văn An',
+          payload: expect.not.objectContaining({
+            overrideBy: expect.anything(),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('addItem(): có chiết khấu bổ sung → discountBy/discountByName lấy từ JWT userId', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'prod-1',
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+      parameters: [],
+    });
+    prisma.customer.findUnique.mockResolvedValue({
+      id: 'cust-1',
+      customerGroup: null,
+    });
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 1_000_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.addItem(
+      'q-1',
+      {
+        productId: 'prod-1',
+        quantity: 1,
+        parameters: [],
+        additionalDiscountPercent: 10,
+        discountReason: 'Khách quen',
+      },
+      'user-1',
+    );
+
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          discountBy: 'user-1',
+          discountByName: 'Nguyễn Văn An',
+        }),
+      }),
+    );
+  });
+
+  it('addItem(): không có chiết khấu bổ sung → discountBy/discountByName null dù có userId', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'prod-1',
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+      parameters: [],
+    });
+    prisma.customer.findUnique.mockResolvedValue({
+      id: 'cust-1',
+      customerGroup: null,
+    });
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 1_000_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.addItem(
+      'q-1',
+      { productId: 'prod-1', quantity: 1, parameters: [] },
+      'user-1',
+    );
+
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          discountBy: null,
+          discountByName: null,
+        }),
+      }),
+    );
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('updateItem(): có chiết khấu bổ sung → discountBy/discountByName lấy từ JWT userId', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.quotationItem.findFirst.mockResolvedValue(
+      makeItem({ additionalDiscountPercent: 0, additionalDiscountAmount: 0 }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+    });
+
+    await service.updateItem(
+      'q-1',
+      'item-1',
+      {
+        additionalDiscountPercent: 15,
+        discountReason: 'Đơn hàng lớn',
+      },
+      'user-1',
+    );
+
+    expect(prisma.quotationItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          discountBy: 'user-1',
+          discountByName: 'Nguyễn Văn An',
+        }),
+      }),
+    );
   });
 });

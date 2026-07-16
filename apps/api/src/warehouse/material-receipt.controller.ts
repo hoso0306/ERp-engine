@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
 import { CreateMaterialReceiptDto } from './dto/create-material-receipt.dto';
@@ -21,8 +22,14 @@ export class MaterialReceiptController {
 
   @Post()
   @RequirePermission('warehouse.receipt')
-  create(@Body() dto: CreateMaterialReceiptDto) {
-    return this.warehouseService.createMaterialReceipt(dto);
+  create(
+    @Body() dto: CreateMaterialReceiptDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.warehouseService.createMaterialReceipt(
+      dto,
+      req.user?.userId ?? null,
+    );
   }
 
   @Get()

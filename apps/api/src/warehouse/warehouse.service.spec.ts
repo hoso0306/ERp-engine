@@ -30,18 +30,28 @@ describe('WarehouseService', () => {
     warehouseTransaction: { create: jest.Mock };
     productionOrderItem: { findMany: jest.Mock };
     orderBOM: { findMany: jest.Mock };
+    user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
     prisma = {
-      material: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+      material: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+      },
       runningNumber: { update: jest.fn() },
       materialReceipt: { create: jest.fn(), findUniqueOrThrow: jest.fn() },
       materialReceiptItem: { create: jest.fn() },
       warehouseTransaction: { create: jest.fn() },
       productionOrderItem: { findMany: jest.fn() },
       orderBOM: { findMany: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Nguyễn Văn An', email: 'an@acme.vn' }),
+      },
       $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
         fn(prisma),
       ),
@@ -110,7 +120,11 @@ describe('WarehouseService', () => {
     it('creates 1 MaterialReceipt header + N MaterialReceiptItem + N WarehouseTransaction(IN), tăng currentStock đúng từng vật tư', async () => {
       prisma.material.findMany.mockResolvedValue([
         makeMaterial({ id: 'mat-1', code: 'NL000001' }),
-        makeMaterial({ id: 'mat-2', code: 'NL000002', name: 'Lưới chống muỗi' }),
+        makeMaterial({
+          id: 'mat-2',
+          code: 'NL000002',
+          name: 'Lưới chống muỗi',
+        }),
       ]);
       prisma.runningNumber.update.mockResolvedValue({
         prefix: 'PN',
@@ -167,6 +181,68 @@ describe('WarehouseService', () => {
         where: { id: 'mat-2' },
         data: { currentStock: { increment: 30 } },
       });
+    });
+
+    it('ghi createdBy/createdByName từ JWT userId (Sprint 04)', async () => {
+      prisma.material.findMany.mockResolvedValue([makeMaterial()]);
+      prisma.runningNumber.update.mockResolvedValue({
+        prefix: 'PN',
+        lastNumber: 1,
+        paddingLength: 6,
+      });
+      prisma.materialReceipt.create.mockResolvedValue({ id: 'receipt-1' });
+      prisma.materialReceiptItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.materialReceipt.findUniqueOrThrow.mockResolvedValue({
+        id: 'receipt-1',
+        code: 'PN000001',
+      });
+
+      await service.createMaterialReceipt(
+        { items: [{ materialId: 'mat-1', quantity: 50 }] },
+        'user-1',
+      );
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { name: true, email: true },
+      });
+      expect(prisma.materialReceipt.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: 'user-1',
+            createdByName: 'Nguyễn Văn An',
+          }),
+        }),
+      );
+    });
+
+    it('createdBy/createdByName đều null khi không có userId', async () => {
+      prisma.material.findMany.mockResolvedValue([makeMaterial()]);
+      prisma.runningNumber.update.mockResolvedValue({
+        prefix: 'PN',
+        lastNumber: 1,
+        paddingLength: 6,
+      });
+      prisma.materialReceipt.create.mockResolvedValue({ id: 'receipt-1' });
+      prisma.materialReceiptItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.materialReceipt.findUniqueOrThrow.mockResolvedValue({
+        id: 'receipt-1',
+        code: 'PN000001',
+      });
+
+      await service.createMaterialReceipt({
+        items: [{ materialId: 'mat-1', quantity: 50 }],
+      });
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(prisma.materialReceipt.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: null,
+            createdByName: null,
+          }),
+        }),
+      );
     });
   });
 

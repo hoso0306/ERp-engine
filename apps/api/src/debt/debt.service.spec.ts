@@ -40,6 +40,7 @@ describe('DebtService', () => {
     payment: { create: jest.Mock; findUniqueOrThrow: jest.Mock };
     salesOrderTimeline: { create: jest.Mock };
     customer: { findMany: jest.Mock };
+    user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -57,6 +58,11 @@ describe('DebtService', () => {
       payment: { create: jest.fn(), findUniqueOrThrow: jest.fn() },
       salesOrderTimeline: { create: jest.fn() },
       customer: { findMany: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Nguyễn Văn An', email: 'an@acme.vn' }),
+      },
       $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
         fn(prisma),
       ),
@@ -278,6 +284,46 @@ describe('DebtService', () => {
               toStatus: 'PARTIALLY_PAID',
               amount: 100000,
             }),
+          }),
+        }),
+      );
+    });
+
+    it('SalesOrderTimeline.createdBy/createdByName lấy từ JWT userId — không phải Payment.createdBy (Sprint 04)', async () => {
+      prisma.receivable.update.mockResolvedValue({
+        id: 'rec-1',
+        paidAmount: 300000,
+        totalAmount: 1000000,
+        remainingAmount: 700000,
+      });
+
+      await service.createPayment(
+        {
+          salesOrderId: 'so-1',
+          amount: 300000,
+          paymentMethod: 'CASH',
+          createdBy: 'Tên tự gõ (free-text, ngoài phạm vi)',
+        },
+        'user-1',
+      );
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { name: true, email: true },
+      });
+      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: 'user-1',
+            createdByName: 'Nguyễn Văn An',
+          }),
+        }),
+      );
+      // Payment.createdBy giữ nguyên free-text dto.createdBy — ngoài phạm vi task này.
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdBy: 'Tên tự gõ (free-text, ngoài phạm vi)',
           }),
         }),
       );

@@ -22,7 +22,7 @@ interface QuotationItemRow {
   additionalDiscountPercent: number;
   additionalDiscountAmount: number;
   discountReason: string | null;
-  discountBy: string | null;
+  discountByName: string | null;
   finalPrice: number;
   subtotal: number;
   vatRate: number;

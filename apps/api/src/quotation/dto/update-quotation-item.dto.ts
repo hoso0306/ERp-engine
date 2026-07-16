@@ -9,6 +9,5 @@ export class UpdateQuotationItemDto {
   additionalDiscountPercent?: number;
   additionalDiscountAmount?: number;
   discountReason?: string;
-  discountBy?: string;
   displayOrder?: number;
 }

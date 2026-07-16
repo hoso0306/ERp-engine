@@ -40,7 +40,7 @@ interface ProductionOrderTimeline {
   id: string;
   action: string;
   payload: Record<string, unknown> | null;
-  createdBy: string | null;
+  createdByName: string | null;
   createdAt: string;
 }
 
@@ -220,7 +220,7 @@ export default function ProductionOrderDetailPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(entry.createdAt).toLocaleString("vi-VN")}
-                      {entry.createdBy && ` — ${entry.createdBy}`}
+                      {entry.createdByName && ` — ${entry.createdByName}`}
                     </div>
                     {payload && (
                       <div className="mt-1 text-xs text-muted-foreground space-y-0.5">

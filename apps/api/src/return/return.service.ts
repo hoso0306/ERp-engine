@@ -12,6 +12,7 @@ import {
   RecoveryInventoryStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveActorName } from '../shared/resolve-actor-name';
 import { CreateReturnDto } from './dto/create-return.dto';
 import { ReturnQueryDto } from './dto/return-query.dto';
 import { RecoveryInventoryQueryDto } from './dto/recovery-inventory-query.dto';
@@ -105,11 +106,14 @@ export class ReturnService {
       );
     }
 
+    const completedByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.return.update({
       where: { id },
       data: {
         status: ReturnStatus.COMPLETED,
         completedBy: userId ?? null,
+        completedByName,
         completedAt: new Date(),
       },
       include: RETURN_INCLUDE,

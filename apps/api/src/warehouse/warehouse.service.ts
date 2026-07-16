@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
+import { resolveActorName } from '../shared/resolve-actor-name';
 import { CreateMaterialReceiptDto } from './dto/create-material-receipt.dto';
 import { MaterialReceiptQueryDto } from './dto/material-receipt-query.dto';
 import { WarehouseTransactionQueryDto } from './dto/warehouse-transaction-query.dto';
@@ -31,7 +32,10 @@ export class WarehouseService {
   // chốt 16/07/2026) — document Create API duy nhất của module này
   // ─────────────────────────────────────────────────────
 
-  async createMaterialReceipt(dto: CreateMaterialReceiptDto) {
+  async createMaterialReceipt(
+    dto: CreateMaterialReceiptDto,
+    userId?: string | null,
+  ) {
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Cần ít nhất một dòng vật tư.');
     }
@@ -66,6 +70,8 @@ export class WarehouseService {
       }
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.runningNumber.update({
         where: { type: 'MATERIAL_RECEIPT' },
@@ -78,7 +84,8 @@ export class WarehouseService {
           code,
           supplierName: dto.supplierName?.trim() || null,
           note: dto.note?.trim() || null,
-          createdBy: dto.createdBy?.trim() || null,
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 

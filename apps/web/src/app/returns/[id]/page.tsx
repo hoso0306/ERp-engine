@@ -49,6 +49,7 @@ interface ReturnDetail {
   customerName: string;
   returnDate: string;
   receivedBy: string | null;
+  completedByName: string | null;
   status: string;
   note: string | null;
   items: ReturnItem[];
@@ -148,6 +149,12 @@ export default function ReturnDetailPage() {
             <div className="flex gap-2">
               <span className="text-muted-foreground w-36 shrink-0">Người nhận</span>
               <span>{ret.receivedBy}</span>
+            </div>
+          )}
+          {ret.completedByName && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground w-36 shrink-0">Người hoàn thành</span>
+              <span>{ret.completedByName}</span>
             </div>
           )}
           {ret.note && (

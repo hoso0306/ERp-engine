@@ -6,7 +6,6 @@ import Link from "next/link";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -93,7 +92,7 @@ interface SalesOrderTimeline {
   id: string;
   action: string;
   payload: Record<string, unknown> | null;
-  createdBy: string | null;
+  createdByName: string | null;
   createdAt: string;
 }
 
@@ -157,7 +156,6 @@ export default function SalesOrderDetailPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
-  const [overrideBy, setOverrideBy] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
 
   const fetchOrder = useCallback(async () => {
@@ -236,12 +234,10 @@ export default function SalesOrderDetailPage() {
       await apiPost(`/sales-orders/${id}/override`, {
         newStatus: overrideStatus,
         reason: overrideReason.trim(),
-        overrideBy: overrideBy.trim() || undefined,
       });
       toast.success("Đã điều chỉnh trạng thái.");
       setOverrideOpen(false);
       setOverrideReason("");
-      setOverrideBy("");
       fetchOrder();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -298,7 +294,6 @@ export default function SalesOrderDetailPage() {
                 onClick={() => {
                   setOverrideStatus("");
                   setOverrideReason("");
-                  setOverrideBy("");
                   setOverrideOpen(true);
                 }}
               >
@@ -564,15 +559,6 @@ export default function SalesOrderDetailPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="override-by">Người thực hiện</Label>
-              <Input
-                id="override-by"
-                value={overrideBy}
-                onChange={(e) => setOverrideBy(e.target.value)}
-                placeholder="Tên người duyệt override..."
-              />
-            </div>
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOverrideOpen(false)}>Đóng</Button>
@@ -611,7 +597,7 @@ export default function SalesOrderDetailPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(entry.createdAt).toLocaleString("vi-VN")}
-                      {entry.createdBy && ` — ${entry.createdBy}`}
+                      {entry.createdByName && ` — ${entry.createdByName}`}
                     </div>
                     {payload && (
                       <div className="mt-1 text-xs text-muted-foreground space-y-0.5">

@@ -18,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
+import { resolveActorName } from '../shared/resolve-actor-name';
 
 const STARTED_PRODUCTION_STATUSES: ProductionOrderStatus[] = [
   ProductionOrderStatus.IN_PRODUCTION,
@@ -121,7 +122,7 @@ export class SalesOrderService {
   // Action Driven — không cho phép sửa status trực tiếp.
   // ─────────────────────────────────────────────────────
 
-  async ship(id: string) {
+  async ship(id: string, userId?: string | null) {
     const salesOrder = await this.findOne(id);
 
     if (salesOrder.status !== SalesOrderStatus.PRODUCTION_COMPLETED) {
@@ -129,6 +130,8 @@ export class SalesOrderService {
         `Chỉ có thể gửi xe khi đơn hàng đã hoàn thành sản xuất. Trạng thái hiện tại: ${salesOrder.status}.`,
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.salesOrder.update({
@@ -145,6 +148,8 @@ export class SalesOrderService {
             fromStatus: salesOrder.status,
             toStatus: SalesOrderStatus.SHIPPED,
           },
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -155,7 +160,7 @@ export class SalesOrderService {
     });
   }
 
-  async deliver(id: string) {
+  async deliver(id: string, userId?: string | null) {
     const salesOrder = await this.findOne(id);
 
     if (salesOrder.status !== SalesOrderStatus.SHIPPED) {
@@ -163,6 +168,8 @@ export class SalesOrderService {
         `Chỉ có thể xác nhận khách đã nhận hàng khi đơn hàng đã được gửi xe. Trạng thái hiện tại: ${salesOrder.status}.`,
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const actualDeliveryDate = new Date();
@@ -197,6 +204,8 @@ export class SalesOrderService {
             fromStatus: salesOrder.status,
             toStatus: SalesOrderStatus.DELIVERED,
           },
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -279,7 +288,11 @@ export class SalesOrderService {
   // Manual Override & Cancel (Task 05)
   // ─────────────────────────────────────────────────────
 
-  async override(id: string, dto: OverrideSalesOrderDto) {
+  async override(
+    id: string,
+    dto: OverrideSalesOrderDto,
+    userId?: string | null,
+  ) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Lý do điều chỉnh là bắt buộc.');
     }
@@ -299,6 +312,8 @@ export class SalesOrderService {
       );
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       await tx.salesOrder.update({
         where: { id },
@@ -315,7 +330,8 @@ export class SalesOrderService {
             toStatus: dto.newStatus,
             reason: dto.reason.trim(),
           },
-          createdBy: dto.overrideBy?.trim() || null,
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -326,7 +342,7 @@ export class SalesOrderService {
     });
   }
 
-  async cancel(id: string, dto: CancelSalesOrderDto) {
+  async cancel(id: string, dto: CancelSalesOrderDto, userId?: string | null) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Lý do huỷ là bắt buộc.');
     }
@@ -356,6 +372,8 @@ export class SalesOrderService {
         'Không thể huỷ đơn hàng vì đã có Phiếu sản xuất bắt đầu sản xuất.',
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.salesOrder.update({
@@ -400,7 +418,8 @@ export class SalesOrderService {
               ? { paidAmount, refundNote: 'Refund handled outside ERP' }
               : {}),
           },
-          createdBy: dto.cancelledBy?.trim() || null,
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 

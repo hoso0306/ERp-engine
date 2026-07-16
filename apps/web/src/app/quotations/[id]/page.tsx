@@ -40,7 +40,7 @@ interface QuotationItem {
   additionalDiscountPercent: number;
   additionalDiscountAmount: number;
   discountReason: string | null;
-  discountBy: string | null;
+  discountByName: string | null;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
@@ -57,7 +57,7 @@ interface QuotationTimeline {
   id: string;
   action: string;
   payload: Record<string, unknown> | null;
-  createdBy: string | null;
+  createdByName: string | null;
   createdAt: string;
 }
 
@@ -161,7 +161,6 @@ export default function QuotationDetailPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
-  const [overrideBy, setOverrideBy] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
 
   const fetchQuotation = useCallback(async () => {
@@ -288,12 +287,10 @@ export default function QuotationDetailPage() {
       await apiPost(`/quotations/${id}/override`, {
         newStatus: overrideStatus,
         reason: overrideReason.trim(),
-        overrideBy: overrideBy.trim() || undefined,
       });
       toast.success("Đã điều chỉnh trạng thái.");
       setOverrideOpen(false);
       setOverrideReason("");
-      setOverrideBy("");
       fetchQuotation();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -384,7 +381,6 @@ export default function QuotationDetailPage() {
                 onClick={() => {
                   setOverrideStatus("");
                   setOverrideReason("");
-                  setOverrideBy("");
                   setOverrideOpen(true);
                 }}
               >
@@ -671,15 +667,6 @@ export default function QuotationDetailPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="override-by">Người thực hiện</Label>
-              <Input
-                id="override-by"
-                value={overrideBy}
-                onChange={(e) => setOverrideBy(e.target.value)}
-                placeholder="Tên người duyệt override..."
-              />
-            </div>
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOverrideOpen(false)}>Đóng</Button>
@@ -725,7 +712,7 @@ export default function QuotationDetailPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(entry.createdAt).toLocaleString("vi-VN")}
-                      {entry.createdBy && ` — ${entry.createdBy}`}
+                      {entry.createdByName && ` — ${entry.createdByName}`}
                     </div>
                     {payload && (
                       <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
@@ -748,9 +735,6 @@ export default function QuotationDetailPage() {
                               {STATUS_LABEL[String(payload.newStatus)] ?? String(payload.newStatus)}
                             </span>
                           </div>
-                        )}
-                        {!!payload.overrideBy && (
-                          <div>Người thực hiện: <span className="text-foreground">{String(payload.overrideBy)}</span></div>
                         )}
                       </div>
                     )}

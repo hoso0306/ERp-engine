@@ -63,8 +63,8 @@ export class QuotationController {
   @Post(':id/send')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('quotation.update')
-  send(@Param('id') id: string) {
-    return this.workflow.send(id);
+  send(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    return this.workflow.send(id, req.user?.userId ?? null);
   }
 
   @Post(':id/approve')
@@ -91,23 +91,35 @@ export class QuotationController {
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('quotation.cancel')
-  cancel(@Param('id') id: string, @Body() dto: CancelQuotationDto) {
-    return this.workflow.cancel(id, dto);
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelQuotationDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.workflow.cancel(id, dto, req.user?.userId ?? null);
   }
 
   @Post(':id/override')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('quotation.override')
-  override(@Param('id') id: string, @Body() dto: OverrideQuotationDto) {
-    return this.workflow.override(id, dto);
+  override(
+    @Param('id') id: string,
+    @Body() dto: OverrideQuotationDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.workflow.override(id, dto, req.user?.userId ?? null);
   }
 
   // ── QuotationItem CRUD ──
 
   @Post(':id/items')
   @RequirePermission('quotation.update')
-  addItem(@Param('id') id: string, @Body() dto: CreateQuotationItemDto) {
-    return this.workflow.addItem(id, dto);
+  addItem(
+    @Param('id') id: string,
+    @Body() dto: CreateQuotationItemDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.workflow.addItem(id, dto, req.user?.userId ?? null);
   }
 
   @Patch(':id/items/:itemId')
@@ -116,8 +128,9 @@ export class QuotationController {
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() dto: UpdateQuotationItemDto,
+    @Req() req: { user?: { userId?: string } },
   ) {
-    return this.workflow.updateItem(id, itemId, dto);
+    return this.workflow.updateItem(id, itemId, dto, req.user?.userId ?? null);
   }
 
   @Delete(':id/items/:itemId')

@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
+import { resolveActorName } from '../shared/resolve-actor-name';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -59,7 +60,7 @@ export class DebtService {
   // Payment (Task 03) — document Create API duy nhất của module này
   // ─────────────────────────────────────────────────────
 
-  async createPayment(dto: CreatePaymentDto) {
+  async createPayment(dto: CreatePaymentDto, userId?: string | null) {
     if (!dto.salesOrderId) {
       throw new BadRequestException('Đơn hàng là bắt buộc.');
     }
@@ -105,6 +106,8 @@ export class DebtService {
         `Số tiền thanh toán không được vượt quá số còn phải thu (${receivable.remainingAmount}).`,
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.runningNumber.update({
@@ -161,7 +164,8 @@ export class DebtService {
             fromStatus: salesOrder.paymentStatus,
             toStatus: newPaymentStatus,
           },
-          createdBy: dto.createdBy?.trim() || null,
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 

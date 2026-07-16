@@ -59,10 +59,13 @@ describe('ReturnService', () => {
     };
     return: {
       create: jest.Mock;
+      findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
+      update: jest.Mock;
       count: jest.Mock;
       groupBy: jest.Mock;
     };
+    user: { findUnique: jest.Mock };
     recoveryInventory: {
       create: jest.Mock;
       findUnique: jest.Mock;
@@ -88,9 +91,16 @@ describe('ReturnService', () => {
       },
       return: {
         create: jest.fn(),
+        findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        update: jest.fn(),
         count: jest.fn(),
         groupBy: jest.fn(),
+      },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Nguyễn Văn An', email: 'an@acme.vn' }),
       },
       recoveryInventory: {
         create: jest.fn(),
@@ -256,6 +266,71 @@ describe('ReturnService', () => {
             createdFromReturnCode: 'RT000001',
             quantity: 2,
             status: 'AVAILABLE',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('complete() — actor name snapshot (Sprint 04)', () => {
+    function makeReturn(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'ret-1',
+        code: 'RT000001',
+        status: 'PROCESSING',
+        completedBy: null,
+        completedByName: null,
+        completedAt: null,
+        items: [],
+        ...overrides,
+      };
+    }
+
+    it('rejects when status is not PROCESSING', async () => {
+      prisma.return.findUnique.mockResolvedValue(
+        makeReturn({ status: 'COMPLETED' }),
+      );
+      await expect(service.complete('ret-1', 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('ghi completedBy/completedByName từ JWT userId', async () => {
+      prisma.return.findUnique.mockResolvedValue(makeReturn());
+      prisma.return.update.mockResolvedValue(
+        makeReturn({ status: 'COMPLETED' }),
+      );
+
+      await service.complete('ret-1', 'user-1');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { name: true, email: true },
+      });
+      expect(prisma.return.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            completedBy: 'user-1',
+            completedByName: 'Nguyễn Văn An',
+          }),
+        }),
+      );
+    });
+
+    it('completedBy/completedByName đều null khi không có userId', async () => {
+      prisma.return.findUnique.mockResolvedValue(makeReturn());
+      prisma.return.update.mockResolvedValue(
+        makeReturn({ status: 'COMPLETED' }),
+      );
+
+      await service.complete('ret-1');
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(prisma.return.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            completedBy: null,
+            completedByName: null,
           }),
         }),
       );

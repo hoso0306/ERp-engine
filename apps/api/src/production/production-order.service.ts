@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
+import { resolveActorName } from '../shared/resolve-actor-name';
 
 const PRODUCTION_ORDER_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -169,7 +170,7 @@ export class ProductionOrderService {
   // Action Driven — không cho phép sửa status trực tiếp.
   // ─────────────────────────────────────────────────────
 
-  async start(id: string) {
+  async start(id: string, userId?: string | null) {
     const productionOrder = await this.findOne(id);
 
     if (productionOrder.status !== ProductionOrderStatus.PENDING) {
@@ -177,6 +178,8 @@ export class ProductionOrderService {
         `Chỉ có thể bắt đầu sản xuất khi Phiếu sản xuất ở trạng thái Chờ sản xuất. Trạng thái hiện tại: ${productionOrder.status}.`,
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const startedAt = new Date();
@@ -201,6 +204,8 @@ export class ProductionOrderService {
           action: ProductionOrderTimelineAction.STARTED,
           actorType: ProductionOrderTimelineActorType.USER,
           payload: {},
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -211,7 +216,7 @@ export class ProductionOrderService {
     });
   }
 
-  async complete(id: string) {
+  async complete(id: string, userId?: string | null) {
     const productionOrder = await this.findOne(id);
 
     if (productionOrder.status !== ProductionOrderStatus.IN_PRODUCTION) {
@@ -219,6 +224,8 @@ export class ProductionOrderService {
         `Chỉ có thể hoàn thành sản xuất khi Phiếu sản xuất đang sản xuất. Trạng thái hiện tại: ${productionOrder.status}.`,
       );
     }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const completedAt = new Date();
@@ -240,6 +247,8 @@ export class ProductionOrderService {
             startedAt: productionOrder.startedAt,
             completedAt,
           },
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 

@@ -10,6 +10,5 @@ export class CreateQuotationItemDto {
   additionalDiscountPercent?: number;
   additionalDiscountAmount?: number;
   discountReason?: string;
-  discountBy?: string;
   displayOrder?: number;
 }

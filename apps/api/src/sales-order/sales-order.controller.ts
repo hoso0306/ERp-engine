@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { SalesOrderService } from './sales-order.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
@@ -42,15 +43,15 @@ export class SalesOrderController {
   @Post(':id/ship')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('sales-order.ship')
-  ship(@Param('id') id: string) {
-    return this.salesOrderService.ship(id);
+  ship(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    return this.salesOrderService.ship(id, req.user?.userId ?? null);
   }
 
   @Post(':id/deliver')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('sales-order.deliver')
-  deliver(@Param('id') id: string) {
-    return this.salesOrderService.deliver(id);
+  deliver(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    return this.salesOrderService.deliver(id, req.user?.userId ?? null);
   }
 
   // ── Manual Override & Cancel (Task 05) ──
@@ -58,15 +59,23 @@ export class SalesOrderController {
   @Post(':id/override')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('sales-order.override')
-  override(@Param('id') id: string, @Body() dto: OverrideSalesOrderDto) {
-    return this.salesOrderService.override(id, dto);
+  override(
+    @Param('id') id: string,
+    @Body() dto: OverrideSalesOrderDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.salesOrderService.override(id, dto, req.user?.userId ?? null);
   }
 
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('sales-order.cancel')
-  cancel(@Param('id') id: string, @Body() dto: CancelSalesOrderDto) {
-    return this.salesOrderService.cancel(id, dto);
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelSalesOrderDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.salesOrderService.cancel(id, dto, req.user?.userId ?? null);
   }
 
   // Payment: xem POST /payments (Module Công nợ) — record-payment đã bị xoá,

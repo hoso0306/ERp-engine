@@ -19,6 +19,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { coerceParameters } from '../shared/derived-params';
+import { resolveActorName } from '../shared/resolve-actor-name';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import {
   BomEngineService,
@@ -187,6 +188,8 @@ export class QuotationWorkflowService {
       throw new NotFoundException('Khách hàng không tồn tại.');
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.runningNumber.update({
         where: { type: 'QUOTATION' },
@@ -213,6 +216,7 @@ export class QuotationWorkflowService {
           action: QuotationTimelineAction.QUOTATION_CREATED,
           payload: { code: quotation.code },
           createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -248,7 +252,11 @@ export class QuotationWorkflowService {
   // QuotationItem CRUD
   // ─────────────────────────────────────────────────────
 
-  async addItem(quotationId: string, dto: CreateQuotationItemDto) {
+  async addItem(
+    quotationId: string,
+    dto: CreateQuotationItemDto,
+    userId?: string | null,
+  ) {
     const quotation = await this.findOne(quotationId);
 
     if (!EDITABLE_STATUSES.includes(quotation.status)) {
@@ -310,6 +318,14 @@ export class QuotationWorkflowService {
     const paramMap = new Map(product.parameters.map((p) => [p.name, p]));
     const displayOrder = dto.displayOrder ?? quotation.items.length;
 
+    // "Người duyệt" (discountBy/discountByName) chỉ ghi khi dòng có chiết
+    // khấu bổ sung — cùng điều kiện bắt buộc discountReason (validateDiscountFields).
+    const hasAdditionalDiscount =
+      additionalDiscountPercent > 0 || additionalDiscountAmount > 0;
+    const discountByName = hasAdditionalDiscount
+      ? await resolveActorName(this.prisma, userId)
+      : null;
+
     return this.prisma.quotationItem.create({
       data: {
         quotationId,
@@ -325,7 +341,8 @@ export class QuotationWorkflowService {
         additionalDiscountPercent,
         additionalDiscountAmount,
         discountReason: dto.discountReason?.trim() || null,
-        discountBy: dto.discountBy?.trim() || null,
+        discountBy: hasAdditionalDiscount ? (userId ?? null) : null,
+        discountByName,
         finalPrice,
         subtotal,
         vatRate,
@@ -357,6 +374,7 @@ export class QuotationWorkflowService {
     quotationId: string,
     itemId: string,
     dto: UpdateQuotationItemDto,
+    userId?: string | null,
   ) {
     const quotation = await this.findOne(quotationId);
 
@@ -387,16 +405,21 @@ export class QuotationWorkflowService {
       dto.discountReason !== undefined
         ? dto.discountReason?.trim() || null
         : item.discountReason;
-    const discountBy =
-      dto.discountBy !== undefined
-        ? dto.discountBy?.trim() || null
-        : item.discountBy;
 
     this.validateDiscountFields(
       additionalDiscountPercent,
       additionalDiscountAmount,
       discountReason,
     );
+
+    // "Người duyệt" (discountBy/discountByName) chỉ ghi khi dòng có chiết
+    // khấu bổ sung — cùng điều kiện bắt buộc discountReason (validateDiscountFields).
+    const hasAdditionalDiscount =
+      additionalDiscountPercent > 0 || additionalDiscountAmount > 0;
+    const discountBy = hasAdditionalDiscount ? (userId ?? null) : null;
+    const discountByName = hasAdditionalDiscount
+      ? await resolveActorName(this.prisma, userId)
+      : null;
 
     const quantity = dto.quantity ?? Number(item.quantity);
     let systemPrice = Number(item.systemPrice);
@@ -479,6 +502,7 @@ export class QuotationWorkflowService {
           additionalDiscountAmount,
           discountReason,
           discountBy,
+          discountByName,
           finalPrice,
           subtotal,
           vatRate,
@@ -521,7 +545,7 @@ export class QuotationWorkflowService {
   // Workflow: Send (Task 05)
   // ─────────────────────────────────────────────────────
 
-  async send(id: string) {
+  async send(id: string, userId?: string | null) {
     const quotation = await this.findOne(id);
 
     if (quotation.status !== QuotationStatus.DRAFT) {
@@ -536,6 +560,8 @@ export class QuotationWorkflowService {
       );
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.quotation.update({
         where: { id },
@@ -548,6 +574,8 @@ export class QuotationWorkflowService {
           quotationId: id,
           action: QuotationTimelineAction.QUOTATION_SENT,
           payload: { code: quotation.code },
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -648,6 +676,8 @@ export class QuotationWorkflowService {
       });
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       for (const u of itemUpdates) {
         await tx.quotationItem.update({
@@ -685,6 +715,7 @@ export class QuotationWorkflowService {
             })),
           },
           createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -703,7 +734,7 @@ export class QuotationWorkflowService {
   // Workflow: Cancel (Task 05)
   // ─────────────────────────────────────────────────────
 
-  async cancel(id: string, dto: CancelQuotationDto) {
+  async cancel(id: string, dto: CancelQuotationDto, userId?: string | null) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Lý do huỷ là bắt buộc.');
     }
@@ -723,6 +754,8 @@ export class QuotationWorkflowService {
       );
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.quotation.update({
         where: { id },
@@ -739,6 +772,8 @@ export class QuotationWorkflowService {
             reason: dto.reason.trim(),
             previousStatus: quotation.status,
           },
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -750,7 +785,11 @@ export class QuotationWorkflowService {
   // Workflow: Manual Override (Task 08)
   // ─────────────────────────────────────────────────────
 
-  async override(id: string, dto: OverrideQuotationDto) {
+  async override(
+    id: string,
+    dto: OverrideQuotationDto,
+    userId?: string | null,
+  ) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Lý do điều chỉnh là bắt buộc.');
     }
@@ -778,6 +817,8 @@ export class QuotationWorkflowService {
       );
     }
 
+    const createdByName = await resolveActorName(this.prisma, userId);
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.quotation.update({
         where: { id },
@@ -794,9 +835,9 @@ export class QuotationWorkflowService {
             oldStatus: quotation.status,
             newStatus: dto.newStatus,
             reason: dto.reason.trim(),
-            overrideBy: dto.overrideBy?.trim() || null,
           },
-          createdBy: dto.overrideBy?.trim() || null,
+          createdBy: userId ?? null,
+          createdByName,
         },
       });
 
@@ -1203,7 +1244,8 @@ export class QuotationWorkflowService {
         include: QUOTATION_INCLUDE,
       });
 
-      // Write Timeline (Quotation)
+      // Write Timeline (Quotation) — createdBy/createdByName dùng chính
+      // approverUserId đã có sẵn (người bấm Approve), không phải owner.
       await tx.quotationTimeline.create({
         data: {
           quotationId: id,
@@ -1214,6 +1256,8 @@ export class QuotationWorkflowService {
             salesOrderCode,
             productionOrders: productionOrderCodes,
           },
+          createdBy: approverUserId ?? null,
+          createdByName: await resolveActorName(tx, approverUserId),
         },
       });
 

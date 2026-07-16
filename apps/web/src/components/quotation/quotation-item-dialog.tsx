@@ -38,7 +38,6 @@ interface ExistingItem {
   additionalDiscountPercent: number;
   additionalDiscountAmount: number;
   discountReason: string | null;
-  discountBy: string | null;
   finalPrice: number;
   vatRate: number;
   parameters: { name: string; label: string; value: string; unit: string | null }[];
@@ -77,7 +76,6 @@ export function QuotationItemDialog({
   const [addlDiscountPct, setAddlDiscountPct] = useState("0");
   const [addlDiscountAmt, setAddlDiscountAmt] = useState("0");
   const [discountReason, setDiscountReason] = useState("");
-  const [discountBy, setDiscountBy] = useState("");
 
   const [systemPrice, setSystemPrice] = useState<number | null>(null);
   const [unitPrice, setUnitPrice] = useState<number | null>(null);
@@ -114,7 +112,6 @@ export function QuotationItemDialog({
       setAddlDiscountPct(String(item.additionalDiscountPercent ?? 0));
       setAddlDiscountAmt(String(item.additionalDiscountAmount ?? 0));
       setDiscountReason(item.discountReason ?? "");
-      setDiscountBy(item.discountBy ?? "");
       const vals: Record<string, string> = {};
       for (const p of item.parameters) vals[p.name] = p.value;
       setParamValues(vals);
@@ -127,7 +124,6 @@ export function QuotationItemDialog({
       setAddlDiscountPct("0");
       setAddlDiscountAmt("0");
       setDiscountReason("");
-      setDiscountBy("");
       setSystemPrice(null);
       setVatRate(0);
     }
@@ -236,7 +232,6 @@ export function QuotationItemDialog({
       additionalDiscountAmount: amt,
     };
     if (discountReason.trim()) body.discountReason = discountReason.trim();
-    if (discountBy.trim()) body.discountBy = discountBy.trim();
 
     setSubmitting(true);
     try {
@@ -375,18 +370,6 @@ export function QuotationItemDialog({
                 rows={2}
                 placeholder="Ví dụ: Khách hàng thân thiết, đơn hàng lớn..."
                 required
-              />
-            </div>
-          )}
-
-          {hasAddlDiscount && (
-            <div className="space-y-1.5">
-              <Label htmlFor="discount-by" className="text-sm">Người thực hiện</Label>
-              <Input
-                id="discount-by"
-                value={discountBy}
-                onChange={(e) => setDiscountBy(e.target.value)}
-                placeholder="Tên người duyệt chiết khấu..."
               />
             </div>
           )}

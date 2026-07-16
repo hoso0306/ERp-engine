@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ProductionOrderService } from './production-order.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
@@ -41,14 +42,17 @@ export class ProductionOrderController {
   @Post(':id/start')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('production.start')
-  start(@Param('id') id: string) {
-    return this.productionOrderService.start(id);
+  start(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+    return this.productionOrderService.start(id, req.user?.userId ?? null);
   }
 
   @Post(':id/complete')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('production.complete')
-  complete(@Param('id') id: string) {
-    return this.productionOrderService.complete(id);
+  complete(
+    @Param('id') id: string,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.productionOrderService.complete(id, req.user?.userId ?? null);
   }
 }

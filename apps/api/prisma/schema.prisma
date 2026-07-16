@@ -207,10 +207,18 @@ model User {
 
   role Role @relation(fields: [roleId], references: [id])
 
-  saleCustomers    Customer[] @relation("CustomerSale")
-  createdCustomers Customer[] @relation("CustomerCreatedBy")
-  updatedCustomers Customer[] @relation("CustomerUpdatedBy")
+  saleCustomers    Customer[]   @relation("CustomerSale")
+  createdCustomers Customer[]   @relation("CustomerCreatedBy")
+  updatedCustomers Customer[]   @relation("CustomerUpdatedBy")
   ownedSalesOrders SalesOrder[]
+
+  // Sprint 04 (005-nguoi-thuc-hien-lich-su-hoat-dong.md) — actor snapshot cho audit trail.
+  quotationTimelines       QuotationTimeline[]
+  salesOrderTimelines      SalesOrderTimeline[]
+  productionOrderTimelines ProductionOrderTimeline[]
+  completedReturns         Return[]
+  discountedQuotationItems QuotationItem[]
+  createdMaterialReceipts  MaterialReceipt[]
 
   @@index([roleId])
   @@map("users")
@@ -719,19 +727,19 @@ model DerivedParameter {
 // ──────────────────────────────────────
 
 model Customer {
-  id       String  @id @default(cuid())
-  code     String  @unique
-  name     String
-  phone    String  @unique
-  email    String?
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  phone       String  @unique
+  email       String?
   // Thông tin doanh nghiệp (testlan1, chốt 08/07/2026) — khách công ty cần
   // tên công ty + mã số thuế để xuất hoá đơn; khách lẻ để trống.
   companyName String? @map("company_name")
   taxCode     String? @map("tax_code")
-  province String?
-  district String?
-  ward     String?
-  address  String?
+  province    String?
+  district    String?
+  ward        String?
+  address     String?
 
   customerGroupId String? @map("customer_group_id")
   deliveryRouteId String? @map("delivery_route_id")
@@ -796,17 +804,17 @@ model Quotation {
 }
 
 model QuotationItem {
-  id          String  @id @default(cuid())
-  quotationId String  @map("quotation_id")
-  productId   String  @map("product_id")
+  id          String @id @default(cuid())
+  quotationId String @map("quotation_id")
+  productId   String @map("product_id")
 
   // Snapshot tại thời điểm thêm/sửa dòng (Architecture Review 05/07/2026 — sửa
   // vi phạm Snapshot Rule): hiển thị/in báo giá đọc từ đây, không đọc lại
   // Product. productId chỉ dùng điều hướng (xem quotation.md).
-  productCode String  @map("product_code")
-  productName String  @map("product_name")
+  productCode String @map("product_code")
+  productName String @map("product_name")
 
-  quantity    Decimal @db.Decimal(15, 4)
+  quantity Decimal @db.Decimal(15, 4)
 
   pricingRuleVersionId         String? @map("pricing_rule_version_id")
   materialRequirementVersionId String? @map("material_requirement_version_id")
@@ -817,6 +825,8 @@ model QuotationItem {
   additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
   discountReason            String? @map("discount_reason")
   discountBy                String? @map("discount_by")
+  // Snapshot tên tại thời điểm ghi (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  discountByName            String? @map("discount_by_name")
   finalPrice                Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
   subtotal                  Decimal @default(0) @db.Decimal(15, 0)
 
@@ -833,9 +843,10 @@ model QuotationItem {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  quotation  Quotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  product    Product                  @relation(fields: [productId], references: [id])
-  parameters QuotationItemParameter[]
+  quotation      Quotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product        Product                  @relation(fields: [productId], references: [id])
+  parameters     QuotationItemParameter[]
+  discountByUser User?                    @relation(fields: [discountBy], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
   @@index([productId])
@@ -860,14 +871,17 @@ model QuotationItemParameter {
 }
 
 model QuotationTimeline {
-  id          String                  @id @default(cuid())
-  quotationId String                  @map("quotation_id")
-  action      QuotationTimelineAction
-  payload     Json?
-  createdBy   String?                 @map("created_by")
-  createdAt   DateTime                @default(now()) @map("created_at")
+  id            String                  @id @default(cuid())
+  quotationId   String                  @map("quotation_id")
+  action        QuotationTimelineAction
+  payload       Json?
+  createdBy     String?                 @map("created_by")
+  // Snapshot tên tại thời điểm ghi timeline (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  createdByName String?                 @map("created_by_name")
+  createdAt     DateTime                @default(now()) @map("created_at")
 
-  quotation Quotation @relation(fields: [quotationId], references: [id])
+  quotation     Quotation @relation(fields: [quotationId], references: [id])
+  createdByUser User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
   @@index([quotationId, createdAt])
@@ -1033,15 +1047,18 @@ model OrderBOMItem {
 // ──────────────────────────────────────
 
 model SalesOrderTimeline {
-  id           String                      @id @default(cuid())
-  salesOrderId String                      @map("sales_order_id")
-  action       SalesOrderTimelineAction
-  actorType    SalesOrderTimelineActorType @map("actor_type")
-  payload      Json?
-  createdBy    String?                     @map("created_by")
-  createdAt    DateTime                    @default(now()) @map("created_at")
+  id            String                      @id @default(cuid())
+  salesOrderId  String                      @map("sales_order_id")
+  action        SalesOrderTimelineAction
+  actorType     SalesOrderTimelineActorType @map("actor_type")
+  payload       Json?
+  createdBy     String?                     @map("created_by")
+  // Snapshot tên tại thời điểm ghi timeline (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  createdByName String?                     @map("created_by_name")
+  createdAt     DateTime                    @default(now()) @map("created_at")
 
-  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id])
+  salesOrder    SalesOrder @relation(fields: [salesOrderId], references: [id])
+  createdByUser User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([salesOrderId])
   @@index([salesOrderId, createdAt])
@@ -1103,9 +1120,12 @@ model ProductionOrderTimeline {
   actorType         ProductionOrderTimelineActorType @map("actor_type")
   payload           Json?
   createdBy         String?                          @map("created_by")
+  // Snapshot tên tại thời điểm ghi timeline (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  createdByName     String?                          @map("created_by_name")
   createdAt         DateTime                         @default(now()) @map("created_at")
 
   productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  createdByUser   User?           @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([productionOrderId])
   @@index([productionOrderId, createdAt])
@@ -1119,15 +1139,18 @@ model ProductionOrderTimeline {
 // Header — một phiếu có thể gồm nhiều vật tư (Sprint 04, chốt 16/07/2026).
 // Chi tiết từng vật tư nằm ở MaterialReceiptItem.
 model MaterialReceipt {
-  id           String   @id @default(cuid())
-  code         String   @unique
-  supplierName String?  @map("supplier_name")
-  note         String?
-  createdBy    String?  @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(cuid())
+  code          String   @unique
+  supplierName  String?  @map("supplier_name")
+  note          String?
+  createdBy     String?  @map("created_by")
+  // Snapshot tên tại thời điểm tạo phiếu (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  createdByName String?  @map("created_by_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  items MaterialReceiptItem[]
+  items         MaterialReceiptItem[]
+  createdByUser User?                 @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   // Báo cáo (report.md mục 3) — báo cáo nhập kho lọc theo ngày tạo phiếu.
   @@index([createdAt])
@@ -1146,7 +1169,7 @@ model MaterialReceiptItem {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   materialReceipt MaterialReceipt       @relation(fields: [materialReceiptId], references: [id], onDelete: Cascade)
-  material        Material             @relation(fields: [materialId], references: [id])
+  material        Material              @relation(fields: [materialId], references: [id])
   transaction     WarehouseTransaction?
 
   @@index([materialReceiptId])
@@ -1295,30 +1318,33 @@ model Setting {
 // ──────────────────────────────────────
 
 model Return {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  salesOrderId   String   @map("sales_order_id")
-  salesOrderCode String   @map("sales_order_code")
+  id              String       @id @default(cuid())
+  code            String       @unique
+  salesOrderId    String       @map("sales_order_id")
+  salesOrderCode  String       @map("sales_order_code")
   // Redundant reference (copy ID bất biến, không phải Derived Data) — tránh
   // join qua SalesOrder cho thống kê "Return theo khách hàng". Không dùng
   // @relation, cùng convention với SalesOrder.customerId/Receivable.customerId.
-  customerId     String   @map("customer_id")
-  customerName   String   @map("customer_name")
+  customerId      String       @map("customer_id")
+  customerName    String       @map("customer_name")
   // Một chiều PROCESSING → COMPLETED qua POST /returns/:id/complete
   // (return.md mục "Trạng thái Return").
-  status         ReturnStatus @default(PROCESSING)
+  status          ReturnStatus @default(PROCESSING)
   // Ghi nhận Action complete (đã chốt 06/07/2026): người thực hiện + thời điểm.
   // NULL với bản ghi backfill COMPLETED trước khi có trạng thái.
-  completedBy    String?   @map("completed_by")
-  completedAt    DateTime? @map("completed_at")
-  returnDate     DateTime @map("return_date")
-  receivedBy     String?  @map("received_by")
-  note           String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  completedBy     String?      @map("completed_by")
+  // Snapshot tên tại thời điểm hoàn thành (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
+  completedByName String?      @map("completed_by_name")
+  completedAt     DateTime?    @map("completed_at")
+  returnDate      DateTime     @map("return_date")
+  receivedBy      String?      @map("received_by")
+  note            String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  salesOrder SalesOrder   @relation(fields: [salesOrderId], references: [id])
-  items      ReturnItem[]
+  salesOrder      SalesOrder   @relation(fields: [salesOrderId], references: [id])
+  items           ReturnItem[]
+  completedByUser User?        @relation(fields: [completedBy], references: [id], onDelete: SetNull)
 
   @@index([salesOrderId])
   @@index([customerId])
