@@ -60,9 +60,11 @@ export class AuthService {
   // Token (Task 02) — thời hạn đọc từ Settings.Security.sessionTimeout (phút),
   // không hard-code. roleId nằm trong payload để PermissionGuard đọc thẳng từ
   // req.user, không phải query lại DB mỗi request (013-permission.md).
+  // Public vì AuthGuard cũng gọi lại để cấp token mới mỗi request hợp lệ
+  // (sliding session, 16/07/2026 — xem auth.guard.ts).
   // ─────────────────────────────────────────────────────
 
-  private async issueToken(userId: string, roleId?: string) {
+  async issueToken(userId: string, roleId?: string) {
     const sessionTimeoutMinutes = await this.settingService.getNumberValue(
       'Security',
       'sessionTimeout',

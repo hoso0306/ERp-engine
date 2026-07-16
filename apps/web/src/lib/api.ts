@@ -1,4 +1,4 @@
-import { getStoredToken, clearStoredToken } from "./auth-cookie";
+import { getStoredToken, storeToken, clearStoredToken } from "./auth-cookie";
 
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL}/api`;
 
@@ -33,6 +33,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  // Sliding session: mỗi request hợp lệ được server cấp lại token mới (xem
+  // apps/api/src/auth/auth.guard.ts) — âm thầm thay token cũ để phiên chỉ hết
+  // hạn khi không còn hoạt động, không phải hạn cứng từ lúc đăng nhập.
+  const refreshedToken = res.headers.get("X-Refreshed-Token");
+  if (refreshedToken) storeToken(refreshedToken);
 
   if (res.status === 401) {
     clearStoredToken();

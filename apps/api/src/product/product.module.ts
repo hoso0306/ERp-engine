@@ -8,6 +8,7 @@ import { UnitController } from './unit.controller';
 import { ProductTypeController } from './product-type.controller';
 import { MaterialController } from './material.controller';
 import { ProductParameterController } from './product-parameter.controller';
+import { ParameterSuggestionController } from './parameter-suggestion.controller';
 import { PricingRuleController } from './pricing-rule.controller';
 import { MaterialRequirementController } from './material-requirement.controller';
 import { ProductionCenterController } from './production-center.controller';
@@ -23,6 +24,7 @@ import { DerivedParameterController } from './derived-parameter.controller';
     MaterialController,
     ProductController,
     ProductParameterController,
+    ParameterSuggestionController,
     PricingRuleController,
     MaterialRequirementController,
     ValidationRuleController,

@@ -22,15 +22,19 @@ interface ProductionCenter {
   name: string;
 }
 
+// Trạng thái ứng với mỗi tab (Sprint 04) — tab thay thế bộ lọc trạng thái rời rạc,
+// tránh trùng lặp 2 chỗ cùng chọn 1 thứ.
+const TAB_STATUS: Record<string, string> = { active: "ACTIVE", draft: "DRAFT", all: "all" };
+
 export default function ProductsPage() {
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState("active");
 
   const [products, setProducts] = useState<any[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(TAB_STATUS.active);
   const [productTypeId, setProductTypeId] = useState("all");
   const [productionCenterId, setProductionCenterId] = useState("all");
   const [page, setPage] = useState(1);
@@ -97,7 +101,11 @@ export default function ProductsPage() {
   }, [search, status, productTypeId, productionCenterId]);
 
   useEffect(() => {
-    if (tab === "deleted") fetchDeleted();
+    if (tab === "deleted") {
+      fetchDeleted();
+      return;
+    }
+    setStatus(TAB_STATUS[tab] ?? "all");
   }, [tab, fetchDeleted]);
 
   function handleRestored() {
@@ -120,38 +128,40 @@ export default function ProductsPage() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="all">Tất cả</TabsTrigger>
+          <TabsTrigger value="active">Đang bán</TabsTrigger>
           <TabsTrigger value="deleted">
             Đã xoá {deletedMeta.total > 0 && `(${deletedMeta.total})`}
           </TabsTrigger>
+          <TabsTrigger value="draft">Nháp</TabsTrigger>
+          <TabsTrigger value="all">Tất cả</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all" className="space-y-4 mt-4">
-          <ProductFilter
-            search={search}
-            onSearchChange={setSearch}
-            status={status}
-            onStatusChange={(v) => setStatus(v ?? "all")}
-            productTypes={productTypes}
-            productTypeId={productTypeId}
-            onProductTypeChange={(v) => setProductTypeId(v ?? "all")}
-            productionCenters={productionCenters}
-            productionCenterId={productionCenterId}
-            onProductionCenterChange={(v) => setProductionCenterId(v ?? "all")}
-          />
-
-          {loading && <Loading />}
-          {error && <ErrorState description={error} onRetry={fetchProducts} />}
-          {!loading && !error && products.length === 0 && (
-            <EmptyState
-              title="Chưa có sản phẩm"
-              description="Thêm sản phẩm đầu tiên để bắt đầu."
+        {(["active", "draft", "all"] as const).map((t) => (
+          <TabsContent key={t} value={t} className="space-y-4 mt-4">
+            <ProductFilter
+              search={search}
+              onSearchChange={setSearch}
+              productTypes={productTypes}
+              productTypeId={productTypeId}
+              onProductTypeChange={(v) => setProductTypeId(v ?? "all")}
+              productionCenters={productionCenters}
+              productionCenterId={productionCenterId}
+              onProductionCenterChange={(v) => setProductionCenterId(v ?? "all")}
             />
-          )}
-          {!loading && !error && products.length > 0 && (
-            <ProductTable products={products} meta={meta} onPageChange={setPage} />
-          )}
-        </TabsContent>
+
+            {loading && <Loading />}
+            {error && <ErrorState description={error} onRetry={fetchProducts} />}
+            {!loading && !error && products.length === 0 && (
+              <EmptyState
+                title="Chưa có sản phẩm"
+                description="Thêm sản phẩm đầu tiên để bắt đầu."
+              />
+            )}
+            {!loading && !error && products.length > 0 && (
+              <ProductTable products={products} meta={meta} onPageChange={setPage} />
+            )}
+          </TabsContent>
+        ))}
 
         <TabsContent value="deleted" className="mt-4">
           {deletedLoading && <Loading />}

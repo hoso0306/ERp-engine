@@ -1,4 +1,4 @@
-import { getStoredToken } from "./auth-cookie";
+import { getStoredToken, storeToken } from "./auth-cookie";
 
 /**
  * Tải file từ endpoint có AuthGuard — không thể dùng window.open/<a href>
@@ -16,6 +16,9 @@ export async function downloadAuthenticatedFile(url: string, fallbackFilename: s
   if (!res.ok) {
     throw new Error("Không thể tải file.");
   }
+
+  const refreshedToken = res.headers.get("X-Refreshed-Token");
+  if (refreshedToken) storeToken(refreshedToken);
 
   const disposition = res.headers.get("content-disposition");
   const match = disposition?.match(/filename="?([^"]+)"?/);

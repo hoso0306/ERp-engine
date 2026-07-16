@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { apiPost, apiPatch, ApiError } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
 
 interface ParameterOption {
   id: string;
@@ -59,6 +59,13 @@ interface EditableOption {
   label: string;
 }
 
+interface ParameterNameSuggestion {
+  name: string;
+  label: string;
+  type: string;
+  unit: string | null;
+}
+
 export function ProductParameterDialog({
   open,
   onOpenChange,
@@ -82,6 +89,14 @@ export function ProductParameterDialog({
   const [maxValue, setMaxValue] = useState("");
   const [step, setStep] = useState("");
   const [options, setOptions] = useState<EditableOption[]>([{ value: "", label: "" }]);
+  const [nameSuggestions, setNameSuggestions] = useState<ParameterNameSuggestion[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    apiGet<ParameterNameSuggestion[]>("/product-parameters/suggestions")
+      .then(setNameSuggestions)
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -207,11 +222,22 @@ export function ProductParameterDialog({
               <Label htmlFor="p-name">Tên biến *</Label>
               <Input
                 id="p-name"
+                list="p-name-suggestions"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="ví dụ: width"
                 required
               />
+              <datalist id="p-name-suggestions">
+                {nameSuggestions.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.label} ({s.type})
+                  </option>
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Nên dùng lại tên biến đã có ở sản phẩm khác nếu cùng ý nghĩa (gõ để xem gợi ý).
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="p-label">Nhãn hiển thị *</Label>

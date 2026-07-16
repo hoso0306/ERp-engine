@@ -752,6 +752,34 @@ export class ProductService {
     });
   }
 
+  /**
+   * Gợi ý tên biến đã dùng ở các sản phẩm khác (Sprint 04) — chỉ để gợi ý trên
+   * UI, không ép buộc chọn. Giảm rủi ro mỗi sản phẩm tự đặt tên biến khác nhau
+   * cho cùng một khái niệm (vd chieucao/chieu_cao/cao).
+   */
+  async getParameterNameSuggestions(query?: string) {
+    const q = query?.trim();
+    const params = await this.prisma.productParameter.findMany({
+      where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+      select: { name: true, label: true, type: true, unit: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const byName = new Map<string, { name: string; label: string; type: string; unit: string | null; count: number }>();
+    for (const p of params) {
+      const existing = byName.get(p.name);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        byName.set(p.name, { name: p.name, label: p.label, type: p.type, unit: p.unit, count: 1 });
+      }
+    }
+
+    return [...byName.values()]
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 20);
+  }
+
   async createProductParameter(productId: string, dto: CreateProductParameterDto) {
     await this.findOneProduct(productId);
     if (!dto.name?.trim()) throw new BadRequestException('Tên thông số là bắt buộc.');
@@ -1423,6 +1451,11 @@ export class ProductService {
       finalPrice: result.systemPrice,
       unitPrice: result.unitPrice,
       warnings: result.warnings,
+      // Trả về đúng cấu hình làm tròn ĐÃ DÙNG để tính (từ version đã lưu) — FE không
+      // được lấy giá trị đang gõ dở trên form để hiển thị, tránh lệch với finalPrice
+      // (bug 16/07/2026: nhãn hiện "Làm tròn lên 1000" nhưng giá không đổi vì DB đang NONE).
+      priceRoundType: config.priceRoundType,
+      priceRoundValue: config.priceRoundValue,
     };
   }
 

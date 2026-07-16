@@ -66,6 +66,8 @@ interface PreviewResult {
   finalPrice: number;
   unitPrice: number | null;
   warnings: string[];
+  priceRoundType: string;
+  priceRoundValue: number | null;
 }
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -607,9 +609,12 @@ export default function PricingRuleVersionPage() {
                     <span className="text-muted-foreground">Giá thô:</span>
                     <span>{previewResult.rawPrice.toLocaleString("vi-VN")} đ</span>
                   </div>
-                  {formRoundType !== "NONE" && (
+                  {previewResult.priceRoundType !== "NONE" && (
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{roundTypeLabels[formRoundType]} theo {formRoundValue || "?"} VND:</span>
+                      <span>
+                        {roundTypeLabels[previewResult.priceRoundType]} theo{" "}
+                        {previewResult.priceRoundValue?.toLocaleString("vi-VN") ?? "?"} VND:
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between font-semibold text-base">

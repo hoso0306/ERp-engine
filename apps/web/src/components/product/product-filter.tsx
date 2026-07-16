@@ -24,8 +24,6 @@ interface ProductionCenterOption {
 interface ProductFilterProps {
   search: string;
   onSearchChange: (value: string) => void;
-  status: string;
-  onStatusChange: (value: string | null) => void;
   productTypes: FilterOption[];
   productTypeId: string;
   onProductTypeChange: (value: string | null) => void;
@@ -37,8 +35,6 @@ interface ProductFilterProps {
 export function ProductFilter({
   search,
   onSearchChange,
-  status,
-  onStatusChange,
   productTypes,
   productTypeId,
   onProductTypeChange,
@@ -57,18 +53,6 @@ export function ProductFilter({
           className="pl-9"
         />
       </div>
-
-      <Select value={status} onValueChange={onStatusChange}>
-        <SelectTrigger className="w-44">
-          <SelectValue placeholder="Trạng thái" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả trạng thái</SelectItem>
-          <SelectItem value="DRAFT">Nháp</SelectItem>
-          <SelectItem value="ACTIVE">Đang bán</SelectItem>
-          <SelectItem value="INACTIVE">Ngừng bán</SelectItem>
-        </SelectContent>
-      </Select>
 
       <Select value={productTypeId} onValueChange={onProductTypeChange}>
         <SelectTrigger className="w-48">
