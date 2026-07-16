@@ -431,26 +431,38 @@ export class SalesOrderService {
       }),
     ]);
 
-    const countByStatus = new Map(statusCounts.map((s) => [s.status, s._count._all]));
+    const countByStatus = new Map(
+      statusCounts.map((s) => [s.status, s._count._all]),
+    );
 
     return {
       totalRevenue: Number(totals._sum.totalAmount ?? 0),
       totalPlannedCost: Number(totals._sum.plannedCost ?? 0),
       totalPlannedProfit: Number(totals._sum.plannedProfit ?? 0),
       inProduction: countByStatus.get(SalesOrderStatus.IN_PRODUCTION) ?? 0,
-      productionCompleted: countByStatus.get(SalesOrderStatus.PRODUCTION_COMPLETED) ?? 0,
+      productionCompleted:
+        countByStatus.get(SalesOrderStatus.PRODUCTION_COMPLETED) ?? 0,
       delivered: countByStatus.get(SalesOrderStatus.DELIVERED) ?? 0,
     };
   }
 
   async getStatistics() {
     const [byStatus, byPaymentStatus] = await Promise.all([
-      this.prisma.salesOrder.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.salesOrder.groupBy({ by: ['paymentStatus'], _count: { _all: true } }),
+      this.prisma.salesOrder.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.salesOrder.groupBy({
+        by: ['paymentStatus'],
+        _count: { _all: true },
+      }),
     ]);
 
     return {
-      byStatus: byStatus.map((s) => ({ status: s.status, count: s._count._all })),
+      byStatus: byStatus.map((s) => ({
+        status: s.status,
+        count: s._count._all,
+      })),
       byPaymentStatus: byPaymentStatus.map((s) => ({
         paymentStatus: s.paymentStatus,
         count: s._count._all,
@@ -481,7 +493,9 @@ export class SalesOrderService {
     return this.prisma.salesOrder.findMany({
       where: {
         expectedDeliveryDate: { not: null, lt: new Date() },
-        status: { notIn: [SalesOrderStatus.DELIVERED, SalesOrderStatus.CANCELLED] },
+        status: {
+          notIn: [SalesOrderStatus.DELIVERED, SalesOrderStatus.CANCELLED],
+        },
       },
       select: {
         id: true,

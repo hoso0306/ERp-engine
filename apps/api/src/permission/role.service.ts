@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PermissionService } from './permission.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -32,12 +36,16 @@ export class RoleService {
   // code bất biến sau khi tạo — không có DTO nào cho phép sửa lại (xem
   // permission.md mục "Role").
   async create(dto: CreateRoleDto, actorId: string | null) {
-    const existing = await this.prisma.role.findUnique({ where: { code: dto.code } });
+    const existing = await this.prisma.role.findUnique({
+      where: { code: dto.code },
+    });
     if (existing) {
       throw new BadRequestException(`Role code "${dto.code}" đã tồn tại.`);
     }
 
-    const role = await this.prisma.role.create({ data: { code: dto.code, name: dto.name } });
+    const role = await this.prisma.role.create({
+      data: { code: dto.code, name: dto.name },
+    });
 
     await this.permissionService.recordAudit({
       roleId: role.id,
@@ -54,22 +62,33 @@ export class RoleService {
     const role = await this.findOne(id);
 
     if (dto.name !== undefined) {
-      await this.prisma.role.update({ where: { id }, data: { name: dto.name } });
+      await this.prisma.role.update({
+        where: { id },
+        data: { name: dto.name },
+      });
     }
 
     if (dto.permissionIds !== undefined) {
-      const currentIds = new Set(role.rolePermissions.map((rp) => rp.permissionId));
+      const currentIds = new Set(
+        role.rolePermissions.map((rp) => rp.permissionId),
+      );
       const nextIds = new Set(dto.permissionIds);
 
-      const toGrant = [...nextIds].filter((permissionId) => !currentIds.has(permissionId));
-      const toRevoke = [...currentIds].filter((permissionId) => !nextIds.has(permissionId));
+      const toGrant = [...nextIds].filter(
+        (permissionId) => !currentIds.has(permissionId),
+      );
+      const toRevoke = [...currentIds].filter(
+        (permissionId) => !nextIds.has(permissionId),
+      );
 
       if (toGrant.length > 0) {
         const permissions = await this.prisma.permission.findMany({
           where: { id: { in: toGrant } },
         });
         if (permissions.length !== toGrant.length) {
-          throw new BadRequestException('Một hoặc nhiều permissionId không tồn tại.');
+          throw new BadRequestException(
+            'Một hoặc nhiều permissionId không tồn tại.',
+          );
         }
         for (const permission of permissions) {
           await this.prisma.rolePermission.create({
@@ -120,7 +139,10 @@ export class RoleService {
       );
     }
 
-    const updated = await this.prisma.role.update({ where: { id }, data: { isActive: false } });
+    const updated = await this.prisma.role.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
     await this.permissionService.recordAudit({
       roleId: id,

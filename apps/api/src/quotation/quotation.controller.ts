@@ -43,7 +43,10 @@ export class QuotationController {
 
   @Post()
   @RequirePermission('quotation.create')
-  create(@Body() dto: CreateQuotationDto, @Req() req: { user?: { userId?: string } }) {
+  create(
+    @Body() dto: CreateQuotationDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
     // createdBy từ JWT — người tạo báo giá là người phụ trách khách, sẽ được
     // snapshot làm SalesOrder.ownerId khi Approve (quyết định 05/07/2026).
     return this.workflow.create(dto, req.user?.userId ?? null);

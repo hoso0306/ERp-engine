@@ -1,7 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { RoundType } from '@prisma/client';
-import { BomEngineService, BomConfig, BomItemConfig } from './bom-engine.service';
-import { PricingEngineService, PricingConfig } from '../pricing-engine/pricing-engine.service';
+import {
+  BomEngineService,
+  BomConfig,
+  BomItemConfig,
+} from './bom-engine.service';
+import {
+  PricingEngineService,
+  PricingConfig,
+} from '../pricing-engine/pricing-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 function makeItem(overrides: Partial<BomItemConfig> = {}): BomItemConfig {
@@ -20,11 +27,16 @@ function makeItem(overrides: Partial<BomItemConfig> = {}): BomItemConfig {
   };
 }
 
-function makeConfig(items: BomItemConfig[], overrides: Partial<BomConfig> = {}): BomConfig {
+function makeConfig(
+  items: BomItemConfig[],
+  overrides: Partial<BomConfig> = {},
+): BomConfig {
   return {
     materialRequirementVersionId: 'mrv-001',
     items,
-    derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+    derivedParameters: [
+      { name: 'area', expression: 'chieurong * chieucao / 10000' },
+    ],
     ...overrides,
   };
 }
@@ -40,22 +52,36 @@ function service(): BomEngineService {
 describe('BomEngine.calculateBom — Filter theo condition', () => {
   const colorVariants = [
     makeItem({
-      materialId: 'al-cafe', materialCode: 'AL30-CAFE', materialName: 'Thanh nhôm H30 Cafe',
-      expression: '2 * chieurong / 100', condition: 'maukhung == "cafe"',
+      materialId: 'al-cafe',
+      materialCode: 'AL30-CAFE',
+      materialName: 'Thanh nhôm H30 Cafe',
+      expression: '2 * chieurong / 100',
+      condition: 'maukhung == "cafe"',
     }),
     makeItem({
-      materialId: 'al-trang', materialCode: 'AL30-TRANG', materialName: 'Thanh nhôm H30 Trắng',
-      expression: '2 * chieurong / 100', condition: 'maukhung == "trang"',
+      materialId: 'al-trang',
+      materialCode: 'AL30-TRANG',
+      materialName: 'Thanh nhôm H30 Trắng',
+      expression: '2 * chieurong / 100',
+      condition: 'maukhung == "trang"',
     }),
     makeItem({
-      materialId: 'wheel', materialCode: 'WH30', materialName: 'Bánh xe H30',
-      expression: 'if(socanh == 2, 8, 4)', condition: null, materialUnit: 'cái', unitPrice: 5000,
+      materialId: 'wheel',
+      materialCode: 'WH30',
+      materialName: 'Bánh xe H30',
+      expression: 'if(socanh == 2, 8, 4)',
+      condition: null,
+      materialUnit: 'cái',
+      unitPrice: 5000,
     }),
   ];
 
   it('chọn Cafe → chỉ ra dòng AL30-CAFE, không ra AL30-TRANG; dòng không condition luôn có', () => {
     const result = service().calculateBom(makeConfig(colorVariants), {
-      chieurong: 250, chieucao: 200, maukhung: 'cafe', socanh: 2,
+      chieurong: 250,
+      chieucao: 200,
+      maukhung: 'cafe',
+      socanh: 2,
     });
 
     const codes = result.lines.map((l) => l.materialCode);
@@ -65,12 +91,18 @@ describe('BomEngine.calculateBom — Filter theo condition', () => {
 
   it('công thức phụ kiện theo số cánh: 2 cánh → 8 bánh xe, 1 cánh → 4', () => {
     const two = service().calculateBom(makeConfig(colorVariants), {
-      chieurong: 100, chieucao: 100, maukhung: 'trang', socanh: 2,
+      chieurong: 100,
+      chieucao: 100,
+      maukhung: 'trang',
+      socanh: 2,
     });
     expect(two.lines.find((l) => l.materialCode === 'WH30')?.baseQty).toBe(8);
 
     const one = service().calculateBom(makeConfig(colorVariants), {
-      chieurong: 100, chieucao: 100, maukhung: 'trang', socanh: 1,
+      chieurong: 100,
+      chieucao: 100,
+      maukhung: 'trang',
+      socanh: 1,
     });
     expect(one.lines.find((l) => l.materialCode === 'WH30')?.baseQty).toBe(4);
   });
@@ -78,17 +110,26 @@ describe('BomEngine.calculateBom — Filter theo condition', () => {
   it('condition lỗi (biến không tồn tại) → throw nêu tên vật tư, KHÔNG âm thầm bỏ dòng', () => {
     const broken = [makeItem({ condition: 'mausai == "cafe"' })];
     expect(() =>
-      service().calculateBom(makeConfig(broken), { chieurong: 100, chieucao: 100 }),
+      service().calculateBom(makeConfig(broken), {
+        chieurong: 100,
+        chieucao: 100,
+      }),
     ).toThrow(BadRequestException);
     expect(() =>
-      service().calculateBom(makeConfig(broken), { chieurong: 100, chieucao: 100 }),
+      service().calculateBom(makeConfig(broken), {
+        chieurong: 100,
+        chieucao: 100,
+      }),
     ).toThrow(/Khung nhôm/);
   });
 
   it('expression định mức lỗi → throw nêu tên vật tư', () => {
     const broken = [makeItem({ expression: 'chieurong *' })];
     expect(() =>
-      service().calculateBom(makeConfig(broken), { chieurong: 100, chieucao: 100 }),
+      service().calculateBom(makeConfig(broken), {
+        chieurong: 100,
+        chieucao: 100,
+      }),
     ).toThrow(/Khung nhôm/);
   });
 });
@@ -102,20 +143,24 @@ describe('BomEngine.calculateBom — Waste/Round/Quantity', () => {
     const config = makeConfig([
       makeItem({
         expression: 'chieurong / 100', // 250cm → 2.5m
-        wastePercent: 5,               // → 2.625m
+        wastePercent: 5, // → 2.625m
         roundType: RoundType.CEIL,
-        roundValue: 0.5,               // → 3m
+        roundValue: 0.5, // → 3m
         unitPrice: 40000,
       }),
     ]);
-    const result = service().calculateBom(config, { chieurong: 250, chieucao: 100 }, 3);
+    const result = service().calculateBom(
+      config,
+      { chieurong: 250, chieucao: 100 },
+      3,
+    );
 
     const line = result.lines[0];
     expect(line.baseQty).toBeCloseTo(2.5);
     expect(line.wastedQty).toBeCloseTo(2.625);
     expect(line.finalQtyPerUnit).toBe(3);
-    expect(line.quantity).toBe(9);           // 3m × 3 sản phẩm
-    expect(line.lineTotal).toBe(360_000);    // 9 × 40.000
+    expect(line.quantity).toBe(9); // 3m × 3 sản phẩm
+    expect(line.lineTotal).toBe(360_000); // 9 × 40.000
     expect(result.plannedCost).toBe(360_000);
   });
 
@@ -123,7 +168,10 @@ describe('BomEngine.calculateBom — Waste/Round/Quantity', () => {
     const config = makeConfig([
       makeItem({ materialName: 'Lưới', expression: 'area', unitPrice: 100000 }),
     ]);
-    const result = service().calculateBom(config, { chieurong: 250, chieucao: 200 });
+    const result = service().calculateBom(config, {
+      chieurong: 250,
+      chieucao: 200,
+    });
     expect(result.lines[0].baseQty).toBe(5); // 5m²
   });
 });
@@ -134,7 +182,12 @@ describe('BomEngine.calculateBom — Waste/Round/Quantity', () => {
 
 describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM theo kích thước gốc', () => {
   it('đơn 60×200cm, rule min 70cm: giá tính theo 70cm nhưng thanh cắt theo 60cm', () => {
-    const rawParams = { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 };
+    const rawParams = {
+      chieurong: 60,
+      chieucao: 200,
+      maukhung: 'cafe',
+      socanh: 1,
+    };
 
     // Pricing: min 70cm được áp → tính tiền theo 70cm
     const pricingConfig: PricingConfig = {
@@ -142,12 +195,28 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
       expression: 'unitPrice * area',
       priceRoundType: RoundType.NONE,
       priceRoundValue: 0,
-      ruleItems: [{
-        ruleType: 'MIN_DIMENSION', targetParameter: 'chieurong', value: 70,
-        condition: 'socanh == 1', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 0,
-      }],
-      matrixRows: [{ dimensions: { maukhung: 'cafe', socanh: '1' }, unitPrice: 428000, displayOrder: 0 }],
-      derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+      ruleItems: [
+        {
+          ruleType: 'MIN_DIMENSION',
+          targetParameter: 'chieurong',
+          value: 70,
+          condition: 'socanh == 1',
+          rangeFrom: null,
+          rangeTo: null,
+          billValue: null,
+          displayOrder: 0,
+        },
+      ],
+      matrixRows: [
+        {
+          dimensions: { maukhung: 'cafe', socanh: '1' },
+          unitPrice: 428000,
+          displayOrder: 0,
+        },
+      ],
+      derivedParameters: [
+        { name: 'area', expression: 'chieurong * chieucao / 10000' },
+      ],
       validationRules: [],
       enumParameterNames: [],
     };
@@ -160,7 +229,10 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
 
     // BOM: nhận KÍCH THƯỚC GỐC → thanh ngang 2×60cm = 1.2m, KHÔNG phải 1.4m
     const bomConfig = makeConfig([
-      makeItem({ materialName: 'Thanh ngang', expression: '2 * chieurong / 100' }),
+      makeItem({
+        materialName: 'Thanh ngang',
+        expression: '2 * chieurong / 100',
+      }),
     ]);
     const bom = service().calculateBom(bomConfig, rawParams);
     expect(bom.lines[0].baseQty).toBeCloseTo(1.2);
@@ -180,23 +252,27 @@ describe('BomEngine.loadConfigForVersion', () => {
       materialRequirementVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'mrv-9',
-          items: [{
-            materialId: 'mat-1',
-            expression: '2 * chieurong',
-            condition: 'maukhung == "cafe"',
-            wastePercent: '5',
-            roundType: 'CEIL',
-            roundValue: '0.5',
-            material: {
-              code: 'AL30-CAFE',
-              name: 'Thanh nhôm Cafe',
-              unit: { name: 'm' },
-              prices: [{ price: '45000' }],
+          items: [
+            {
+              materialId: 'mat-1',
+              expression: '2 * chieurong',
+              condition: 'maukhung == "cafe"',
+              wastePercent: '5',
+              roundType: 'CEIL',
+              roundValue: '0.5',
+              material: {
+                code: 'AL30-CAFE',
+                name: 'Thanh nhôm Cafe',
+                unit: { name: 'm' },
+                prices: [{ price: '45000' }],
+              },
             },
-          }],
+          ],
           materialRequirement: {
             product: {
-              derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+              derivedParameters: [
+                { name: 'area', expression: 'chieurong * chieucao / 10000' },
+              ],
             },
           },
         }),
@@ -218,9 +294,13 @@ describe('BomEngine.loadConfigForVersion', () => {
 
   it('version không tồn tại → NotFoundException', async () => {
     const prisma = {
-      materialRequirementVersion: { findUnique: jest.fn().mockResolvedValue(null) },
+      materialRequirementVersion: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     };
     const svc = new BomEngineService(prisma as unknown as PrismaService);
-    await expect(svc.loadConfigForVersion('x')).rejects.toThrow(NotFoundException);
+    await expect(svc.loadConfigForVersion('x')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

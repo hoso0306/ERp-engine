@@ -1,7 +1,7 @@
 # Milestone (Sprint 04) - Triển khai (DevOps) + Bàn giao khách hàng
 
 > **Tên file:** `workbench/sprint-04/001-trien-khai-va-ban-giao.md`
-> **Trạng thái:** NHÁP — chưa duyệt, chờ xác nhận từng mục trước khi bắt đầu code.
+> **Trạng thái:** Phần 🟢 (2.1, 2.2, 2.6) ĐÃ HOÀN THÀNH (16/07/2026) — chờ lệnh cho phần 🔴.
 
 ---
 
@@ -30,12 +30,12 @@ Không đợi "hoàn thiện tất cả tính năng" mới bắt đầu, cũng k
 
 # Nhóm 2 — Triển khai / Vận hành (DevOps)
 
-## 2.1 CI (kiểm tra tự động trước khi merge) 🟢 làm ngay
+## 2.1 CI (kiểm tra tự động trước khi merge) ✅ đã làm (16/07/2026)
 
 - `.github/workflows/ci.yml`: chạy `pnpm install`, `tsc --noEmit`, `eslint`, test API (`jest`) trên mỗi PR/push vào `main`.
 - Chưa cần deploy tự động (CD) ở bước này — chỉ chặn merge code lỗi.
 
-## 2.2 Production Build 🟢 làm ngay
+## 2.2 Production Build ✅ đã làm (16/07/2026)
 
 - Dockerfile multi-stage cho `apps/api` (NestJS build → `node dist/main.js`).
 - Dockerfile multi-stage cho `apps/web` (Next.js `build` → `next start` hoặc export tuỳ mô hình host).
@@ -57,7 +57,7 @@ Không đợi "hoàn thiện tất cả tính năng" mới bắt đầu, cũng k
 - `pg_dump` định kỳ (cron), lưu ít nhất N bản gần nhất — **cần chốt:** tần suất (hàng ngày?) và nơi lưu (local disk / cloud storage).
 - Thử khôi phục (restore drill) ít nhất 1 lần trước khi bàn giao — xác nhận backup thật sự dùng được, không chỉ chạy lệnh cho có.
 
-## 2.6 Migration Workflow 🟢 làm ngay
+## 2.6 Migration Workflow ✅ đã làm (16/07/2026)
 
 - Production phải chạy `prisma migrate deploy` (áp dụng migration đã có), **không** dùng `prisma db push` (lệnh này dùng cho dev, có thể làm mất dữ liệu không cảnh báo).
 - Quy trình rollback nếu migration lỗi giữa chừng.
@@ -115,13 +115,46 @@ Không đợi "hoàn thiện tất cả tính năng" mới bắt đầu, cũng k
 
 ---
 
-# Việc cần làm ngay (🟢, không chờ xác nhận thêm)
+# Việc cần làm ngay (🟢) — ✅ ĐÃ HOÀN THÀNH (16/07/2026)
 
-Những mục dưới đây không phụ thuộc quyết định của khách và không phụ thuộc tính năng đã xong hay chưa — có thể lên kế hoạch code cụ thể ngay khi được duyệt, làm song song với code tính năng/giao diện:
+1. CI cơ bản (2.1) — ✅.
+2. Dockerfile production cho API + Web — chỉ phần build, chưa cần compose gắn domain/SSL thật (2.2) — ✅.
+3. Đảm bảo quy trình deploy dùng `migrate deploy`, không dùng `db push` (2.6) — ✅.
 
-1. CI cơ bản (2.1).
-2. Dockerfile production cho API + Web — chỉ phần build, chưa cần compose gắn domain/SSL thật (2.2).
-3. Đảm bảo quy trình deploy dùng `migrate deploy`, không dùng `db push` (2.6).
+## Kết quả thực hiện
+
+**File đã thêm:**
+- `.github/workflows/ci.yml` — checkout → cài pnpm 10.12.1 + Node 22 (cache pnpm) → `pnpm install --frozen-lockfile` → `pnpm -r lint` → `pnpm -r build` (typecheck cả API+Web) → `pnpm --filter api test`. Chạy trên push/PR vào `main`. Chưa làm CD (deploy tự động) — đúng phạm vi đã chốt.
+- `.dockerignore` (root) — loại `node_modules`, `dist`, `.next`, `.git`, `workbench`, `knowledge`... khỏi build context.
+- `apps/api/Dockerfile` — multi-stage (`deps` → `build` → `runtime`), build context là gốc repo (pnpm monorepo dùng chung 1 lockfile). Entrypoint chạy `npx prisma migrate deploy && node dist/src/main.js` trước khi start — đúng yêu cầu 2.6 (không dùng `db push`).
+- `apps/web/Dockerfile` — multi-stage tương tự; `NEXT_PUBLIC_API_URL` truyền qua `--build-arg` (biến `NEXT_PUBLIC_*` được Next.js nhúng thẳng vào bundle lúc build, không set được lúc chạy container như biến server thường).
+- `docker-compose.prod.yml` (root) — service `postgres` + `api` + `web`, build từ 2 Dockerfile trên. **Chưa có service Nginx** (đó là 2.3, còn 🔴) — hiện `ports` expose thẳng ra host để test được, sẽ đổi thành `expose` nội bộ khi thêm Nginx.
+
+**File đã sửa (bug có sẵn, phát hiện lúc verify Docker build, nằm trong đúng phạm vi "Production Build"):**
+- `apps/api/package.json` — thêm `"postinstall": "prisma generate"` (trước đây không có bước tự sinh Prisma Client sau `pnpm install`, chỉ chạy được nhờ máy dev đã từng generate thủ công); sửa `start:prod` từ `node dist/main` → `node dist/src/main` — **bug có sẵn chưa từng bị phát hiện** vì `tsconfig.json` không set `rootDir` nên `nest build` xuất ra `dist/src/main.js` chứ không phải `dist/main.js`, và chưa ai chạy thử `pnpm start:prod` trước đây (dev luôn dùng `nest start --watch`).
+
+**Đã verify thật, không chỉ đọc code:**
+- `pnpm --filter api test` — 221/221 test pass (17 test suite).
+- `pnpm --filter api build` và `pnpm --filter web build` — cả hai build sạch, typecheck không lỗi.
+- `docker build` cả 2 Dockerfile thành công. Chạy thật container API trỏ vào Postgres dev (`erp-postgres` đang chạy sẵn) — log xác nhận `26 migrations found... No pending migrations to apply`, Nest khởi động đủ module, `GET /api/health` trả `{"status":"ok","database":"ok"}`. Chạy thật container Web — `next start` lên đúng cổng, `GET /login` trả `200`. Đã xoá image test (`erp-api:test`, `erp-web:test`) sau khi verify xong, không để lại rác trên máy.
+
+**Phát hiện nhưng CHƯA sửa (ngoài phạm vi 3 mục 🟢 đã duyệt):**
+- `pnpm -r lint` hiện **fail** — 38 lỗi có sẵn ở `apps/api` (chủ yếu `@typescript-eslint/no-unsafe-*` trong vài file service/spec) và 65 lỗi có sẵn ở `apps/web` (rule `react-hooks/set-state-in-effect` ở 4 file: `user-dialog.tsx`, `material-typeahead.tsx`, `auth-context.tsx`, `use-mobile.ts`). Đây là nợ kỹ thuật có từ trước, không phải do CI/Dockerfile mới thêm gây ra — nhưng **nghĩa là CI vừa tạo sẽ đỏ ngay ở bước Lint cho tới khi có Task riêng dọn lint**. `build` và `test` (2 bước còn lại của CI) đều xanh.
+
+**Đề xuất commit message:**
+```
+chore(devops): thêm CI, Dockerfile production, kỷ luật migrate deploy
+
+- CI: lint + build + test API trên mỗi push/PR vào main
+- Dockerfile multi-stage cho API/Web, verify build+run thật với DB dev
+- Sửa bug có sẵn: start:prod trỏ sai dist/main -> dist/src/main
+- Thêm postinstall prisma generate cho apps/api
+```
+
+**Cần bạn xác nhận trước khi làm tiếp:**
+- CI hiện sẽ báo đỏ ở bước Lint do nợ kỹ thuật có sẵn (103 lỗi, không liên quan Task này) — có muốn mở Task riêng dọn lint không, hay tạm chấp nhận CI đỏ ở bước Lint cho tới khi dọn?
+
+**Đã dừng đúng phạm vi 3 mục 🟢. Chờ lệnh cho phần 🔴** (2.3, 2.4, 2.5, 2.7, 2.8 và toàn bộ Nhóm 3) — các mục này cần bạn/khách quyết định trước (hạ tầng host, SSL, ai nhập dữ liệu thật...) như đã liệt kê ở mục "Cần khách/người dùng xác nhận" bên dưới.
 
 # Việc chờ gần go-live (🔴, ít nhất xong Báo cáo + Import Excel)
 

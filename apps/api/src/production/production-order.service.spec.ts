@@ -19,7 +19,13 @@ function makeProductionOrder(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date(),
     items: [],
     timeline: [],
-    salesOrder: { id: 'so-1', code: 'SO000001', customerName: 'Nguyễn Văn An', customerPhone: '0901000001', status: 'IN_PRODUCTION' },
+    salesOrder: {
+      id: 'so-1',
+      code: 'SO000001',
+      customerName: 'Nguyễn Văn An',
+      customerPhone: '0901000001',
+      status: 'IN_PRODUCTION',
+    },
     ...overrides,
   };
 }
@@ -27,7 +33,11 @@ function makeProductionOrder(overrides: Record<string, unknown> = {}) {
 describe('ProductionOrderService', () => {
   let service: ProductionOrderService;
   let prisma: {
-    productionOrder: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; update: jest.Mock };
+    productionOrder: {
+      findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+      update: jest.Mock;
+    };
     productionOrderTimeline: { create: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -44,7 +54,9 @@ describe('ProductionOrderService', () => {
       productionOrderTimeline: {
         create: jest.fn(),
       },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
     salesOrderService = { syncProductionProgress: jest.fn() };
     warehouseService = { issueForProductionOrder: jest.fn() };
@@ -64,7 +76,9 @@ describe('ProductionOrderService', () => {
   describe('findOne()', () => {
     it('throws NotFoundException when production order does not exist', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(null);
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -84,14 +98,19 @@ describe('ProductionOrderService', () => {
     });
 
     it('transitions PENDING -> IN_PRODUCTION and writes STARTED timeline', async () => {
-      prisma.productionOrder.findUnique.mockResolvedValue(makeProductionOrder());
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder(),
+      );
       prisma.productionOrder.findUniqueOrThrow.mockResolvedValue(
         makeProductionOrder({ status: 'IN_PRODUCTION' }),
       );
 
       await service.start('po-1');
 
-      expect(warehouseService.issueForProductionOrder).toHaveBeenCalledWith('po-1', prisma);
+      expect(warehouseService.issueForProductionOrder).toHaveBeenCalledWith(
+        'po-1',
+        prisma,
+      );
       expect(prisma.productionOrder.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'po-1' },
@@ -100,13 +119,18 @@ describe('ProductionOrderService', () => {
       );
       expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ action: 'STARTED', actorType: 'USER' }),
+          data: expect.objectContaining({
+            action: 'STARTED',
+            actorType: 'USER',
+          }),
         }),
       );
     });
 
     it('rolls back the whole transaction (no status change) when Warehouse issue fails (insufficient stock)', async () => {
-      prisma.productionOrder.findUnique.mockResolvedValue(makeProductionOrder());
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder(),
+      );
       warehouseService.issueForProductionOrder.mockRejectedValue(
         new Error('Không đủ tồn kho'),
       );
@@ -122,14 +146,18 @@ describe('ProductionOrderService', () => {
       prisma.productionOrder.findUnique.mockResolvedValue(
         makeProductionOrder({ status: 'PENDING' }),
       );
-      await expect(service.complete('po-1')).rejects.toThrow(ForbiddenException);
+      await expect(service.complete('po-1')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('rejects a second Complete once already PRODUCTION_COMPLETED (no double complete, no backward transition)', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(
         makeProductionOrder({ status: 'PRODUCTION_COMPLETED' }),
       );
-      await expect(service.complete('po-1')).rejects.toThrow(ForbiddenException);
+      await expect(service.complete('po-1')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('transitions IN_PRODUCTION -> PRODUCTION_COMPLETED and syncs Sales Order progress', async () => {
@@ -150,10 +178,16 @@ describe('ProductionOrderService', () => {
       );
       expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ action: 'COMPLETED', actorType: 'USER' }),
+          data: expect.objectContaining({
+            action: 'COMPLETED',
+            actorType: 'USER',
+          }),
         }),
       );
-      expect(salesOrderService.syncProductionProgress).toHaveBeenCalledWith('so-1', prisma);
+      expect(salesOrderService.syncProductionProgress).toHaveBeenCalledWith(
+        'so-1',
+        prisma,
+      );
     });
   });
 });

@@ -37,14 +37,19 @@ export class AuthController {
   @UseGuards(AuthGuard)
   async getMe(@Req() req: AuthenticatedRequest) {
     const user = await this.authService.getMe(req.user.userId);
-    const permissions = await this.permissionService.getPermissionKeysForRole(user.roleId);
+    const permissions = await this.permissionService.getPermissionKeysForRole(
+      user.roleId,
+    );
     return { ...user, permissions };
   }
 
   @Post('change-password')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
-  changePassword(@Req() req: AuthenticatedRequest, @Body() dto: ChangePasswordDto) {
+  changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.authService.changePassword(req.user.userId, dto);
   }
 

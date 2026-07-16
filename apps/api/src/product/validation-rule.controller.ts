@@ -1,6 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { ProductService } from './product.service';
-import { CreateValidationRuleDto, UpdateValidationRuleDto } from './dto/validation-rule.dto';
+import {
+  CreateValidationRuleDto,
+  UpdateValidationRuleDto,
+} from './dto/validation-rule.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';

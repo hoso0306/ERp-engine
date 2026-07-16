@@ -40,14 +40,19 @@ describe('WarehouseService', () => {
       warehouseTransaction: { create: jest.fn() },
       productionOrderItem: { findMany: jest.fn() },
       orderBOM: { findMany: jest.fn() },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WarehouseService,
         { provide: PrismaService, useValue: prisma },
-        { provide: SettingService, useValue: { getNumberValue: jest.fn().mockResolvedValue(10) } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(10) },
+        },
       ],
     }).compile();
 
@@ -64,12 +69,17 @@ describe('WarehouseService', () => {
     it('rejects when Material does not exist', async () => {
       prisma.material.findUnique.mockResolvedValue(null);
       await expect(
-        service.createMaterialReceipt({ materialId: 'nonexistent', quantity: 10 }),
+        service.createMaterialReceipt({
+          materialId: 'nonexistent',
+          quantity: 10,
+        }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('rejects when Material is not ACTIVE', async () => {
-      prisma.material.findUnique.mockResolvedValue(makeMaterial({ isActive: false }));
+      prisma.material.findUnique.mockResolvedValue(
+        makeMaterial({ isActive: false }),
+      );
       await expect(
         service.createMaterialReceipt({ materialId: 'mat-1', quantity: 10 }),
       ).rejects.toThrow(BadRequestException);
@@ -77,11 +87,21 @@ describe('WarehouseService', () => {
 
     it('creates MaterialReceipt + WarehouseTransaction(IN) and increments currentStock by delta', async () => {
       prisma.material.findUnique.mockResolvedValue(makeMaterial());
-      prisma.runningNumber.update.mockResolvedValue({ prefix: 'PN', lastNumber: 1, paddingLength: 6 });
+      prisma.runningNumber.update.mockResolvedValue({
+        prefix: 'PN',
+        lastNumber: 1,
+        paddingLength: 6,
+      });
       prisma.materialReceipt.create.mockResolvedValue({ id: 'receipt-1' });
-      prisma.materialReceipt.findUniqueOrThrow.mockResolvedValue({ id: 'receipt-1', code: 'PN000001' });
+      prisma.materialReceipt.findUniqueOrThrow.mockResolvedValue({
+        id: 'receipt-1',
+        code: 'PN000001',
+      });
 
-      await service.createMaterialReceipt({ materialId: 'mat-1', quantity: 50 });
+      await service.createMaterialReceipt({
+        materialId: 'mat-1',
+        quantity: 50,
+      });
 
       expect(prisma.warehouseTransaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -117,7 +137,9 @@ describe('WarehouseService', () => {
         { items: [{ materialId: 'mat-1', quantity: 4 }] },
         { items: [{ materialId: 'mat-1', quantity: 6 }] },
       ]);
-      prisma.material.findUnique.mockResolvedValue(makeMaterial({ currentStock: 100 }));
+      prisma.material.findUnique.mockResolvedValue(
+        makeMaterial({ currentStock: 100 }),
+      );
 
       await service.issueForProductionOrder('po-1', prisma as never);
 
@@ -141,11 +163,15 @@ describe('WarehouseService', () => {
     });
 
     it('blocks issuance and creates no WarehouseTransaction when stock is insufficient (no negative stock)', async () => {
-      prisma.productionOrderItem.findMany.mockResolvedValue([{ salesOrderItemId: 'soi-1' }]);
+      prisma.productionOrderItem.findMany.mockResolvedValue([
+        { salesOrderItemId: 'soi-1' },
+      ]);
       prisma.orderBOM.findMany.mockResolvedValue([
         { items: [{ materialId: 'mat-1', quantity: 200 }] },
       ]);
-      prisma.material.findUnique.mockResolvedValue(makeMaterial({ currentStock: 5 }));
+      prisma.material.findUnique.mockResolvedValue(
+        makeMaterial({ currentStock: 5 }),
+      );
 
       await expect(
         service.issueForProductionOrder('po-1', prisma as never),
@@ -156,11 +182,15 @@ describe('WarehouseService', () => {
     });
 
     it('rejects when Material is not ACTIVE', async () => {
-      prisma.productionOrderItem.findMany.mockResolvedValue([{ salesOrderItemId: 'soi-1' }]);
+      prisma.productionOrderItem.findMany.mockResolvedValue([
+        { salesOrderItemId: 'soi-1' },
+      ]);
       prisma.orderBOM.findMany.mockResolvedValue([
         { items: [{ materialId: 'mat-1', quantity: 10 }] },
       ]);
-      prisma.material.findUnique.mockResolvedValue(makeMaterial({ isActive: false }));
+      prisma.material.findUnique.mockResolvedValue(
+        makeMaterial({ isActive: false }),
+      );
 
       await expect(
         service.issueForProductionOrder('po-1', prisma as never),

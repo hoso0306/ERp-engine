@@ -26,7 +26,10 @@ export class SettingController {
 
   @Put(':module')
   @RequirePermission('settings.update')
-  updateByModule(@Param('module') module: string, @Body() dto: UpdateSettingDto) {
+  updateByModule(
+    @Param('module') module: string,
+    @Body() dto: UpdateSettingDto,
+  ) {
     return this.settingService.updateSettingsByModule(module, dto);
   }
 }

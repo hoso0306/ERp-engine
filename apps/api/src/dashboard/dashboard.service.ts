@@ -18,14 +18,15 @@ export class DashboardService {
   ) {}
 
   async getOverview() {
-    const [sales, production, warehouse, debt, returns, alerts] = await Promise.all([
-      this.getSalesDashboard(),
-      this.getProductionDashboard(),
-      this.getWarehouseDashboard(),
-      this.getDebtDashboard(),
-      this.getReturnDashboard(),
-      this.getAlerts(),
-    ]);
+    const [sales, production, warehouse, debt, returns, alerts] =
+      await Promise.all([
+        this.getSalesDashboard(),
+        this.getProductionDashboard(),
+        this.getWarehouseDashboard(),
+        this.getDebtDashboard(),
+        this.getReturnDashboard(),
+        this.getAlerts(),
+      ]);
 
     return { sales, production, warehouse, debt, returns, alerts };
   }
@@ -55,7 +56,8 @@ export class DashboardService {
       this.warehouseService.getTopConsumedMaterials(),
     ]);
     // Truyền lowStockMaterials đã có sẵn — tránh gọi lại cùng một query.
-    const inventorySummary = await this.warehouseService.getInventorySummary(lowStockMaterials);
+    const inventorySummary =
+      await this.warehouseService.getInventorySummary(lowStockMaterials);
 
     return {
       inventorySummary,
@@ -77,7 +79,13 @@ export class DashboardService {
         this.debtService.getTopDebtors(),
       ]);
 
-    return { summary, overdueCustomers, upcomingDue, creditExceeded, topDebtors };
+    return {
+      summary,
+      overdueCustomers,
+      upcomingDue,
+      creditExceeded,
+      topDebtors,
+    };
   }
 
   async getReturnDashboard() {

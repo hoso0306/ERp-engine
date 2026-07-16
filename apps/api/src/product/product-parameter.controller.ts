@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { ProductService } from './product.service';
 import { CreateProductParameterDto } from './dto/create-product-parameter.dto';
 import { UpdateProductParameterDto } from './dto/update-product-parameter.dto';
@@ -19,7 +28,10 @@ export class ProductParameterController {
 
   @Post()
   @RequirePermission('product.create')
-  create(@Param('productId') productId: string, @Body() dto: CreateProductParameterDto) {
+  create(
+    @Param('productId') productId: string,
+    @Body() dto: CreateProductParameterDto,
+  ) {
     return this.productService.createProductParameter(productId, dto);
   }
 

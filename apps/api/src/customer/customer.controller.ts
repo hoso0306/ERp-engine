@@ -1,6 +1,16 @@
 import {
-  Controller, Get, Post, Patch, Delete,
-  Body, Query, Param, Res, UploadedFile, UseInterceptors, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Query,
+  Param,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';

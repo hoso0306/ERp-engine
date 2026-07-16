@@ -23,7 +23,9 @@ describe('DashboardService', () => {
     productionOrderService = {
       getDashboardSummary: jest.fn().mockResolvedValue({ inProduction: 1 }),
       getBusyCenters: jest.fn().mockResolvedValue([]),
-      getProgressSummary: jest.fn().mockResolvedValue({ overallProgressPercent: 50 }),
+      getProgressSummary: jest
+        .fn()
+        .mockResolvedValue({ overallProgressPercent: 50 }),
     };
     warehouseService = {
       getLowStockMaterials: jest.fn().mockResolvedValue([
@@ -42,7 +44,9 @@ describe('DashboardService', () => {
     };
     returnService = {
       getDashboardSummary: jest.fn().mockResolvedValue({ returnsThisMonth: 0 }),
-      getAgingRecoveryInventory: jest.fn().mockResolvedValue({ over30Days: 0, over90Days: 0 }),
+      getAgingRecoveryInventory: jest
+        .fn()
+        .mockResolvedValue({ over30Days: 0, over90Days: 0 }),
       getTopReturnReasons: jest.fn().mockResolvedValue([]),
       getReturnsByCustomer: jest.fn().mockResolvedValue([]),
     };
@@ -73,8 +77,12 @@ describe('DashboardService', () => {
 
   it('getWarehouseDashboard() splits low-stock vs out-of-stock from one query', async () => {
     const result = await service.getWarehouseDashboard();
-    expect(result.lowStockMaterials).toEqual([{ code: 'NL001', outOfStock: false }]);
-    expect(result.outOfStockMaterials).toEqual([{ code: 'NL002', outOfStock: true }]);
+    expect(result.lowStockMaterials).toEqual([
+      { code: 'NL001', outOfStock: false },
+    ]);
+    expect(result.outOfStockMaterials).toEqual([
+      { code: 'NL002', outOfStock: true },
+    ]);
   });
 
   it('getDebtDashboard() calls DebtService with the requested upcomingDueDays window', async () => {

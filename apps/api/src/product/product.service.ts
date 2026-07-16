@@ -11,7 +11,13 @@ import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
 import { ExcelService } from '../shared/excel/excel.service';
 import { validate as validateExpressionSyntax } from '../shared/expression';
-import { Prisma, ProductStatus, ParameterType, RoundType, PricingRuleType } from '@prisma/client';
+import {
+  Prisma,
+  ProductStatus,
+  ParameterType,
+  RoundType,
+  PricingRuleType,
+} from '@prisma/client';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
@@ -36,8 +42,14 @@ import { CreateMaterialRequirementItemDto } from './dto/create-material-requirem
 import { UpdateMaterialRequirementItemDto } from './dto/update-material-requirement-item.dto';
 import { CreateProductionCenterDto } from './dto/create-production-center.dto';
 import { UpdateProductionCenterDto } from './dto/update-production-center.dto';
-import { CreateValidationRuleDto, UpdateValidationRuleDto } from './dto/validation-rule.dto';
-import { CreateDerivedParameterDto, UpdateDerivedParameterDto } from './dto/derived-parameter.dto';
+import {
+  CreateValidationRuleDto,
+  UpdateValidationRuleDto,
+} from './dto/validation-rule.dto';
+import {
+  CreateDerivedParameterDto,
+  UpdateDerivedParameterDto,
+} from './dto/derived-parameter.dto';
 import { PriceMatrixRowDto } from './dto/update-price-matrix.dto';
 
 @Injectable()
@@ -64,8 +76,11 @@ export class ProductService {
   }
 
   async createProductionCenter(dto: CreateProductionCenterDto) {
-    if (!dto.name?.trim()) throw new BadRequestException('Tên xưởng là bắt buộc.');
-    const existing = await this.prisma.productionCenter.findFirst({ where: { name: dto.name.trim() } });
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên xưởng là bắt buộc.');
+    const existing = await this.prisma.productionCenter.findFirst({
+      where: { name: dto.name.trim() },
+    });
     if (existing) throw new ConflictException('Tên xưởng đã tồn tại.');
     const code = await this.generateCode('PRODUCTION_CENTER');
     return this.prisma.productionCenter.create({
@@ -81,7 +96,8 @@ export class ProductService {
   async updateProductionCenter(id: string, dto: UpdateProductionCenterDto) {
     await this.findOneProductionCenter(id);
     if (dto.name !== undefined) {
-      if (!dto.name.trim()) throw new BadRequestException('Tên xưởng là bắt buộc.');
+      if (!dto.name.trim())
+        throw new BadRequestException('Tên xưởng là bắt buộc.');
       const existing = await this.prisma.productionCenter.findFirst({
         where: { name: dto.name.trim(), id: { not: id } },
       });
@@ -91,7 +107,9 @@ export class ProductService {
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
-        ...(dto.description !== undefined && { description: dto.description?.trim() || null }),
+        ...(dto.description !== undefined && {
+          description: dto.description?.trim() || null,
+        }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
@@ -99,8 +117,13 @@ export class ProductService {
 
   async deleteProductionCenter(id: string) {
     await this.findOneProductionCenter(id);
-    const inUse = await this.prisma.product.count({ where: { productionCenterId: id } });
-    if (inUse > 0) throw new BadRequestException('Không thể xoá xưởng đang được sử dụng bởi sản phẩm.');
+    const inUse = await this.prisma.product.count({
+      where: { productionCenterId: id },
+    });
+    if (inUse > 0)
+      throw new BadRequestException(
+        'Không thể xoá xưởng đang được sử dụng bởi sản phẩm.',
+      );
     return this.prisma.productionCenter.delete({ where: { id } });
   }
 
@@ -119,8 +142,11 @@ export class ProductService {
   }
 
   async createUnit(dto: CreateUnitDto) {
-    if (!dto.name?.trim()) throw new BadRequestException('Tên đơn vị là bắt buộc.');
-    const existing = await this.prisma.unit.findUnique({ where: { name: dto.name.trim() } });
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên đơn vị là bắt buộc.');
+    const existing = await this.prisma.unit.findUnique({
+      where: { name: dto.name.trim() },
+    });
     if (existing) throw new ConflictException('Tên đơn vị đã tồn tại.');
     return this.prisma.unit.create({ data: { name: dto.name.trim() } });
   }
@@ -128,7 +154,8 @@ export class ProductService {
   async updateUnit(id: string, dto: UpdateUnitDto) {
     await this.findOneUnit(id);
     if (dto.name !== undefined) {
-      if (!dto.name.trim()) throw new BadRequestException('Tên đơn vị là bắt buộc.');
+      if (!dto.name.trim())
+        throw new BadRequestException('Tên đơn vị là bắt buộc.');
       const existing = await this.prisma.unit.findFirst({
         where: { name: dto.name.trim(), id: { not: id } },
       });
@@ -142,13 +169,21 @@ export class ProductService {
 
   async deleteUnit(id: string) {
     await this.findOneUnit(id);
-    const usedInProduct = await this.prisma.product.count({ where: { unitId: id } });
+    const usedInProduct = await this.prisma.product.count({
+      where: { unitId: id },
+    });
     if (usedInProduct > 0) {
-      throw new BadRequestException('Đơn vị đang được sử dụng bởi sản phẩm, không thể xoá.');
+      throw new BadRequestException(
+        'Đơn vị đang được sử dụng bởi sản phẩm, không thể xoá.',
+      );
     }
-    const usedInMaterial = await this.prisma.material.count({ where: { unitId: id } });
+    const usedInMaterial = await this.prisma.material.count({
+      where: { unitId: id },
+    });
     if (usedInMaterial > 0) {
-      throw new BadRequestException('Đơn vị đang được sử dụng bởi nguyên liệu, không thể xoá.');
+      throw new BadRequestException(
+        'Đơn vị đang được sử dụng bởi nguyên liệu, không thể xoá.',
+      );
     }
     return this.prisma.unit.delete({ where: { id } });
   }
@@ -168,8 +203,11 @@ export class ProductService {
   }
 
   async createProductType(dto: CreateProductTypeDto) {
-    if (!dto.name?.trim()) throw new BadRequestException('Tên loại sản phẩm là bắt buộc.');
-    const existing = await this.prisma.productType.findUnique({ where: { name: dto.name.trim() } });
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên loại sản phẩm là bắt buộc.');
+    const existing = await this.prisma.productType.findUnique({
+      where: { name: dto.name.trim() },
+    });
     if (existing) throw new ConflictException('Tên loại sản phẩm đã tồn tại.');
     return this.prisma.productType.create({
       data: { name: dto.name.trim(), isActive: dto.isActive ?? true },
@@ -179,11 +217,13 @@ export class ProductService {
   async updateProductType(id: string, dto: UpdateProductTypeDto) {
     await this.findOneProductType(id);
     if (dto.name !== undefined) {
-      if (!dto.name.trim()) throw new BadRequestException('Tên loại sản phẩm là bắt buộc.');
+      if (!dto.name.trim())
+        throw new BadRequestException('Tên loại sản phẩm là bắt buộc.');
       const existing = await this.prisma.productType.findFirst({
         where: { name: dto.name.trim(), id: { not: id } },
       });
-      if (existing) throw new ConflictException('Tên loại sản phẩm đã tồn tại.');
+      if (existing)
+        throw new ConflictException('Tên loại sản phẩm đã tồn tại.');
     }
     const data: Prisma.ProductTypeUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
@@ -193,9 +233,13 @@ export class ProductService {
 
   async deleteProductType(id: string) {
     await this.findOneProductType(id);
-    const used = await this.prisma.product.count({ where: { productTypeId: id } });
+    const used = await this.prisma.product.count({
+      where: { productTypeId: id },
+    });
     if (used > 0) {
-      throw new BadRequestException('Loại sản phẩm đang được sử dụng, không thể xoá.');
+      throw new BadRequestException(
+        'Loại sản phẩm đang được sử dụng, không thể xoá.',
+      );
     }
     return this.prisma.productType.delete({ where: { id } });
   }
@@ -252,7 +296,10 @@ export class ProductService {
       this.prisma.material.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findOneMaterial(id: string) {
@@ -273,7 +320,8 @@ export class ProductService {
   }
 
   async createMaterial(dto: CreateMaterialDto) {
-    if (!dto.name?.trim()) throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
     if (!dto.unitId) throw new BadRequestException('Đơn vị là bắt buộc.');
     await this.findOneUnit(dto.unitId);
 
@@ -312,7 +360,8 @@ export class ProductService {
     }
     if (dto.unitId) await this.findOneUnit(dto.unitId);
     if (dto.code !== undefined) {
-      if (!dto.code.trim()) throw new BadRequestException('Mã nguyên liệu là bắt buộc.');
+      if (!dto.code.trim())
+        throw new BadRequestException('Mã nguyên liệu là bắt buộc.');
       const existing = await this.prisma.material.findFirst({
         where: { code: dto.code.trim(), id: { not: id } },
       });
@@ -366,7 +415,8 @@ export class ProductService {
     if (dto.price === undefined || dto.price <= 0) {
       throw new BadRequestException('Giá phải lớn hơn 0.');
     }
-    if (!dto.effectiveFrom) throw new BadRequestException('Ngày hiệu lực là bắt buộc.');
+    if (!dto.effectiveFrom)
+      throw new BadRequestException('Ngày hiệu lực là bắt buộc.');
 
     return this.prisma.$transaction(async (tx) => {
       if (dto.isDefault) {
@@ -399,14 +449,20 @@ export class ProductService {
     return this.prisma.$transaction(async (tx) => {
       if (dto.isDefault === true) {
         await tx.materialPrice.updateMany({
-          where: { materialId: price.materialId, isDefault: true, id: { not: id } },
+          where: {
+            materialId: price.materialId,
+            isDefault: true,
+            id: { not: id },
+          },
           data: { isDefault: false },
         });
       }
       const data: Prisma.MaterialPriceUpdateInput = {};
-      if (dto.supplierId !== undefined) data.supplierId = dto.supplierId || null;
+      if (dto.supplierId !== undefined)
+        data.supplierId = dto.supplierId || null;
       if (dto.price !== undefined) data.price = dto.price;
-      if (dto.effectiveFrom !== undefined) data.effectiveFrom = new Date(dto.effectiveFrom);
+      if (dto.effectiveFrom !== undefined)
+        data.effectiveFrom = new Date(dto.effectiveFrom);
       if (dto.effectiveTo !== undefined) {
         data.effectiveTo = dto.effectiveTo ? new Date(dto.effectiveTo) : null;
       }
@@ -438,7 +494,11 @@ export class ProductService {
         { code: { contains: query.search, mode: 'insensitive' } },
       ];
     }
-    if (query.status === 'DRAFT' || query.status === 'ACTIVE' || query.status === 'INACTIVE') {
+    if (
+      query.status === 'DRAFT' ||
+      query.status === 'ACTIVE' ||
+      query.status === 'INACTIVE'
+    ) {
       where.status = query.status;
     }
     if (query.productTypeId) {
@@ -463,7 +523,10 @@ export class ProductService {
       this.prisma.product.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findDeletedProducts(query: ProductQueryDto) {
@@ -494,7 +557,10 @@ export class ProductService {
       this.prisma.product.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findOneProduct(id: string) {
@@ -511,10 +577,13 @@ export class ProductService {
   }
 
   async createProduct(dto: CreateProductDto) {
-    if (!dto.name?.trim()) throw new BadRequestException('Tên sản phẩm là bắt buộc.');
-    if (!dto.productTypeId) throw new BadRequestException('Loại sản phẩm là bắt buộc.');
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên sản phẩm là bắt buộc.');
+    if (!dto.productTypeId)
+      throw new BadRequestException('Loại sản phẩm là bắt buộc.');
     if (!dto.unitId) throw new BadRequestException('Đơn vị là bắt buộc.');
-    if (!dto.productionCenterId) throw new BadRequestException('Xưởng sản xuất là bắt buộc.');
+    if (!dto.productionCenterId)
+      throw new BadRequestException('Xưởng sản xuất là bắt buộc.');
     await this.findOneProductType(dto.productTypeId);
     await this.findOneUnit(dto.unitId);
     await this.findOneProductionCenter(dto.productionCenterId);
@@ -545,14 +614,18 @@ export class ProductService {
     }
     if (dto.productTypeId) await this.findOneProductType(dto.productTypeId);
     if (dto.unitId) await this.findOneUnit(dto.unitId);
-    if (dto.productionCenterId) await this.findOneProductionCenter(dto.productionCenterId);
+    if (dto.productionCenterId)
+      await this.findOneProductionCenter(dto.productionCenterId);
 
     const data: Prisma.ProductUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
-    if (dto.productTypeId !== undefined) data.productType = { connect: { id: dto.productTypeId } };
+    if (dto.productTypeId !== undefined)
+      data.productType = { connect: { id: dto.productTypeId } };
     if (dto.unitId !== undefined) data.unit = { connect: { id: dto.unitId } };
-    if (dto.productionCenterId !== undefined) data.productionCenter = { connect: { id: dto.productionCenterId } };
-    if (dto.description !== undefined) data.description = dto.description?.trim() || null;
+    if (dto.productionCenterId !== undefined)
+      data.productionCenter = { connect: { id: dto.productionCenterId } };
+    if (dto.description !== undefined)
+      data.description = dto.description?.trim() || null;
 
     return this.prisma.product.update({
       where: { id },
@@ -591,7 +664,9 @@ export class ProductService {
   async softDeleteProduct(id: string) {
     const product = await this.findOneProduct(id);
     if (product.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể xoá sản phẩm ở trạng thái DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể xoá sản phẩm ở trạng thái DRAFT.',
+      );
     }
     return this.prisma.product.update({
       where: { id },
@@ -629,9 +704,11 @@ export class ProductService {
 
   async createValidationRule(productId: string, dto: CreateValidationRuleDto) {
     await this.findOneProduct(productId);
-    if (!dto.expression?.trim()) throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
+    if (!dto.expression?.trim())
+      throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
     this.validateExpression(dto.expression.trim());
-    if (!dto.message?.trim()) throw new BadRequestException('Thông báo là bắt buộc.');
+    if (!dto.message?.trim())
+      throw new BadRequestException('Thông báo là bắt buộc.');
     const severity = dto.severity === 'BLOCK' ? 'BLOCK' : 'WARN';
 
     return this.prisma.validationRule.create({
@@ -649,7 +726,8 @@ export class ProductService {
     const rule = await this.prisma.validationRule.findUnique({ where: { id } });
     if (!rule) throw new NotFoundException('Validation Rule không tồn tại.');
     if (dto.expression !== undefined) {
-      if (!dto.expression.trim()) throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
+      if (!dto.expression.trim())
+        throw new BadRequestException('Biểu thức điều kiện là bắt buộc.');
       this.validateExpression(dto.expression.trim());
     }
     if (dto.message !== undefined && !dto.message.trim()) {
@@ -658,7 +736,8 @@ export class ProductService {
 
     const data: Prisma.ValidationRuleUpdateInput = {};
     if (dto.expression !== undefined) data.expression = dto.expression.trim();
-    if (dto.severity !== undefined) data.severity = dto.severity === 'BLOCK' ? 'BLOCK' : 'WARN';
+    if (dto.severity !== undefined)
+      data.severity = dto.severity === 'BLOCK' ? 'BLOCK' : 'WARN';
     if (dto.message !== undefined) data.message = dto.message.trim();
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
 
@@ -684,16 +763,24 @@ export class ProductService {
     });
   }
 
-  async createDerivedParameter(productId: string, dto: CreateDerivedParameterDto) {
+  async createDerivedParameter(
+    productId: string,
+    dto: CreateDerivedParameterDto,
+  ) {
     await this.findOneProduct(productId);
-    if (!dto.name?.trim()) throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
-    if (!dto.expression?.trim()) throw new BadRequestException('Công thức là bắt buộc.');
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
+    if (!dto.expression?.trim())
+      throw new BadRequestException('Công thức là bắt buộc.');
     this.validateExpression(dto.expression.trim());
 
     const existing = await this.prisma.derivedParameter.findFirst({
       where: { productId, name: dto.name.trim() },
     });
-    if (existing) throw new ConflictException('Tên biến phái sinh đã tồn tại trong sản phẩm này.');
+    if (existing)
+      throw new ConflictException(
+        'Tên biến phái sinh đã tồn tại trong sản phẩm này.',
+      );
 
     return this.prisma.derivedParameter.create({
       data: {
@@ -707,18 +794,29 @@ export class ProductService {
   }
 
   async updateDerivedParameter(id: string, dto: UpdateDerivedParameterDto) {
-    const param = await this.prisma.derivedParameter.findUnique({ where: { id } });
+    const param = await this.prisma.derivedParameter.findUnique({
+      where: { id },
+    });
     if (!param) throw new NotFoundException('Biến phái sinh không tồn tại.');
 
     if (dto.name !== undefined) {
-      if (!dto.name.trim()) throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
+      if (!dto.name.trim())
+        throw new BadRequestException('Tên biến phái sinh là bắt buộc.');
       const existing = await this.prisma.derivedParameter.findFirst({
-        where: { productId: param.productId, name: dto.name.trim(), id: { not: id } },
+        where: {
+          productId: param.productId,
+          name: dto.name.trim(),
+          id: { not: id },
+        },
       });
-      if (existing) throw new ConflictException('Tên biến phái sinh đã tồn tại trong sản phẩm này.');
+      if (existing)
+        throw new ConflictException(
+          'Tên biến phái sinh đã tồn tại trong sản phẩm này.',
+        );
     }
     if (dto.expression !== undefined) {
-      if (!dto.expression.trim()) throw new BadRequestException('Công thức là bắt buộc.');
+      if (!dto.expression.trim())
+        throw new BadRequestException('Công thức là bắt buộc.');
       this.validateExpression(dto.expression.trim());
     }
 
@@ -732,7 +830,9 @@ export class ProductService {
   }
 
   async deleteDerivedParameter(id: string) {
-    const param = await this.prisma.derivedParameter.findUnique({ where: { id } });
+    const param = await this.prisma.derivedParameter.findUnique({
+      where: { id },
+    });
     if (!param) throw new NotFoundException('Biến phái sinh không tồn tại.');
     return this.prisma.derivedParameter.delete({ where: { id } });
   }
@@ -765,13 +865,28 @@ export class ProductService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const byName = new Map<string, { name: string; label: string; type: string; unit: string | null; count: number }>();
+    const byName = new Map<
+      string,
+      {
+        name: string;
+        label: string;
+        type: string;
+        unit: string | null;
+        count: number;
+      }
+    >();
     for (const p of params) {
       const existing = byName.get(p.name);
       if (existing) {
         existing.count += 1;
       } else {
-        byName.set(p.name, { name: p.name, label: p.label, type: p.type, unit: p.unit, count: 1 });
+        byName.set(p.name, {
+          name: p.name,
+          label: p.label,
+          type: p.type,
+          unit: p.unit,
+          count: 1,
+        });
       }
     }
 
@@ -780,10 +895,15 @@ export class ProductService {
       .slice(0, 20);
   }
 
-  async createProductParameter(productId: string, dto: CreateProductParameterDto) {
+  async createProductParameter(
+    productId: string,
+    dto: CreateProductParameterDto,
+  ) {
     await this.findOneProduct(productId);
-    if (!dto.name?.trim()) throw new BadRequestException('Tên thông số là bắt buộc.');
-    if (!dto.label?.trim()) throw new BadRequestException('Nhãn hiển thị là bắt buộc.');
+    if (!dto.name?.trim())
+      throw new BadRequestException('Tên thông số là bắt buộc.');
+    if (!dto.label?.trim())
+      throw new BadRequestException('Nhãn hiển thị là bắt buộc.');
     if (!this.validParamTypes.includes(dto.type)) {
       throw new BadRequestException('Kiểu dữ liệu không hợp lệ.');
     }
@@ -794,7 +914,10 @@ export class ProductService {
     const existing = await this.prisma.productParameter.findFirst({
       where: { productId, name: dto.name.trim() },
     });
-    if (existing) throw new ConflictException('Tên thông số đã tồn tại trong sản phẩm này.');
+    if (existing)
+      throw new ConflictException(
+        'Tên thông số đã tồn tại trong sản phẩm này.',
+      );
 
     return this.prisma.productParameter.create({
       data: {
@@ -827,15 +950,25 @@ export class ProductService {
   }
 
   async updateProductParameter(id: string, dto: UpdateProductParameterDto) {
-    const param = await this.prisma.productParameter.findUnique({ where: { id } });
+    const param = await this.prisma.productParameter.findUnique({
+      where: { id },
+    });
     if (!param) throw new NotFoundException('Thông số không tồn tại.');
 
     if (dto.name !== undefined) {
-      if (!dto.name.trim()) throw new BadRequestException('Tên thông số là bắt buộc.');
+      if (!dto.name.trim())
+        throw new BadRequestException('Tên thông số là bắt buộc.');
       const existing = await this.prisma.productParameter.findFirst({
-        where: { productId: param.productId, name: dto.name.trim(), id: { not: id } },
+        where: {
+          productId: param.productId,
+          name: dto.name.trim(),
+          id: { not: id },
+        },
       });
-      if (existing) throw new ConflictException('Tên thông số đã tồn tại trong sản phẩm này.');
+      if (existing)
+        throw new ConflictException(
+          'Tên thông số đã tồn tại trong sản phẩm này.',
+        );
     }
 
     if (dto.type !== undefined && !this.validParamTypes.includes(dto.type)) {
@@ -849,10 +982,12 @@ export class ProductService {
     if (dto.label !== undefined) data.label = dto.label.trim();
     if (dto.type !== undefined) data.type = dto.type as ParameterType;
     if (dto.unit !== undefined) data.unit = dto.unit?.trim() || null;
-    if ('defaultValue' in dto) data.defaultValue = dto.defaultValue?.trim() || null;
+    if ('defaultValue' in dto)
+      data.defaultValue = dto.defaultValue?.trim() || null;
     if (dto.isRequired !== undefined) data.isRequired = dto.isRequired;
     if (dto.usedInPricing !== undefined) data.usedInPricing = dto.usedInPricing;
-    if (dto.usedInMaterial !== undefined) data.usedInMaterial = dto.usedInMaterial;
+    if (dto.usedInMaterial !== undefined)
+      data.usedInMaterial = dto.usedInMaterial;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
 
     if (effectiveType === 'NUMBER') {
@@ -886,7 +1021,9 @@ export class ProductService {
   }
 
   async deleteProductParameter(id: string) {
-    const param = await this.prisma.productParameter.findUnique({ where: { id } });
+    const param = await this.prisma.productParameter.findUnique({
+      where: { id },
+    });
     if (!param) throw new NotFoundException('Thông số không tồn tại.');
     return this.prisma.productParameter.delete({ where: { id } });
   }
@@ -927,9 +1064,14 @@ export class ProductService {
     return version;
   }
 
-  async createPricingRuleVersion(productId: string, dto: CreatePricingRuleVersionDto) {
+  async createPricingRuleVersion(
+    productId: string,
+    dto: CreatePricingRuleVersionDto,
+  ) {
     await this.findOneProduct(productId);
-    let rule = await this.prisma.pricingRule.findUnique({ where: { productId } });
+    let rule = await this.prisma.pricingRule.findUnique({
+      where: { productId },
+    });
     if (!rule) {
       rule = await this.prisma.pricingRule.create({ data: { productId } });
     }
@@ -964,7 +1106,9 @@ export class ProductService {
   }
 
   async updatePricingRuleVersion(id: string, dto: UpdatePricingRuleVersionDto) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id } });
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể chỉnh sửa phiên bản DRAFT.');
@@ -975,9 +1119,12 @@ export class ProductService {
 
     const data: Prisma.PricingRuleVersionUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name?.trim() || null;
-    if (dto.expression !== undefined) data.expression = dto.expression?.trim() || null;
-    if (dto.priceRoundType !== undefined) data.priceRoundType = dto.priceRoundType as RoundType;
-    if ('priceRoundValue' in dto) data.priceRoundValue = dto.priceRoundValue ?? null;
+    if (dto.expression !== undefined)
+      data.expression = dto.expression?.trim() || null;
+    if (dto.priceRoundType !== undefined)
+      data.priceRoundType = dto.priceRoundType as RoundType;
+    if ('priceRoundValue' in dto)
+      data.priceRoundValue = dto.priceRoundValue ?? null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
 
     return this.prisma.pricingRuleVersion.update({
@@ -1035,7 +1182,9 @@ export class ProductService {
   }
 
   async deletePricingRuleVersion(id: string) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id } });
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể xoá phiên bản DRAFT.');
@@ -1133,7 +1282,12 @@ export class ProductService {
     rangeTo?: number | null;
     billValue?: number | null;
   }): void {
-    const validTypes = ['MIN_AREA', 'MIN_DIMENSION', 'MIN_VALUE', 'BILLABLE_STEP'];
+    const validTypes = [
+      'MIN_AREA',
+      'MIN_DIMENSION',
+      'MIN_VALUE',
+      'BILLABLE_STEP',
+    ];
     if (!validTypes.includes(input.ruleType)) {
       throw new BadRequestException(
         `Loại Rule không hợp lệ. Chọn: ${validTypes.join(', ')}.`,
@@ -1143,14 +1297,24 @@ export class ProductService {
       (input.ruleType === 'MIN_DIMENSION' || input.ruleType === 'MIN_VALUE') &&
       !input.targetParameter?.trim()
     ) {
-      throw new BadRequestException(`${input.ruleType} cần chỉ định targetParameter.`);
+      throw new BadRequestException(
+        `${input.ruleType} cần chỉ định targetParameter.`,
+      );
     }
     if (input.ruleType !== 'BILLABLE_STEP') {
-      if (input.value === undefined || input.value === null || input.value <= 0) {
+      if (
+        input.value === undefined ||
+        input.value === null ||
+        input.value <= 0
+      ) {
         throw new BadRequestException('Giá trị tối thiểu phải lớn hơn 0.');
       }
     } else {
-      if (input.billValue === undefined || input.billValue === null || input.billValue <= 0) {
+      if (
+        input.billValue === undefined ||
+        input.billValue === null ||
+        input.billValue <= 0
+      ) {
         throw new BadRequestException('BILLABLE_STEP cần billValue lớn hơn 0.');
       }
       if (
@@ -1160,7 +1324,9 @@ export class ProductService {
         input.rangeTo !== undefined &&
         input.rangeFrom >= input.rangeTo
       ) {
-        throw new BadRequestException('BILLABLE_STEP cần rangeFrom nhỏ hơn rangeTo.');
+        throw new BadRequestException(
+          'BILLABLE_STEP cần rangeFrom nhỏ hơn rangeTo.',
+        );
       }
     }
     if (input.condition?.trim()) {
@@ -1168,15 +1334,23 @@ export class ProductService {
     }
   }
 
-  async createPricingRuleItem(versionId: string, dto: CreatePricingRuleItemDto) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id: versionId } });
+  async createPricingRuleItem(
+    versionId: string,
+    dto: CreatePricingRuleItemDto,
+  ) {
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id: versionId },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể thêm Rule vào phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể thêm Rule vào phiên bản DRAFT.',
+      );
     }
     this.validatePricingRuleItemInput(dto);
 
-    const needsTarget = dto.ruleType === 'MIN_DIMENSION' || dto.ruleType === 'MIN_VALUE';
+    const needsTarget =
+      dto.ruleType === 'MIN_DIMENSION' || dto.ruleType === 'MIN_VALUE';
     return this.prisma.pricingRuleItem.create({
       data: {
         pricingRuleVersionId: versionId,
@@ -1188,9 +1362,12 @@ export class ProductService {
             : null,
         value: dto.value ?? 0,
         condition: dto.condition?.trim() || null,
-        rangeFrom: dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeFrom ?? null) : null,
-        rangeTo: dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeTo ?? null) : null,
-        billValue: dto.ruleType === 'BILLABLE_STEP' ? (dto.billValue ?? null) : null,
+        rangeFrom:
+          dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeFrom ?? null) : null,
+        rangeTo:
+          dto.ruleType === 'BILLABLE_STEP' ? (dto.rangeTo ?? null) : null,
+        billValue:
+          dto.ruleType === 'BILLABLE_STEP' ? (dto.billValue ?? null) : null,
         description: dto.description?.trim() || null,
         displayOrder: dto.displayOrder ?? 0,
       },
@@ -1204,31 +1381,54 @@ export class ProductService {
     });
     if (!item) throw new NotFoundException('Rule Item không tồn tại.');
     if (item.pricingRuleVersion.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể chỉnh sửa Rule Item trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể chỉnh sửa Rule Item trong phiên bản DRAFT.',
+      );
     }
 
     const effectiveType = (dto.ruleType as PricingRuleType) ?? item.ruleType;
     this.validatePricingRuleItemInput({
       ruleType: effectiveType,
-      targetParameter: dto.targetParameter !== undefined ? dto.targetParameter : item.targetParameter,
+      targetParameter:
+        dto.targetParameter !== undefined
+          ? dto.targetParameter
+          : item.targetParameter,
       value: dto.value !== undefined ? dto.value : Number(item.value),
       condition: dto.condition !== undefined ? dto.condition : item.condition,
-      rangeFrom: dto.rangeFrom !== undefined ? dto.rangeFrom : item.rangeFrom ? Number(item.rangeFrom) : null,
-      rangeTo: dto.rangeTo !== undefined ? dto.rangeTo : item.rangeTo ? Number(item.rangeTo) : null,
-      billValue: dto.billValue !== undefined ? dto.billValue : item.billValue ? Number(item.billValue) : null,
+      rangeFrom:
+        dto.rangeFrom !== undefined
+          ? dto.rangeFrom
+          : item.rangeFrom
+            ? Number(item.rangeFrom)
+            : null,
+      rangeTo:
+        dto.rangeTo !== undefined
+          ? dto.rangeTo
+          : item.rangeTo
+            ? Number(item.rangeTo)
+            : null,
+      billValue:
+        dto.billValue !== undefined
+          ? dto.billValue
+          : item.billValue
+            ? Number(item.billValue)
+            : null,
     });
 
     const data: Prisma.PricingRuleItemUpdateInput = {};
-    if (dto.ruleType !== undefined) data.ruleType = dto.ruleType as PricingRuleType;
+    if (dto.ruleType !== undefined)
+      data.ruleType = dto.ruleType as PricingRuleType;
     if (dto.targetParameter !== undefined) {
       data.targetParameter = dto.targetParameter?.trim() || null;
     }
     if (dto.value !== undefined) data.value = dto.value;
-    if (dto.condition !== undefined) data.condition = dto.condition?.trim() || null;
+    if (dto.condition !== undefined)
+      data.condition = dto.condition?.trim() || null;
     if (dto.rangeFrom !== undefined) data.rangeFrom = dto.rangeFrom;
     if (dto.rangeTo !== undefined) data.rangeTo = dto.rangeTo;
     if (dto.billValue !== undefined) data.billValue = dto.billValue;
-    if (dto.description !== undefined) data.description = dto.description?.trim() || null;
+    if (dto.description !== undefined)
+      data.description = dto.description?.trim() || null;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
 
     return this.prisma.pricingRuleItem.update({ where: { id }, data });
@@ -1239,19 +1439,27 @@ export class ProductService {
    * Editor dạng Excel lưu cả bảng một lần — đơn giản và không lo lệch từng dòng.
    */
   async updatePriceMatrix(versionId: string, rows: PriceMatrixRowDto[]) {
-    const version = await this.prisma.pricingRuleVersion.findUnique({ where: { id: versionId } });
+    const version = await this.prisma.pricingRuleVersion.findUnique({
+      where: { id: versionId },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể sửa Bảng giá trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể sửa Bảng giá trong phiên bản DRAFT.',
+      );
     }
 
     const seen = new Set<string>();
     const data = (rows ?? []).map((row, idx) => {
       if (!row.dimensions || Object.keys(row.dimensions).length === 0) {
-        throw new BadRequestException(`Dòng ${idx + 1}: thiếu tổ hợp cấu hình.`);
+        throw new BadRequestException(
+          `Dòng ${idx + 1}: thiếu tổ hợp cấu hình.`,
+        );
       }
       if (!(row.unitPrice > 0)) {
-        throw new BadRequestException(`Dòng ${idx + 1}: đơn giá phải lớn hơn 0.`);
+        throw new BadRequestException(
+          `Dòng ${idx + 1}: đơn giá phải lớn hơn 0.`,
+        );
       }
       const configKey = Object.entries(row.dimensions)
         .map(([k, v]) => [k.trim(), String(v).trim()] as const)
@@ -1259,7 +1467,9 @@ export class ProductService {
         .map(([k, v]) => `${k}=${v}`)
         .join('|');
       if (seen.has(configKey)) {
-        throw new BadRequestException(`Dòng ${idx + 1}: tổ hợp "${configKey}" bị trùng.`);
+        throw new BadRequestException(
+          `Dòng ${idx + 1}: tổ hợp "${configKey}" bị trùng.`,
+        );
       }
       seen.add(configKey);
       return {
@@ -1272,7 +1482,9 @@ export class ProductService {
     });
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.priceMatrixRow.deleteMany({ where: { pricingRuleVersionId: versionId } });
+      await tx.priceMatrixRow.deleteMany({
+        where: { pricingRuleVersionId: versionId },
+      });
       if (data.length > 0) {
         await tx.priceMatrixRow.createMany({ data });
       }
@@ -1295,7 +1507,9 @@ export class ProductService {
       include: { options: { orderBy: { displayOrder: 'asc' } } },
     });
     if (enumParams.length === 0) {
-      throw new BadRequestException('Sản phẩm chưa có thông số ENUM dùng cho báo giá.');
+      throw new BadRequestException(
+        'Sản phẩm chưa có thông số ENUM dùng cho báo giá.',
+      );
     }
     return enumParams;
   }
@@ -1310,7 +1524,9 @@ export class ProductService {
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
 
-    const enumParams = await this.loadEnumParamsForPricing(version.pricingRule.productId);
+    const enumParams = await this.loadEnumParamsForPricing(
+      version.pricingRule.productId,
+    );
 
     const columns = [
       ...enumParams.map((p) => ({ header: p.label, key: p.name, width: 20 })),
@@ -1338,13 +1554,19 @@ export class ProductService {
       const record: Record<string, unknown> = {};
       for (const param of enumParams) {
         const option = param.options.find((o) => o.value === combo[param.name]);
-        record[param.name] = option?.label ?? option?.value ?? combo[param.name];
+        record[param.name] =
+          option?.label ?? option?.value ?? combo[param.name];
       }
       record.unitPrice = existing ? Number(existing.unitPrice) : '';
       return record;
     });
 
-    await this.excel.export(res, `mau-bang-gia-v${version.versionNumber}`, columns, rows);
+    await this.excel.export(
+      res,
+      `mau-bang-gia-v${version.versionNumber}`,
+      columns,
+      rows,
+    );
   }
 
   /**
@@ -1359,14 +1581,22 @@ export class ProductService {
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể import Bảng giá vào phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể import Bảng giá vào phiên bản DRAFT.',
+      );
     }
 
-    const enumParams = await this.loadEnumParamsForPricing(version.pricingRule.productId);
+    const enumParams = await this.loadEnumParamsForPricing(
+      version.pricingRule.productId,
+    );
     const sheet = await this.excel.readFile(buffer);
 
     const errors: { row: number; message: string }[] = [];
-    const rows: { dimensions: Record<string, string>; unitPrice: number; displayOrder: number }[] = [];
+    const rows: {
+      dimensions: Record<string, string>;
+      unitPrice: number;
+      displayOrder: number;
+    }[] = [];
     const seenKeys = new Set<string>();
     const priceCellIdx = enumParams.length + 1;
 
@@ -1374,7 +1604,8 @@ export class ProductService {
       if (rowNumber === 1) return;
       const cell = (col: number) => String(row.getCell(col).value ?? '').trim();
 
-      const isEmptyRow = enumParams.every((_, i) => !cell(i + 1)) && !cell(priceCellIdx);
+      const isEmptyRow =
+        enumParams.every((_, i) => !cell(i + 1)) && !cell(priceCellIdx);
       if (isEmptyRow) return;
 
       const dimensions: Record<string, string> = {};
@@ -1382,15 +1613,22 @@ export class ProductService {
       enumParams.forEach((param, i) => {
         const text = cell(i + 1);
         if (!text) {
-          errors.push({ row: rowNumber, message: `Thiếu giá trị cho "${param.label}".` });
+          errors.push({
+            row: rowNumber,
+            message: `Thiếu giá trị cho "${param.label}".`,
+          });
           hasError = true;
           return;
         }
         const match =
           param.options.find((o) => o.value === text) ??
-          param.options.find((o) => (o.label ?? o.value).toLowerCase() === text.toLowerCase());
+          param.options.find(
+            (o) => (o.label ?? o.value).toLowerCase() === text.toLowerCase(),
+          );
         if (!match) {
-          const validLabels = param.options.map((o) => o.label ?? o.value).join(', ');
+          const validLabels = param.options
+            .map((o) => o.label ?? o.value)
+            .join(', ');
           errors.push({
             row: rowNumber,
             message: `Giá trị "${text}" không hợp lệ cho "${param.label}" (hợp lệ: ${validLabels}).`,
@@ -1404,7 +1642,10 @@ export class ProductService {
       const priceText = cell(priceCellIdx);
       const unitPrice = Number(priceText);
       if (!priceText || isNaN(unitPrice) || unitPrice <= 0) {
-        errors.push({ row: rowNumber, message: `Đơn giá "${priceText}" không hợp lệ — phải là số lớn hơn 0.` });
+        errors.push({
+          row: rowNumber,
+          message: `Đơn giá "${priceText}" không hợp lệ — phải là số lớn hơn 0.`,
+        });
         hasError = true;
       }
 
@@ -1415,7 +1656,10 @@ export class ProductService {
         .map(([k, v]) => `${k}=${v}`)
         .join('|');
       if (seenKeys.has(configKey)) {
-        errors.push({ row: rowNumber, message: `Tổ hợp "${configKey}" bị trùng với dòng khác trong file.` });
+        errors.push({
+          row: rowNumber,
+          message: `Tổ hợp "${configKey}" bị trùng với dòng khác trong file.`,
+        });
         return;
       }
       seenKeys.add(configKey);
@@ -1433,16 +1677,23 @@ export class ProductService {
     });
     if (!item) throw new NotFoundException('Rule Item không tồn tại.');
     if (item.pricingRuleVersion.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể xoá Rule Item trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể xoá Rule Item trong phiên bản DRAFT.',
+      );
     }
     return this.prisma.pricingRuleItem.delete({ where: { id } });
   }
 
-  async previewPrice(versionId: string, inputParams: Record<string, number | string>) {
+  async previewPrice(
+    versionId: string,
+    inputParams: Record<string, number | string>,
+  ) {
     // Preview dùng đúng pipeline của Pricing Engine (kể cả version DRAFT) —
     // trước đây preview tự tính riêng nên lệch với giá thật (bug, fix 10/07/2026).
     const config = await this.pricingEngine.loadConfigForVersion(versionId);
-    const result = this.pricingEngine.calculatePrice(config, { ...inputParams });
+    const result = this.pricingEngine.calculatePrice(config, {
+      ...inputParams,
+    });
 
     return {
       inputParams,
@@ -1486,7 +1737,12 @@ export class ProductService {
           orderBy: { displayOrder: 'asc' },
           include: {
             material: {
-              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                unit: { select: { id: true, name: true } },
+              },
             },
           },
         },
@@ -1497,11 +1753,18 @@ export class ProductService {
     return version;
   }
 
-  async createMaterialRequirementVersion(productId: string, dto: CreateMaterialRequirementVersionDto) {
+  async createMaterialRequirementVersion(
+    productId: string,
+    dto: CreateMaterialRequirementVersionDto,
+  ) {
     await this.findOneProduct(productId);
-    let req = await this.prisma.materialRequirement.findUnique({ where: { productId } });
+    let req = await this.prisma.materialRequirement.findUnique({
+      where: { productId },
+    });
     if (!req) {
-      req = await this.prisma.materialRequirement.create({ data: { productId } });
+      req = await this.prisma.materialRequirement.create({
+        data: { productId },
+      });
     }
 
     const last = await this.prisma.materialRequirementVersion.findFirst({
@@ -1523,7 +1786,12 @@ export class ProductService {
           orderBy: { displayOrder: 'asc' },
           include: {
             material: {
-              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                unit: { select: { id: true, name: true } },
+              },
             },
           },
         },
@@ -1532,8 +1800,13 @@ export class ProductService {
     });
   }
 
-  async updateMaterialRequirementVersion(id: string, dto: UpdateMaterialRequirementVersionDto) {
-    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id } });
+  async updateMaterialRequirementVersion(
+    id: string,
+    dto: UpdateMaterialRequirementVersionDto,
+  ) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể chỉnh sửa phiên bản DRAFT.');
@@ -1551,7 +1824,12 @@ export class ProductService {
           orderBy: { displayOrder: 'asc' },
           include: {
             material: {
-              select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                unit: { select: { id: true, name: true } },
+              },
             },
           },
         },
@@ -1570,7 +1848,9 @@ export class ProductService {
       throw new BadRequestException('Phiên bản này đã đang hoạt động.');
     }
     if (version.items.length === 0) {
-      throw new BadRequestException('Phiên bản cần có ít nhất một Item trước khi kích hoạt.');
+      throw new BadRequestException(
+        'Phiên bản cần có ít nhất một Item trước khi kích hoạt.',
+      );
     }
     for (const item of version.items) {
       this.validateExpression(item.expression);
@@ -1578,7 +1858,10 @@ export class ProductService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.materialRequirementVersion.updateMany({
-        where: { materialRequirementId: version.materialRequirementId, status: 'ACTIVE' },
+        where: {
+          materialRequirementId: version.materialRequirementId,
+          status: 'ACTIVE',
+        },
         data: { status: 'ARCHIVED' },
       });
       return tx.materialRequirementVersion.update({
@@ -1589,7 +1872,12 @@ export class ProductService {
             orderBy: { displayOrder: 'asc' },
             include: {
               material: {
-                select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  unit: { select: { id: true, name: true } },
+                },
               },
             },
           },
@@ -1600,7 +1888,9 @@ export class ProductService {
   }
 
   async deleteMaterialRequirementVersion(id: string) {
-    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id } });
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
       throw new BadRequestException('Chỉ có thể xoá phiên bản DRAFT.');
@@ -1663,7 +1953,12 @@ export class ProductService {
             orderBy: { displayOrder: 'asc' },
             include: {
               material: {
-                select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  unit: { select: { id: true, name: true } },
+                },
               },
             },
           },
@@ -1673,16 +1968,27 @@ export class ProductService {
     });
   }
 
-  async createMaterialRequirementItem(versionId: string, dto: CreateMaterialRequirementItemDto) {
-    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id: versionId } });
+  async createMaterialRequirementItem(
+    versionId: string,
+    dto: CreateMaterialRequirementItemDto,
+  ) {
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể thêm Item vào phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể thêm Item vào phiên bản DRAFT.',
+      );
     }
-    if (!dto.materialId) throw new BadRequestException('Nguyên liệu là bắt buộc.');
-    const material = await this.prisma.material.findUnique({ where: { id: dto.materialId } });
+    if (!dto.materialId)
+      throw new BadRequestException('Nguyên liệu là bắt buộc.');
+    const material = await this.prisma.material.findUnique({
+      where: { id: dto.materialId },
+    });
     if (!material) throw new NotFoundException('Nguyên liệu không tồn tại.');
-    if (!dto.expression?.trim()) throw new BadRequestException('Expression là bắt buộc.');
+    if (!dto.expression?.trim())
+      throw new BadRequestException('Expression là bắt buộc.');
     this.validateExpression(dto.expression.trim());
     if (dto.condition?.trim()) {
       this.validateExpression(dto.condition.trim());
@@ -1695,7 +2001,8 @@ export class ProductService {
     }
 
     const roundType = dto.roundStep && dto.roundStep > 0 ? 'CEIL' : 'NONE';
-    const roundValue = dto.roundStep && dto.roundStep > 0 ? dto.roundStep : null;
+    const roundValue =
+      dto.roundStep && dto.roundStep > 0 ? dto.roundStep : null;
 
     return this.prisma.materialRequirementItem.create({
       data: {
@@ -1704,31 +2011,43 @@ export class ProductService {
         expression: dto.expression.trim(),
         condition: dto.condition?.trim() || null,
         wastePercent: dto.wastePercent ?? 0,
-        roundType: roundType as RoundType,
+        roundType: roundType,
         roundValue: roundValue,
         note: dto.note?.trim() || null,
         displayOrder: dto.displayOrder ?? 0,
       },
       include: {
         material: {
-          select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            unit: { select: { id: true, name: true } },
+          },
         },
       },
     });
   }
 
-  async updateMaterialRequirementItem(id: string, dto: UpdateMaterialRequirementItemDto) {
+  async updateMaterialRequirementItem(
+    id: string,
+    dto: UpdateMaterialRequirementItemDto,
+  ) {
     const item = await this.prisma.materialRequirementItem.findUnique({
       where: { id },
       include: { materialRequirementVersion: { select: { status: true } } },
     });
     if (!item) throw new NotFoundException('Item không tồn tại.');
     if (item.materialRequirementVersion.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể chỉnh sửa Item trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể chỉnh sửa Item trong phiên bản DRAFT.',
+      );
     }
 
     if (dto.materialId !== undefined) {
-      const mat = await this.prisma.material.findUnique({ where: { id: dto.materialId } });
+      const mat = await this.prisma.material.findUnique({
+        where: { id: dto.materialId },
+      });
       if (!mat) throw new NotFoundException('Nguyên liệu không tồn tại.');
     }
     if (dto.expression !== undefined && dto.expression.trim()) {
@@ -1745,9 +2064,11 @@ export class ProductService {
     }
 
     const data: Prisma.MaterialRequirementItemUpdateInput = {};
-    if (dto.materialId !== undefined) data.material = { connect: { id: dto.materialId } };
+    if (dto.materialId !== undefined)
+      data.material = { connect: { id: dto.materialId } };
     if (dto.expression !== undefined) data.expression = dto.expression.trim();
-    if (dto.condition !== undefined) data.condition = dto.condition?.trim() || null;
+    if (dto.condition !== undefined)
+      data.condition = dto.condition?.trim() || null;
     if (dto.wastePercent !== undefined) data.wastePercent = dto.wastePercent;
     if (dto.roundStep !== undefined) {
       data.roundType = dto.roundStep > 0 ? 'CEIL' : 'NONE';
@@ -1761,7 +2082,12 @@ export class ProductService {
       data,
       include: {
         material: {
-          select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            unit: { select: { id: true, name: true } },
+          },
         },
       },
     });
@@ -1774,7 +2100,9 @@ export class ProductService {
     });
     if (!item) throw new NotFoundException('Item không tồn tại.');
     if (item.materialRequirementVersion.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể xoá Item trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể xoá Item trong phiên bản DRAFT.',
+      );
     }
     return this.prisma.materialRequirementItem.delete({ where: { id } });
   }
@@ -1809,7 +2137,12 @@ export class ProductService {
       note: item.note ?? '',
     }));
 
-    await this.excel.export(res, `mau-dinh-muc-v${version.versionNumber}`, columns, rows);
+    await this.excel.export(
+      res,
+      `mau-dinh-muc-v${version.versionNumber}`,
+      columns,
+      rows,
+    );
   }
 
   /**
@@ -1817,14 +2150,22 @@ export class ProductService {
    * với Material có sẵn, KHÔNG tự tạo Material mới nếu mã không tồn tại.
    */
   async previewMaterialRequirementImport(versionId: string, buffer: Buffer) {
-    const version = await this.prisma.materialRequirementVersion.findUnique({ where: { id: versionId } });
+    const version = await this.prisma.materialRequirementVersion.findUnique({
+      where: { id: versionId },
+    });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể import Định mức vào phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể import Định mức vào phiên bản DRAFT.',
+      );
     }
 
-    const materials = await this.prisma.material.findMany({ select: { id: true, code: true, name: true } });
-    const materialByCode = new Map(materials.map((m) => [m.code.toLowerCase(), m]));
+    const materials = await this.prisma.material.findMany({
+      select: { id: true, code: true, name: true },
+    });
+    const materialByCode = new Map(
+      materials.map((m) => [m.code.toLowerCase(), m]),
+    );
 
     const sheet = await this.excel.readFile(buffer);
     const errors: { row: number; message: string }[] = [];
@@ -1846,7 +2187,9 @@ export class ProductService {
       const cell = (col: number) => String(row.getCell(col).value ?? '').trim();
       const numCell = (col: number) => {
         const v = row.getCell(col).value;
-        return v !== null && v !== undefined && v !== '' ? Number(v) : undefined;
+        return v !== null && v !== undefined && v !== ''
+          ? Number(v)
+          : undefined;
       };
 
       const materialCode = cell(1);
@@ -1857,7 +2200,12 @@ export class ProductService {
       const note = cell(6);
 
       const isEmptyRow =
-        !materialCode && !expression && !condition && wastePercent === undefined && roundStep === undefined && !note;
+        !materialCode &&
+        !expression &&
+        !condition &&
+        wastePercent === undefined &&
+        roundStep === undefined &&
+        !note;
       if (isEmptyRow) return;
 
       if (!materialCode) {
@@ -1866,11 +2214,17 @@ export class ProductService {
       }
       const material = materialByCode.get(materialCode.toLowerCase());
       if (!material) {
-        errors.push({ row: rowNumber, message: `Mã vật tư "${materialCode}" không tồn tại.` });
+        errors.push({
+          row: rowNumber,
+          message: `Mã vật tư "${materialCode}" không tồn tại.`,
+        });
         return;
       }
       if (seenMaterialIds.has(material.id)) {
-        errors.push({ row: rowNumber, message: `Vật tư "${materialCode}" bị trùng với dòng khác trong file.` });
+        errors.push({
+          row: rowNumber,
+          message: `Vật tư "${materialCode}" bị trùng với dòng khác trong file.`,
+        });
         return;
       }
 
@@ -1881,14 +2235,20 @@ export class ProductService {
       try {
         this.validateExpression(expression);
       } catch (e) {
-        errors.push({ row: rowNumber, message: `Expression lỗi: ${(e as Error).message}` });
+        errors.push({
+          row: rowNumber,
+          message: `Expression lỗi: ${(e as Error).message}`,
+        });
         return;
       }
       if (condition) {
         try {
           this.validateExpression(condition);
         } catch (e) {
-          errors.push({ row: rowNumber, message: `Condition lỗi: ${(e as Error).message}` });
+          errors.push({
+            row: rowNumber,
+            message: `Condition lỗi: ${(e as Error).message}`,
+          });
           return;
         }
       }
@@ -1939,7 +2299,9 @@ export class ProductService {
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     if (version.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể sửa Định mức trong phiên bản DRAFT.');
+      throw new BadRequestException(
+        'Chỉ có thể sửa Định mức trong phiên bản DRAFT.',
+      );
     }
     if (!rows || rows.length === 0) {
       throw new BadRequestException('Danh sách vật tư trống.');
@@ -1947,12 +2309,18 @@ export class ProductService {
 
     const seen = new Set<string>();
     for (const [idx, row] of rows.entries()) {
-      if (!row.materialId) throw new BadRequestException(`Dòng ${idx + 1}: thiếu materialId.`);
+      if (!row.materialId)
+        throw new BadRequestException(`Dòng ${idx + 1}: thiếu materialId.`);
       if (seen.has(row.materialId)) {
-        throw new BadRequestException(`Dòng ${idx + 1}: vật tư bị trùng trong danh sách.`);
+        throw new BadRequestException(
+          `Dòng ${idx + 1}: vật tư bị trùng trong danh sách.`,
+        );
       }
       seen.add(row.materialId);
-      if (!row.expression?.trim()) throw new BadRequestException(`Dòng ${idx + 1}: Expression là bắt buộc.`);
+      if (!row.expression?.trim())
+        throw new BadRequestException(
+          `Dòng ${idx + 1}: Expression là bắt buộc.`,
+        );
       this.validateExpression(row.expression.trim());
       if (row.condition?.trim()) this.validateExpression(row.condition.trim());
     }
@@ -1964,18 +2332,25 @@ export class ProductService {
     const validIds = new Set(validMaterials.map((m) => m.id));
     for (const row of rows) {
       if (!validIds.has(row.materialId)) {
-        throw new BadRequestException(`Nguyên liệu "${row.materialId}" không tồn tại.`);
+        throw new BadRequestException(
+          `Nguyên liệu "${row.materialId}" không tồn tại.`,
+        );
       }
     }
 
-    const existingByMaterialId = new Map(version.items.map((i) => [i.materialId, i]));
+    const existingByMaterialId = new Map(
+      version.items.map((i) => [i.materialId, i]),
+    );
     let nextDisplayOrder =
-      version.items.length > 0 ? Math.max(...version.items.map((i) => i.displayOrder)) + 1 : 0;
+      version.items.length > 0
+        ? Math.max(...version.items.map((i) => i.displayOrder)) + 1
+        : 0;
 
     await this.prisma.$transaction(async (tx) => {
       for (const row of rows) {
         const roundType = row.roundStep && row.roundStep > 0 ? 'CEIL' : 'NONE';
-        const roundValue = row.roundStep && row.roundStep > 0 ? row.roundStep : null;
+        const roundValue =
+          row.roundStep && row.roundStep > 0 ? row.roundStep : null;
         const existing = existingByMaterialId.get(row.materialId);
         if (existing) {
           await tx.materialRequirementItem.update({
@@ -1984,7 +2359,7 @@ export class ProductService {
               expression: row.expression.trim(),
               condition: row.condition?.trim() || null,
               wastePercent: row.wastePercent ?? 0,
-              roundType: roundType as RoundType,
+              roundType: roundType,
               roundValue,
               note: row.note?.trim() || null,
             },
@@ -1997,7 +2372,7 @@ export class ProductService {
               expression: row.expression.trim(),
               condition: row.condition?.trim() || null,
               wastePercent: row.wastePercent ?? 0,
-              roundType: roundType as RoundType,
+              roundType: roundType,
               roundValue,
               note: row.note?.trim() || null,
               displayOrder: nextDisplayOrder++,
@@ -2013,7 +2388,14 @@ export class ProductService {
         items: {
           orderBy: { displayOrder: 'asc' },
           include: {
-            material: { select: { id: true, name: true, code: true, unit: { select: { id: true, name: true } } } },
+            material: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                unit: { select: { id: true, name: true } },
+              },
+            },
           },
         },
         materialRequirement: { select: { productId: true } },
@@ -2021,7 +2403,10 @@ export class ProductService {
     });
   }
 
-  async previewMaterial(versionId: string, inputParams: Record<string, number | string>) {
+  async previewMaterial(
+    versionId: string,
+    inputParams: Record<string, number | string>,
+  ) {
     // Preview dùng đúng pipeline của BOM Engine (Filter theo condition →
     // Formula → Waste → Round) — cùng một logic với lúc Approve sinh OrderBOM.
     const config = await this.bomEngine.loadConfigForVersion(versionId);
@@ -2055,7 +2440,9 @@ export class ProductService {
   // Export
   // ──────────────────────────────────────
 
-  async exportProduct(productId: string): Promise<{ buffer: Buffer; code: string }> {
+  async exportProduct(
+    productId: string,
+  ): Promise<{ buffer: Buffer; code: string }> {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
       include: {
@@ -2174,10 +2561,18 @@ export class ProductService {
     const activePriceVersion = pricingRule?.versions?.[0] ?? null;
     if (activePriceVersion) {
       const metaRows = [
-        ['Phiên bản', `v${activePriceVersion.versionNumber}${activePriceVersion.name ? ` — ${activePriceVersion.name}` : ''}`],
+        [
+          'Phiên bản',
+          `v${activePriceVersion.versionNumber}${activePriceVersion.name ? ` — ${activePriceVersion.name}` : ''}`,
+        ],
         ['Expression', activePriceVersion.expression ?? ''],
         ['Round Type', activePriceVersion.priceRoundType],
-        ['Round Value', activePriceVersion.priceRoundValue !== null ? Number(activePriceVersion.priceRoundValue) : ''],
+        [
+          'Round Value',
+          activePriceVersion.priceRoundValue !== null
+            ? Number(activePriceVersion.priceRoundValue)
+            : '',
+        ],
         ['Ghi chú', activePriceVersion.note ?? ''],
       ];
       metaRows.forEach(([label, value]) => {
@@ -2187,7 +2582,12 @@ export class ProductService {
 
       if (activePriceVersion.items.length > 0) {
         priceSheet.addRow([]);
-        const headerRow = priceSheet.addRow(['Loại Rule', 'Thông số áp dụng', 'Giá trị tối thiểu', 'Mô tả']);
+        const headerRow = priceSheet.addRow([
+          'Loại Rule',
+          'Thông số áp dụng',
+          'Giá trị tối thiểu',
+          'Mô tả',
+        ]);
         headerRow.font = { bold: true };
         for (const item of activePriceVersion.items) {
           priceSheet.addRow([
@@ -2209,7 +2609,10 @@ export class ProductService {
     const activeMatVersion = materialReq?.versions?.[0] ?? null;
     if (activeMatVersion) {
       const matMetaRows = [
-        ['Phiên bản', `v${activeMatVersion.versionNumber}${activeMatVersion.name ? ` — ${activeMatVersion.name}` : ''}`],
+        [
+          'Phiên bản',
+          `v${activeMatVersion.versionNumber}${activeMatVersion.name ? ` — ${activeMatVersion.name}` : ''}`,
+        ],
         ['Ghi chú', activeMatVersion.note ?? ''],
       ];
       matMetaRows.forEach(([label, value]) => {
@@ -2220,7 +2623,13 @@ export class ProductService {
       if (activeMatVersion.items.length > 0) {
         matSheet.addRow([]);
         const matHeader = matSheet.addRow([
-          'Nguyên liệu', 'Mã', 'Đơn vị', 'Expression', 'Hao hụt (%)', 'Round Step', 'Ghi chú',
+          'Nguyên liệu',
+          'Mã',
+          'Đơn vị',
+          'Expression',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
         ]);
         matHeader.font = { bold: true };
         matSheet.getColumn(4).width = 50;
@@ -2251,7 +2660,9 @@ export class ProductService {
   private validateExpression(expression: string): void {
     const result = validateExpressionSyntax(expression);
     if (!result.valid) {
-      throw new BadRequestException(`Cú pháp biểu thức không hợp lệ: ${result.error}`);
+      throw new BadRequestException(
+        `Cú pháp biểu thức không hợp lệ: ${result.error}`,
+      );
     }
   }
 

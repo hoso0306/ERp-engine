@@ -57,9 +57,9 @@ describe('AuthService', () => {
   describe('login() — Task 01', () => {
     it('rejects with a generic message when the email does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
-      await expect(service.login({ email: 'nope@erp.local', password: 'x' }, null)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.login({ email: 'nope@erp.local', password: 'x' }, null),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects with the SAME generic message when the password is wrong (no user-enumeration)', async () => {
@@ -75,7 +75,10 @@ describe('AuthService', () => {
         notFoundMessage = (e as Error).message;
       }
       try {
-        await service.login({ email: 'owner@erp.local', password: 'wrong' }, null);
+        await service.login(
+          { email: 'owner@erp.local', password: 'wrong' },
+          null,
+        );
       } catch (e) {
         wrongPasswordMessage = (e as Error).message;
       }
@@ -99,7 +102,10 @@ describe('AuthService', () => {
         makeUser({ lastLoginAt: new Date(), lastLoginIp: '1.2.3.4' }),
       );
 
-      const result = await service.login({ email: 'owner@erp.local', password: 'correct' }, '1.2.3.4');
+      const result = await service.login(
+        { email: 'owner@erp.local', password: 'correct' },
+        '1.2.3.4',
+      );
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
@@ -116,9 +122,15 @@ describe('AuthService', () => {
       prisma.user.update.mockResolvedValue(makeUser());
       settingService.getNumberValue.mockResolvedValue(45);
 
-      await service.login({ email: 'owner@erp.local', password: 'correct' }, null);
+      await service.login(
+        { email: 'owner@erp.local', password: 'correct' },
+        null,
+      );
 
-      expect(settingService.getNumberValue).toHaveBeenCalledWith('Security', 'sessionTimeout');
+      expect(settingService.getNumberValue).toHaveBeenCalledWith(
+        'Security',
+        'sessionTimeout',
+      );
       expect(jwtService.signAsync).toHaveBeenCalledWith(
         { sub: 'user-1' },
         { expiresIn: '45m' },
@@ -129,7 +141,10 @@ describe('AuthService', () => {
   describe('changePassword() — Task 03', () => {
     it('rejects when newPassword is too short', async () => {
       await expect(
-        service.changePassword('user-1', { oldPassword: 'old', newPassword: '123' }),
+        service.changePassword('user-1', {
+          oldPassword: 'old',
+          newPassword: '123',
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -137,20 +152,31 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
       await expect(
-        service.changePassword('user-1', { oldPassword: 'wrong', newPassword: 'newpass123' }),
+        service.changePassword('user-1', {
+          oldPassword: 'wrong',
+          newPassword: 'newpass123',
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('sets mustChangePassword = false after a successful change', async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser({ mustChangePassword: true }));
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ mustChangePassword: true }),
+      );
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       (bcrypt.hash as jest.Mock).mockResolvedValue('new-hashed-password');
 
-      await service.changePassword('user-1', { oldPassword: 'old', newPassword: 'newpass123' });
+      await service.changePassword('user-1', {
+        oldPassword: 'old',
+        newPassword: 'newpass123',
+      });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
-        data: { passwordHash: 'new-hashed-password', mustChangePassword: false },
+        data: {
+          passwordHash: 'new-hashed-password',
+          mustChangePassword: false,
+        },
       });
     });
   });

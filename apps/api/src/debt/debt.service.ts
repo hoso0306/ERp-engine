@@ -193,7 +193,10 @@ export class DebtService {
     }
 
     const validPaymentStatuses = Object.values(PaymentStatus) as string[];
-    if (query.paymentStatus && validPaymentStatuses.includes(query.paymentStatus)) {
+    if (
+      query.paymentStatus &&
+      validPaymentStatuses.includes(query.paymentStatus)
+    ) {
       salesOrderWhere.paymentStatus = query.paymentStatus as PaymentStatus;
     }
 
@@ -206,7 +209,11 @@ export class DebtService {
     if (query.risk && validRisks.includes(query.risk as RiskLevel)) {
       const risk = query.risk as RiskLevel;
       if (risk === 'LOW') {
-        where.dueDate = { not: null, lt: now, gte: new Date(now.getTime() - 7 * MS_PER_DAY) };
+        where.dueDate = {
+          not: null,
+          lt: now,
+          gte: new Date(now.getTime() - 7 * MS_PER_DAY),
+        };
       } else if (risk === 'MEDIUM') {
         where.dueDate = {
           not: null,
@@ -214,7 +221,10 @@ export class DebtService {
           gte: new Date(now.getTime() - 30 * MS_PER_DAY),
         };
       } else {
-        where.dueDate = { not: null, lt: new Date(now.getTime() - 30 * MS_PER_DAY) };
+        where.dueDate = {
+          not: null,
+          lt: new Date(now.getTime() - 30 * MS_PER_DAY),
+        };
       }
     } else if (query.overdue === 'true') {
       where.dueDate = this.overdueWhere(now);
@@ -259,7 +269,10 @@ export class DebtService {
   // Debt Monitoring (Task 08) — Derived, không lưu DB
   // ─────────────────────────────────────────────────────
 
-  private computePaymentStatus(paidAmount: number, totalAmount: number): PaymentStatus {
+  private computePaymentStatus(
+    paidAmount: number,
+    totalAmount: number,
+  ): PaymentStatus {
     if (paidAmount <= 0) return PaymentStatus.UNPAID;
     if (paidAmount >= totalAmount) return PaymentStatus.PAID;
     return PaymentStatus.PARTIALLY_PAID;
@@ -292,12 +305,18 @@ export class DebtService {
     return { salesOrder: { status: { not: SalesOrderStatus.CANCELLED } } };
   }
 
-  private overdueWhere(now: Date = new Date()): Prisma.ReceivableWhereInput['dueDate'] {
+  private overdueWhere(
+    now: Date = new Date(),
+  ): Prisma.ReceivableWhereInput['dueDate'] {
     return { not: null, lt: now };
   }
 
   private async attachCustomerInfo(
-    grouped: { customerId: string; _sum: { remainingAmount: Prisma.Decimal | null }; _count?: { _all: number } }[],
+    grouped: {
+      customerId: string;
+      _sum: { remainingAmount: Prisma.Decimal | null };
+      _count?: { _all: number };
+    }[],
   ) {
     const customers = await this.prisma.customer.findMany({
       where: { id: { in: grouped.map((g) => g.customerId) } },
@@ -332,7 +351,12 @@ export class DebtService {
 
     const exceeded = new Map<
       string,
-      { customerId: string; customerName: string; totalRemaining: number; debtLimit: number }
+      {
+        customerId: string;
+        customerName: string;
+        totalRemaining: number;
+        debtLimit: number;
+      }
     >();
 
     for (const g of grouped) {
@@ -383,7 +407,9 @@ export class DebtService {
   // limit mặc định đọc Settings.Dashboard.topCustomers (Task 04, 010-cai-dat.md)
   // nếu caller không truyền — không hard-code.
   async getOverdueCustomers(limit?: number) {
-    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
+    const take =
+      limit ??
+      (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
     const grouped = await this.prisma.receivable.groupBy({
       by: ['customerId'],
       where: { ...this.notCancelledFilter(), dueDate: this.overdueWhere() },
@@ -400,7 +426,12 @@ export class DebtService {
   // caller không truyền `days`, đọc Settings.Dashboard.upcomingDueDays qua
   // SettingService (dùng chung một nơi khai báo duy nhất — xem setting.md).
   async getUpcomingDueReceivables(days?: number) {
-    const windowDays = days ?? (await this.settingService.getNumberValue('Dashboard', 'upcomingDueDays'));
+    const windowDays =
+      days ??
+      (await this.settingService.getNumberValue(
+        'Dashboard',
+        'upcomingDueDays',
+      ));
     const now = new Date();
     const until = new Date(now.getTime() + windowDays * MS_PER_DAY);
 
@@ -421,7 +452,9 @@ export class DebtService {
 
   // limit mặc định đọc Settings.Dashboard.topCustomers nếu không truyền.
   async getTopDebtors(limit?: number) {
-    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
+    const take =
+      limit ??
+      (await this.settingService.getNumberValue('Dashboard', 'topCustomers'));
     const grouped = await this.prisma.receivable.groupBy({
       by: ['customerId'],
       where: this.notCancelledFilter(),
@@ -441,20 +474,24 @@ export class DebtService {
   async getOwnerDashboard() {
     const overdue30Cutoff = new Date(Date.now() - 30 * MS_PER_DAY);
 
-    const [summary, overdueGrouped, overdue30Grouped, exceeded, topDebtors] = await Promise.all([
-      this.getDashboardSummary(),
-      this.prisma.receivable.groupBy({
-        by: ['customerId'],
-        where: { ...this.notCancelledFilter(), dueDate: this.overdueWhere() },
-      }),
-      this.prisma.receivable.groupBy({
-        by: ['customerId'],
-        where: { ...this.notCancelledFilter(), dueDate: this.overdueWhere(overdue30Cutoff) },
-        _sum: { remainingAmount: true },
-      }),
-      this.getCreditLimitExceededCustomers(),
-      this.getTopDebtors(),
-    ]);
+    const [summary, overdueGrouped, overdue30Grouped, exceeded, topDebtors] =
+      await Promise.all([
+        this.getDashboardSummary(),
+        this.prisma.receivable.groupBy({
+          by: ['customerId'],
+          where: { ...this.notCancelledFilter(), dueDate: this.overdueWhere() },
+        }),
+        this.prisma.receivable.groupBy({
+          by: ['customerId'],
+          where: {
+            ...this.notCancelledFilter(),
+            dueDate: this.overdueWhere(overdue30Cutoff),
+          },
+          _sum: { remainingAmount: true },
+        }),
+        this.getCreditLimitExceededCustomers(),
+        this.getTopDebtors(),
+      ]);
 
     return {
       totalReceivable: summary.totalRemaining,

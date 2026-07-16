@@ -1,6 +1,16 @@
 import {
-  Controller, Get, Post, Patch, Put, Delete,
-  Param, Body, Res, UploadedFile, UseInterceptors, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -102,8 +112,14 @@ export class MaterialRequirementController {
 
   @Get('versions/:versionId/items/template')
   @RequirePermission('product.update')
-  exportItemsTemplate(@Param('versionId') versionId: string, @Res() res: Response) {
-    return this.productService.exportMaterialRequirementTemplate(versionId, res);
+  exportItemsTemplate(
+    @Param('versionId') versionId: string,
+    @Res() res: Response,
+  ) {
+    return this.productService.exportMaterialRequirementTemplate(
+      versionId,
+      res,
+    );
   }
 
   @Post('versions/:versionId/items/import-preview')
@@ -113,7 +129,10 @@ export class MaterialRequirementController {
     @Param('versionId') versionId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.productService.previewMaterialRequirementImport(versionId, file.buffer);
+    return this.productService.previewMaterialRequirementImport(
+      versionId,
+      file.buffer,
+    );
   }
 
   @Put('versions/:versionId/items')
@@ -122,6 +141,9 @@ export class MaterialRequirementController {
     @Param('versionId') versionId: string,
     @Body() dto: BulkUpsertMaterialRequirementItemsDto,
   ) {
-    return this.productService.bulkUpsertMaterialRequirementItems(versionId, dto.rows ?? []);
+    return this.productService.bulkUpsertMaterialRequirementItems(
+      versionId,
+      dto.rows ?? [],
+    );
   }
 }

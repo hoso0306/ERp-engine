@@ -51,7 +51,9 @@ export class ProductionOrderService {
     if (query.search) {
       where.OR = [
         { code: { contains: query.search, mode: 'insensitive' } },
-        { salesOrder: { code: { contains: query.search, mode: 'insensitive' } } },
+        {
+          salesOrder: { code: { contains: query.search, mode: 'insensitive' } },
+        },
         {
           salesOrder: {
             customerName: { contains: query.search, mode: 'insensitive' },
@@ -112,9 +114,9 @@ export class ProductionOrderService {
   // SalesOrderItemParameter/OrderBOM theo salesOrderItemId (cùng cách
   // WarehouseService.issueForProductionOrder() đã làm) — không kèm giá vốn vì
   // Production không quan tâm chi phí (production.md).
-  private async attachSpecsAndBom<
-    T extends { salesOrderItemId: string },
-  >(items: T[]) {
+  private async attachSpecsAndBom<T extends { salesOrderItemId: string }>(
+    items: T[],
+  ) {
     const salesOrderItemIds = items.map((item) => item.salesOrderItemId);
     if (salesOrderItemIds.length === 0) return items;
 
@@ -263,12 +265,15 @@ export class ProductionOrderService {
       by: ['status'],
       _count: { _all: true },
     });
-    const countByStatus = new Map(grouped.map((g) => [g.status, g._count._all]));
+    const countByStatus = new Map(
+      grouped.map((g) => [g.status, g._count._all]),
+    );
 
     return {
       pending: countByStatus.get(ProductionOrderStatus.PENDING) ?? 0,
       inProduction: countByStatus.get(ProductionOrderStatus.IN_PRODUCTION) ?? 0,
-      completed: countByStatus.get(ProductionOrderStatus.PRODUCTION_COMPLETED) ?? 0,
+      completed:
+        countByStatus.get(ProductionOrderStatus.PRODUCTION_COMPLETED) ?? 0,
       cancelled: countByStatus.get(ProductionOrderStatus.CANCELLED) ?? 0,
     };
   }
@@ -306,12 +311,20 @@ export class ProductionOrderService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const totalCompleted = orders.reduce((s, o) => s + o.completedProductionOrders, 0);
-    const totalPlanned = orders.reduce((s, o) => s + o.totalProductionOrders, 0);
+    const totalCompleted = orders.reduce(
+      (s, o) => s + o.completedProductionOrders,
+      0,
+    );
+    const totalPlanned = orders.reduce(
+      (s, o) => s + o.totalProductionOrders,
+      0,
+    );
 
     return {
       overallProgressPercent:
-        totalPlanned > 0 ? Math.round((totalCompleted / totalPlanned) * 100) : 0,
+        totalPlanned > 0
+          ? Math.round((totalCompleted / totalPlanned) * 100)
+          : 0,
       orders: orders.map((o) => ({
         salesOrderId: o.id,
         salesOrderCode: o.code,
@@ -319,7 +332,9 @@ export class ProductionOrderService {
         total: o.totalProductionOrders,
         progressPercent:
           o.totalProductionOrders > 0
-            ? Math.round((o.completedProductionOrders / o.totalProductionOrders) * 100)
+            ? Math.round(
+                (o.completedProductionOrders / o.totalProductionOrders) * 100,
+              )
             : 0,
       })),
     };

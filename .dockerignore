@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+.git
+.claude
+workbench
+knowledge
+blueprints
+templates
+scripts
+docker
+**/.env
+**/.env.*
+!**/.env.example
+*.log

@@ -1,7 +1,14 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoundType, VersionStatus } from '@prisma/client';
-import { computeDerivedParams, DerivedParameterDef } from '../shared/derived-params';
+import {
+  computeDerivedParams,
+  DerivedParameterDef,
+} from '../shared/derived-params';
 import {
   evaluateNumber,
   evaluateBoolean,
@@ -149,7 +156,9 @@ export class BomEngineService {
       };
     }>;
     materialRequirement: {
-      product: { derivedParameters: Array<{ name: string; expression: string }> };
+      product: {
+        derivedParameters: Array<{ name: string; expression: string }>;
+      };
     };
   }): BomConfig {
     return {
@@ -163,13 +172,19 @@ export class BomEngineService {
         condition: i.condition,
         wastePercent: Number(i.wastePercent),
         roundType: i.roundType,
-        roundValue: i.roundValue !== null && i.roundValue !== undefined ? Number(i.roundValue) : null,
-        unitPrice: i.material.prices[0] ? Number(i.material.prices[0].price) : 0,
+        roundValue:
+          i.roundValue !== null && i.roundValue !== undefined
+            ? Number(i.roundValue)
+            : null,
+        unitPrice: i.material.prices[0]
+          ? Number(i.material.prices[0].price)
+          : 0,
       })),
-      derivedParameters: version.materialRequirement.product.derivedParameters.map((d) => ({
-        name: d.name,
-        expression: d.expression,
-      })),
+      derivedParameters:
+        version.materialRequirement.product.derivedParameters.map((d) => ({
+          name: d.name,
+          expression: d.expression,
+        })),
     };
   }
 
@@ -181,7 +196,11 @@ export class BomEngineService {
    * @param rawParams Tham số GỐC khách đặt (+ ENUM config) — không phải billable params.
    * @param quantity  Số lượng sản phẩm (1 cho preview theo đơn vị).
    */
-  calculateBom(config: BomConfig, rawParams: ExpressionContext, quantity = 1): BomCalcResult {
+  calculateBom(
+    config: BomConfig,
+    rawParams: ExpressionContext,
+    quantity = 1,
+  ): BomCalcResult {
     const ctx = computeDerivedParams(config.derivedParameters, rawParams);
 
     const lines: BomLine[] = [];
@@ -214,7 +233,11 @@ export class BomEngineService {
 
       // 3. Waste → Round → × quantity
       const wastedQty = baseQty * (1 + item.wastePercent / 100);
-      const finalQtyPerUnit = applyRounding(wastedQty, item.roundType, item.roundValue ?? 0);
+      const finalQtyPerUnit = applyRounding(
+        wastedQty,
+        item.roundType,
+        item.roundValue ?? 0,
+      );
       const qty = finalQtyPerUnit * quantity;
       const lineTotal = Math.round(qty * item.unitPrice);
       plannedCost += lineTotal;

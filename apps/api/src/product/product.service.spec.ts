@@ -40,7 +40,9 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
         create: jest.fn(),
       },
       materialRequirementItem: { createMany: jest.fn() },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -68,8 +70,20 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
       status: 'ACTIVE',
       note: 'ghi chú gốc',
       matrixRows: [
-        { id: 'row-1', dimensions: { maukhung: 'cafe' }, configKey: 'maukhung=cafe', unitPrice: 500000, displayOrder: 0 },
-        { id: 'row-2', dimensions: { maukhung: 'trang' }, configKey: 'maukhung=trang', unitPrice: 550000, displayOrder: 1 },
+        {
+          id: 'row-1',
+          dimensions: { maukhung: 'cafe' },
+          configKey: 'maukhung=cafe',
+          unitPrice: 500000,
+          displayOrder: 0,
+        },
+        {
+          id: 'row-2',
+          dimensions: { maukhung: 'trang' },
+          configKey: 'maukhung=trang',
+          unitPrice: 550000,
+          displayOrder: 1,
+        },
       ],
       items: [
         {
@@ -89,16 +103,25 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
 
     it('throws NotFoundException when source version does not exist', async () => {
       prisma.pricingRuleVersion.findUnique.mockResolvedValue(null);
-      await expect(service.duplicatePricingRuleVersion('missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.duplicatePricingRuleVersion('missing'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('creates a new DRAFT version with next versionNumber and copies all matrix rows and items, leaving the source untouched', async () => {
       prisma.pricingRuleVersion.findUnique.mockResolvedValueOnce(sourceVersion);
-      prisma.pricingRuleVersion.findFirst.mockResolvedValue({ versionNumber: 3 });
-      prisma.pricingRuleVersion.create.mockResolvedValue({ id: 'prv-new-1', versionNumber: 4 });
-      const finalResult = { id: 'prv-new-1', versionNumber: 4, status: 'DRAFT' };
+      prisma.pricingRuleVersion.findFirst.mockResolvedValue({
+        versionNumber: 3,
+      });
+      prisma.pricingRuleVersion.create.mockResolvedValue({
+        id: 'prv-new-1',
+        versionNumber: 4,
+      });
+      const finalResult = {
+        id: 'prv-new-1',
+        versionNumber: 4,
+        status: 'DRAFT',
+      };
       prisma.pricingRuleVersion.findUnique.mockResolvedValueOnce(finalResult);
 
       const result = await service.duplicatePricingRuleVersion('prv-active-1');
@@ -158,7 +181,9 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
       expect(result).toEqual(finalResult);
 
       // Source version record itself was never updated or deleted.
-      expect(prisma.pricingRuleVersion.create.mock.calls[0][0].data.pricingRuleId).toBe('pr-1');
+      expect(
+        prisma.pricingRuleVersion.create.mock.calls[0][0].data.pricingRuleId,
+      ).toBe('pr-1');
       expect(sourceVersion.status).toBe('ACTIVE');
       expect(sourceVersion.matrixRows).toHaveLength(2);
       expect(sourceVersion.items).toHaveLength(1);
@@ -167,9 +192,16 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
     it('skips createMany calls when source has no matrix rows or items', async () => {
       const emptySource = { ...sourceVersion, matrixRows: [], items: [] };
       prisma.pricingRuleVersion.findUnique.mockResolvedValueOnce(emptySource);
-      prisma.pricingRuleVersion.findFirst.mockResolvedValue({ versionNumber: 3 });
-      prisma.pricingRuleVersion.create.mockResolvedValue({ id: 'prv-new-2', versionNumber: 4 });
-      prisma.pricingRuleVersion.findUnique.mockResolvedValueOnce({ id: 'prv-new-2' });
+      prisma.pricingRuleVersion.findFirst.mockResolvedValue({
+        versionNumber: 3,
+      });
+      prisma.pricingRuleVersion.create.mockResolvedValue({
+        id: 'prv-new-2',
+        versionNumber: 4,
+      });
+      prisma.pricingRuleVersion.findUnique.mockResolvedValueOnce({
+        id: 'prv-new-2',
+      });
 
       await service.duplicatePricingRuleVersion('prv-active-1');
 
@@ -220,13 +252,27 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
     });
 
     it('creates a new DRAFT version with next versionNumber and copies all items, leaving the source untouched', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValueOnce(sourceVersion);
-      prisma.materialRequirementVersion.findFirst.mockResolvedValue({ versionNumber: 2 });
-      prisma.materialRequirementVersion.create.mockResolvedValue({ id: 'mrv-new-1', versionNumber: 3 });
-      const finalResult = { id: 'mrv-new-1', versionNumber: 3, status: 'DRAFT' };
-      prisma.materialRequirementVersion.findUnique.mockResolvedValueOnce(finalResult);
+      prisma.materialRequirementVersion.findUnique.mockResolvedValueOnce(
+        sourceVersion,
+      );
+      prisma.materialRequirementVersion.findFirst.mockResolvedValue({
+        versionNumber: 2,
+      });
+      prisma.materialRequirementVersion.create.mockResolvedValue({
+        id: 'mrv-new-1',
+        versionNumber: 3,
+      });
+      const finalResult = {
+        id: 'mrv-new-1',
+        versionNumber: 3,
+        status: 'DRAFT',
+      };
+      prisma.materialRequirementVersion.findUnique.mockResolvedValueOnce(
+        finalResult,
+      );
 
-      const result = await service.duplicateMaterialRequirementVersion('mrv-active-1');
+      const result =
+        await service.duplicateMaterialRequirementVersion('mrv-active-1');
 
       expect(prisma.materialRequirementVersion.create).toHaveBeenCalledWith({
         data: {

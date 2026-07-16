@@ -37,7 +37,10 @@ export class AuthGuard implements CanActivate {
 
     let payload: { sub: string; roleId?: string };
     try {
-      payload = await this.jwtService.verifyAsync<{ sub: string; roleId?: string }>(token);
+      payload = await this.jwtService.verifyAsync<{
+        sub: string;
+        roleId?: string;
+      }>(token);
     } catch {
       throw new UnauthorizedException('Token không hợp lệ hoặc đã hết hạn.');
     }
@@ -57,7 +60,10 @@ export class AuthGuard implements CanActivate {
     payload: { sub: string; roleId?: string },
   ): Promise<void> {
     try {
-      const refreshed = await this.authService.issueToken(payload.sub, payload.roleId);
+      const refreshed = await this.authService.issueToken(
+        payload.sub,
+        payload.roleId,
+      );
       const response = context.switchToHttp().getResponse<Response>();
       response.setHeader('X-Refreshed-Token', refreshed);
     } catch {

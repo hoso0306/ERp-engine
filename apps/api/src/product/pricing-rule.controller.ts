@@ -1,6 +1,15 @@
 import {
-  Controller, Get, Post, Patch, Delete,
-  Body, Param, Res, UploadedFile, UseInterceptors, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -111,7 +120,10 @@ export class PricingRuleController {
 
   @Get('versions/:versionId/matrix/template')
   @RequirePermission('product.update')
-  exportMatrixTemplate(@Param('versionId') versionId: string, @Res() res: Response) {
+  exportMatrixTemplate(
+    @Param('versionId') versionId: string,
+    @Res() res: Response,
+  ) {
     return this.productService.exportPriceMatrixTemplate(versionId, res);
   }
 

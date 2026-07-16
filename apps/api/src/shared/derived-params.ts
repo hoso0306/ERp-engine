@@ -30,7 +30,10 @@ export function coerceParameters(
   parameters: Array<{ name: string; value: string }>,
   enumParamNames?: string[] | Set<string>,
 ): ExpressionContext {
-  const enumNames = enumParamNames instanceof Set ? enumParamNames : new Set(enumParamNames ?? []);
+  const enumNames =
+    enumParamNames instanceof Set
+      ? enumParamNames
+      : new Set(enumParamNames ?? []);
   const ctx: ExpressionContext = {};
   for (const p of parameters) {
     if (enumNames.has(p.name)) {

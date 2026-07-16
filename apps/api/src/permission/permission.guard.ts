@@ -35,7 +35,10 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('Không xác định được quyền của người dùng.');
     }
 
-    const allowed = await this.permissionService.hasPermission(roleId, requiredKey);
+    const allowed = await this.permissionService.hasPermission(
+      roleId,
+      requiredKey,
+    );
     if (!allowed) {
       throw new ForbiddenException(`Không có quyền "${requiredKey}".`);
     }

@@ -1,6 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { ProductService } from './product.service';
-import { CreateDerivedParameterDto, UpdateDerivedParameterDto } from './dto/derived-parameter.dto';
+import {
+  CreateDerivedParameterDto,
+  UpdateDerivedParameterDto,
+} from './dto/derived-parameter.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';

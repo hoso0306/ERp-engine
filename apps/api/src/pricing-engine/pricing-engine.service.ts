@@ -1,13 +1,23 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoundType, VersionStatus } from '@prisma/client';
-import { CalculatePriceDto, CalculatePriceResultDto } from './dto/calculate-price.dto';
+import {
+  CalculatePriceDto,
+  CalculatePriceResultDto,
+} from './dto/calculate-price.dto';
 import {
   coerceParameters,
   computeDerivedParams,
   DerivedParameterDef,
 } from '../shared/derived-params';
-import { runValidationRules, ValidationRuleDef } from '../shared/validation-rules';
+import {
+  runValidationRules,
+  ValidationRuleDef,
+} from '../shared/validation-rules';
 import {
   evaluateNumber,
   evaluateBoolean,
@@ -161,11 +171,19 @@ export class PricingEngineService {
         billValue: unknown;
         displayOrder: number;
       }>;
-      matrixRows: Array<{ dimensions: unknown; unitPrice: unknown; displayOrder: number }>;
+      matrixRows: Array<{
+        dimensions: unknown;
+        unitPrice: unknown;
+        displayOrder: number;
+      }>;
     },
     product: {
       derivedParameters: Array<{ name: string; expression: string }>;
-      validationRules: Array<{ expression: string; severity: string; message: string }>;
+      validationRules: Array<{
+        expression: string;
+        severity: string;
+        message: string;
+      }>;
       parameters: Array<{ name: string }>;
     },
   ): PricingConfig {
@@ -173,15 +191,26 @@ export class PricingEngineService {
       pricingRuleVersionId: version.id,
       expression: version.expression?.trim() || null,
       priceRoundType: version.priceRoundType,
-      priceRoundValue: version.priceRoundValue ? Number(version.priceRoundValue) : 0,
+      priceRoundValue: version.priceRoundValue
+        ? Number(version.priceRoundValue)
+        : 0,
       ruleItems: version.items.map((i) => ({
         ruleType: i.ruleType,
         targetParameter: i.targetParameter,
         value: Number(i.value),
         condition: i.condition,
-        rangeFrom: i.rangeFrom !== null && i.rangeFrom !== undefined ? Number(i.rangeFrom) : null,
-        rangeTo: i.rangeTo !== null && i.rangeTo !== undefined ? Number(i.rangeTo) : null,
-        billValue: i.billValue !== null && i.billValue !== undefined ? Number(i.billValue) : null,
+        rangeFrom:
+          i.rangeFrom !== null && i.rangeFrom !== undefined
+            ? Number(i.rangeFrom)
+            : null,
+        rangeTo:
+          i.rangeTo !== null && i.rangeTo !== undefined
+            ? Number(i.rangeTo)
+            : null,
+        billValue:
+          i.billValue !== null && i.billValue !== undefined
+            ? Number(i.billValue)
+            : null,
         displayOrder: i.displayOrder,
       })),
       matrixRows: version.matrixRows.map((r) => ({
@@ -206,7 +235,10 @@ export class PricingEngineService {
   // Tầng Calculate — hàm thuần, không DB
   // ─────────────────────────────────────────────────────
 
-  calculatePrice(config: PricingConfig, rawParams: ExpressionContext): PricingCalcResult {
+  calculatePrice(
+    config: PricingConfig,
+    rawParams: ExpressionContext,
+  ): PricingCalcResult {
     // 1. Derive — từ tham số GỐC
     const ctx = computeDerivedParams(config.derivedParameters, rawParams);
 
@@ -232,7 +264,10 @@ export class PricingEngineService {
         );
       }
       try {
-        rawPrice = evaluateNumber(config.expression, { ...billable, unitPrice });
+        rawPrice = evaluateNumber(config.expression, {
+          ...billable,
+          unitPrice,
+        });
       } catch (e) {
         throw new BadRequestException(`Lỗi tính giá: ${(e as Error).message}`);
       }
@@ -249,7 +284,9 @@ export class PricingEngineService {
     }
 
     if (rawPrice < 0) {
-      throw new BadRequestException('Giá tính được là số âm — kiểm tra lại cấu hình giá.');
+      throw new BadRequestException(
+        'Giá tính được là số âm — kiểm tra lại cấu hình giá.',
+      );
     }
 
     // 5. Round
@@ -275,7 +312,10 @@ export class PricingEngineService {
    * (c) rule mức biến phái sinh (MIN_AREA, BILLABLE_STEP) sau.
    * Rule có condition chỉ chạy khi condition đúng (evaluate trên tham số gốc).
    */
-  private normalize(config: PricingConfig, ctx: ExpressionContext): ExpressionContext {
+  private normalize(
+    config: PricingConfig,
+    ctx: ExpressionContext,
+  ): ExpressionContext {
     const applicable = config.ruleItems.filter((item) => {
       if (!item.condition) return true;
       try {
@@ -303,7 +343,10 @@ export class PricingEngineService {
     }
 
     // (b) tính lại biến phái sinh từ tham số đã điều chỉnh
-    const billable = computeDerivedParams(config.derivedParameters, adjustedRaw);
+    const billable = computeDerivedParams(
+      config.derivedParameters,
+      adjustedRaw,
+    );
 
     // (c) mức biến phái sinh. BILLABLE_STEP so với giá trị GỐC (trước mọi bậc)
     // — các bậc không được cascade: 0.5m² khớp bậc [0, 0.7) → 0.7, không được
@@ -320,7 +363,12 @@ export class PricingEngineService {
         const base = stepBase[target];
         const from = item.rangeFrom ?? Number.NEGATIVE_INFINITY;
         const to = item.rangeTo ?? Number.POSITIVE_INFINITY;
-        if (typeof base === 'number' && item.billValue !== null && base >= from && base < to) {
+        if (
+          typeof base === 'number' &&
+          item.billValue !== null &&
+          base >= from &&
+          base < to
+        ) {
           billable[target] = item.billValue;
         }
       }
@@ -330,10 +378,14 @@ export class PricingEngineService {
   }
 
   /** Khớp tổ hợp config với dimensions của row (so sánh dạng chuỗi). */
-  private lookupMatrix(rows: PriceMatrixRowConfig[], ctx: ExpressionContext): number {
+  private lookupMatrix(
+    rows: PriceMatrixRowConfig[],
+    ctx: ExpressionContext,
+  ): number {
     for (const row of rows) {
       const matched = Object.entries(row.dimensions).every(
-        ([key, value]) => ctx[key] !== undefined && String(ctx[key]) === String(value),
+        ([key, value]) =>
+          ctx[key] !== undefined && String(ctx[key]) === String(value),
       );
       if (matched) return row.unitPrice;
     }
@@ -342,7 +394,9 @@ export class PricingEngineService {
     const combo = dimensionNames
       .map((k) => `${k}=${ctx[k] !== undefined ? String(ctx[k]) : '?'}`)
       .join(', ');
-    throw new BadRequestException(`Bảng giá chưa có đơn giá cho tổ hợp: ${combo}.`);
+    throw new BadRequestException(
+      `Bảng giá chưa có đơn giá cho tổ hợp: ${combo}.`,
+    );
   }
 
   private numericOnly(ctx: ExpressionContext): Record<string, number> {

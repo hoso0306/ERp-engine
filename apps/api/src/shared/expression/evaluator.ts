@@ -29,7 +29,8 @@ export class ExpressionError extends Error {
 // Tokenizer
 // ──────────────────────────────────────
 
-type TokenType = 'number' | 'string' | 'ident' | 'op' | 'lparen' | 'rparen' | 'comma' | 'eof';
+type TokenType =
+  'number' | 'string' | 'ident' | 'op' | 'lparen' | 'rparen' | 'comma' | 'eof';
 
 interface Token {
   type: TokenType;
@@ -58,7 +59,9 @@ function tokenize(input: string): Token[] {
       while (j < input.length && /[0-9.]/.test(input[j])) j++;
       const raw = input.slice(i, j);
       if ((raw.match(/\./g) ?? []).length > 1) {
-        throw new ExpressionError(`Số không hợp lệ "${raw}" tại vị trí ${i + 1}.`);
+        throw new ExpressionError(
+          `Số không hợp lệ "${raw}" tại vị trí ${i + 1}.`,
+        );
       }
       tokens.push({ type: 'number', value: raw, pos: i });
       i = j;
@@ -71,7 +74,9 @@ function tokenize(input: string): Token[] {
       let j = i + 1;
       while (j < input.length && input[j] !== quote) j++;
       if (j >= input.length) {
-        throw new ExpressionError(`Chuỗi không được đóng (thiếu ${quote}) tại vị trí ${i + 1}.`);
+        throw new ExpressionError(
+          `Chuỗi không được đóng (thiếu ${quote}) tại vị trí ${i + 1}.`,
+        );
       }
       tokens.push({ type: 'string', value: input.slice(i + 1, j), pos: i });
       i = j + 1;
@@ -118,7 +123,9 @@ function tokenize(input: string): Token[] {
       throw new ExpressionError(`Dùng "==" để so sánh bằng (vị trí ${i + 1}).`);
     }
 
-    throw new ExpressionError(`Ký tự không hợp lệ "${ch}" tại vị trí ${i + 1}.`);
+    throw new ExpressionError(
+      `Ký tự không hợp lệ "${ch}" tại vị trí ${i + 1}.`,
+    );
   }
 
   tokens.push({ type: 'eof', value: '', pos: input.length });
@@ -157,7 +164,9 @@ class Parser {
     const node = this.parseOr();
     const tok = this.peek();
     if (tok.type !== 'eof') {
-      throw new ExpressionError(`Cú pháp lỗi: không mong đợi "${tok.value}" tại vị trí ${tok.pos + 1}.`);
+      throw new ExpressionError(
+        `Cú pháp lỗi: không mong đợi "${tok.value}" tại vị trí ${tok.pos + 1}.`,
+      );
     }
     return node;
   }
@@ -280,7 +289,9 @@ class Parser {
           }
         }
         if (this.next().type !== 'rparen') {
-          throw new ExpressionError(`Thiếu dấu ")" đóng lời gọi hàm ${fnName}().`);
+          throw new ExpressionError(
+            `Thiếu dấu ")" đóng lời gọi hàm ${fnName}().`,
+          );
         }
         if (args.length < spec.minArgs || args.length > spec.maxArgs) {
           const expected =
@@ -289,7 +300,9 @@ class Parser {
               : spec.minArgs === spec.maxArgs
                 ? `${spec.minArgs}`
                 : `${spec.minArgs}–${spec.maxArgs}`;
-          throw new ExpressionError(`Hàm ${fnName}() cần ${expected} tham số, nhận ${args.length}.`);
+          throw new ExpressionError(
+            `Hàm ${fnName}() cần ${expected} tham số, nhận ${args.length}.`,
+          );
         }
         return { kind: 'call', name: fnName, args };
       }
@@ -310,7 +323,11 @@ class Parser {
 // ──────────────────────────────────────
 
 function typeName(v: ExpressionValue): string {
-  return typeof v === 'number' ? 'số' : typeof v === 'string' ? 'chuỗi' : 'boolean';
+  return typeof v === 'number'
+    ? 'số'
+    : typeof v === 'string'
+      ? 'chuỗi'
+      : 'boolean';
 }
 
 function asNumber(v: ExpressionValue, where: string): number {
@@ -322,14 +339,22 @@ function asNumber(v: ExpressionValue, where: string): number {
 
 function asBoolean(v: ExpressionValue, where: string): boolean {
   if (typeof v !== 'boolean') {
-    throw new ExpressionError(`${where} cần giá trị boolean, nhận ${typeName(v)}.`);
+    throw new ExpressionError(
+      `${where} cần giá trị boolean, nhận ${typeName(v)}.`,
+    );
   }
   return v;
 }
 
-function stepRound(fn: (x: number) => number, x: number, step: number | undefined, name: string): number {
+function stepRound(
+  fn: (x: number) => number,
+  x: number,
+  step: number | undefined,
+  name: string,
+): number {
   if (step === undefined) return fn(x);
-  if (step <= 0) throw new ExpressionError(`Bước làm tròn của ${name}() phải lớn hơn 0.`);
+  if (step <= 0)
+    throw new ExpressionError(`Bước làm tròn của ${name}() phải lớn hơn 0.`);
   return fn(x / step) * step;
 }
 
@@ -343,7 +368,9 @@ function evalNode(node: AstNode, ctx: ExpressionContext): ExpressionValue {
     case 'var': {
       const v = ctx[node.name];
       if (v === undefined) {
-        throw new ExpressionError(`Biến "${node.name}" không tồn tại trong ngữ cảnh.`);
+        throw new ExpressionError(
+          `Biến "${node.name}" không tồn tại trong ngữ cảnh.`,
+        );
       }
       return v;
     }
@@ -382,15 +409,24 @@ function evalNode(node: AstNode, ctx: ExpressionContext): ExpressionValue {
       const l = asNumber(left, `Toán tử "${op}"`);
       const r = asNumber(right, `Toán tử "${op}"`);
       switch (op) {
-        case '>': return l > r;
-        case '<': return l < r;
-        case '>=': return l >= r;
-        case '<=': return l <= r;
-        case '+': return l + r;
-        case '-': return l - r;
-        case '*': return l * r;
-        case '/': return l / r;
-        case '%': return l % r;
+        case '>':
+          return l > r;
+        case '<':
+          return l < r;
+        case '>=':
+          return l >= r;
+        case '<=':
+          return l <= r;
+        case '+':
+          return l + r;
+        case '-':
+          return l - r;
+        case '*':
+          return l * r;
+        case '/':
+          return l / r;
+        case '%':
+          return l % r;
         default:
           throw new ExpressionError(`Toán tử "${op}" không hỗ trợ.`);
       }
@@ -402,14 +438,22 @@ function evalNode(node: AstNode, ctx: ExpressionContext): ExpressionValue {
         const cond = asBoolean(evalNode(args[0], ctx), 'Điều kiện của if()');
         return evalNode(cond ? args[1] : args[2], ctx);
       }
-      const values = args.map((a, idx) => asNumber(evalNode(a, ctx), `Tham số ${idx + 1} của ${name}()`));
+      const values = args.map((a, idx) =>
+        asNumber(evalNode(a, ctx), `Tham số ${idx + 1} của ${name}()`),
+      );
       switch (name) {
-        case 'ceil': return stepRound(Math.ceil, values[0], values[1], 'ceil');
-        case 'floor': return stepRound(Math.floor, values[0], values[1], 'floor');
-        case 'round': return stepRound(Math.round, values[0], values[1], 'round');
-        case 'min': return Math.min(...values);
-        case 'max': return Math.max(...values);
-        case 'abs': return Math.abs(values[0]);
+        case 'ceil':
+          return stepRound(Math.ceil, values[0], values[1], 'ceil');
+        case 'floor':
+          return stepRound(Math.floor, values[0], values[1], 'floor');
+        case 'round':
+          return stepRound(Math.round, values[0], values[1], 'round');
+        case 'min':
+          return Math.min(...values);
+        case 'max':
+          return Math.max(...values);
+        case 'abs':
+          return Math.abs(values[0]);
         default:
           throw new ExpressionError(`Hàm "${name}" không tồn tại.`);
       }
@@ -435,13 +479,19 @@ function parseCached(expression: string): AstNode {
 }
 
 /** Evaluate expression, trả về number | string | boolean. */
-export function evaluate(expression: string, context: ExpressionContext): ExpressionValue {
+export function evaluate(
+  expression: string,
+  context: ExpressionContext,
+): ExpressionValue {
   if (!expression?.trim()) throw new ExpressionError('Biểu thức rỗng.');
   return evalNode(parseCached(expression), context);
 }
 
 /** Evaluate expression tính lượng/giá — bắt buộc trả về số hữu hạn. */
-export function evaluateNumber(expression: string, context: ExpressionContext): number {
+export function evaluateNumber(
+  expression: string,
+  context: ExpressionContext,
+): number {
   const result = evaluate(expression, context);
   if (typeof result !== 'number' || !isFinite(result)) {
     throw new ExpressionError('Công thức không trả về số hợp lệ.');
@@ -450,7 +500,10 @@ export function evaluateNumber(expression: string, context: ExpressionContext): 
 }
 
 /** Evaluate condition — bắt buộc trả về boolean. */
-export function evaluateBoolean(expression: string, context: ExpressionContext): boolean {
+export function evaluateBoolean(
+  expression: string,
+  context: ExpressionContext,
+): boolean {
   const result = evaluate(expression, context);
   if (typeof result !== 'boolean') {
     throw new ExpressionError('Điều kiện không trả về đúng/sai (boolean).');

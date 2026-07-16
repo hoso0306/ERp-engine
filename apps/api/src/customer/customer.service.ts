@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExcelService } from '../shared/excel/excel.service';
@@ -78,7 +83,10 @@ export class CustomerService {
     if (dto.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw new BadRequestException('Email không đúng định dạng.');
     }
-    if (dto.defaultDiscount !== undefined && (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)) {
+    if (
+      dto.defaultDiscount !== undefined &&
+      (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)
+    ) {
       throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
     }
     if (dto.debtLimit !== undefined && dto.debtLimit < 0) {
@@ -163,7 +171,10 @@ export class CustomerService {
     if (dto.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw new BadRequestException('Email không đúng định dạng.');
     }
-    if (dto.defaultDiscount !== undefined && (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)) {
+    if (
+      dto.defaultDiscount !== undefined &&
+      (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)
+    ) {
       throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
     }
     if (dto.debtLimit !== undefined && dto.debtLimit < 0) {
@@ -186,16 +197,20 @@ export class CustomerService {
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.phone !== undefined) data.phone = dto.phone.trim();
     if (dto.email !== undefined) data.email = dto.email?.trim() || null;
-    if (dto.companyName !== undefined) data.companyName = dto.companyName?.trim() || null;
+    if (dto.companyName !== undefined)
+      data.companyName = dto.companyName?.trim() || null;
     if (dto.taxCode !== undefined) data.taxCode = dto.taxCode?.trim() || null;
-    if (dto.province !== undefined) data.province = dto.province?.trim() || null;
-    if (dto.district !== undefined) data.district = dto.district?.trim() || null;
+    if (dto.province !== undefined)
+      data.province = dto.province?.trim() || null;
+    if (dto.district !== undefined)
+      data.district = dto.district?.trim() || null;
     if (dto.ward !== undefined) data.ward = dto.ward?.trim() || null;
     if (dto.address !== undefined) data.address = dto.address?.trim() || null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
     if (dto.priority !== undefined) data.priority = dto.priority;
     if (dto.status !== undefined) data.status = dto.status;
-    if (dto.defaultDiscount !== undefined) data.defaultDiscount = dto.defaultDiscount;
+    if (dto.defaultDiscount !== undefined)
+      data.defaultDiscount = dto.defaultDiscount;
     if (dto.debtLimit !== undefined) data.debtLimit = dto.debtLimit;
     if (dto.debtTermDays !== undefined) data.debtTermDays = dto.debtTermDays;
 
@@ -306,7 +321,8 @@ export class CustomerService {
     }
     if (query.customerGroupId) where.customerGroupId = query.customerGroupId;
     if (query.deliveryRouteId) where.deliveryRouteId = query.deliveryRouteId;
-    if (query.status === 'ACTIVE' || query.status === 'INACTIVE') where.status = query.status;
+    if (query.status === 'ACTIVE' || query.status === 'INACTIVE')
+      where.status = query.status;
 
     const customers = await this.prisma.customer.findMany({
       where,
@@ -390,8 +406,44 @@ export class CustomerService {
     ];
 
     const sampleRows = [
-      { name: 'Nguyễn Văn A', phone: '0901000001', email: 'a@email.com', province: 'Hà Nội', district: 'Cầu Giấy', ward: 'Dịch Vọng', address: '123 Cầu Giấy', groupName: 'Khách lẻ', routeName: 'Nội thành', priority: 'MEDIUM', status: 'ACTIVE', defaultDiscount: 5, debtLimit: 50000000, debtTermDays: 30, note: '', companyName: '', taxCode: '' },
-      { name: 'Trần Thị B', phone: '0901000002', email: '', province: 'Hải Phòng', district: '', ward: '', address: '', groupName: 'Đại lý', routeName: 'Liên tỉnh', priority: 'HIGH', status: 'ACTIVE', defaultDiscount: 0, debtLimit: 0, debtTermDays: 30, note: 'Khách VIP', companyName: 'Công ty TNHH B', taxCode: '0101234567', },
+      {
+        name: 'Nguyễn Văn A',
+        phone: '0901000001',
+        email: 'a@email.com',
+        province: 'Hà Nội',
+        district: 'Cầu Giấy',
+        ward: 'Dịch Vọng',
+        address: '123 Cầu Giấy',
+        groupName: 'Khách lẻ',
+        routeName: 'Nội thành',
+        priority: 'MEDIUM',
+        status: 'ACTIVE',
+        defaultDiscount: 5,
+        debtLimit: 50000000,
+        debtTermDays: 30,
+        note: '',
+        companyName: '',
+        taxCode: '',
+      },
+      {
+        name: 'Trần Thị B',
+        phone: '0901000002',
+        email: '',
+        province: 'Hải Phòng',
+        district: '',
+        ward: '',
+        address: '',
+        groupName: 'Đại lý',
+        routeName: 'Liên tỉnh',
+        priority: 'HIGH',
+        status: 'ACTIVE',
+        defaultDiscount: 0,
+        debtLimit: 0,
+        debtTermDays: 30,
+        note: 'Khách VIP',
+        companyName: 'Công ty TNHH B',
+        taxCode: '0101234567',
+      },
     ];
 
     await this.excel.export(res, 'mau-import-khach-hang', columns, sampleRows);
@@ -416,7 +468,9 @@ export class CustomerService {
       const cell = (col: number) => String(row.getCell(col).value || '').trim();
       const numCell = (col: number) => {
         const v = row.getCell(col).value;
-        return v !== null && v !== undefined && v !== '' ? Number(v) : undefined;
+        return v !== null && v !== undefined && v !== ''
+          ? Number(v)
+          : undefined;
       };
       // SĐT: Excel định dạng số tự cắt số 0 đầu (0901... → 901...). Chuẩn hoá:
       // bỏ khoảng trắng/ký tự phân tách, nếu còn 9-10 chữ số không bắt đầu
@@ -439,7 +493,8 @@ export class CustomerService {
       const debtTermDays = numCell(14);
       const companyName = cell(16) || undefined;
       // MST VN 10 số thường bắt đầu bằng 0 (mã tỉnh) — Excel cắt như SĐT.
-      let taxCode: string | undefined = cell(17).replace(/\s/g, '') || undefined;
+      let taxCode: string | undefined =
+        cell(17).replace(/\s/g, '') || undefined;
       if (taxCode && /^\d{9}$/.test(taxCode)) taxCode = '0' + taxCode;
 
       if (!name) {
@@ -459,27 +514,48 @@ export class CustomerService {
         return;
       }
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        errors.push({ row: rowNumber, message: `Email "${email}" không đúng định dạng.` });
+        errors.push({
+          row: rowNumber,
+          message: `Email "${email}" không đúng định dạng.`,
+        });
         return;
       }
       if (groupName && !groupMap.has(groupName)) {
-        errors.push({ row: rowNumber, message: `Nhóm KH "${groupName}" không tồn tại.` });
+        errors.push({
+          row: rowNumber,
+          message: `Nhóm KH "${groupName}" không tồn tại.`,
+        });
         return;
       }
       if (routeName && !routeMap.has(routeName)) {
-        errors.push({ row: rowNumber, message: `Tuyến GH "${routeName}" không tồn tại.` });
+        errors.push({
+          row: rowNumber,
+          message: `Tuyến GH "${routeName}" không tồn tại.`,
+        });
         return;
       }
       if (priority && !validPriorities.includes(priority)) {
-        errors.push({ row: rowNumber, message: `Ưu tiên "${priority}" không hợp lệ (LOW/MEDIUM/HIGH).` });
+        errors.push({
+          row: rowNumber,
+          message: `Ưu tiên "${priority}" không hợp lệ (LOW/MEDIUM/HIGH).`,
+        });
         return;
       }
       if (status && !validStatuses.includes(status)) {
-        errors.push({ row: rowNumber, message: `Trạng thái "${status}" không hợp lệ (ACTIVE/INACTIVE).` });
+        errors.push({
+          row: rowNumber,
+          message: `Trạng thái "${status}" không hợp lệ (ACTIVE/INACTIVE).`,
+        });
         return;
       }
-      if (defaultDiscount !== undefined && (defaultDiscount < 0 || defaultDiscount > 100)) {
-        errors.push({ row: rowNumber, message: 'Chiết khấu phải từ 0 đến 100.' });
+      if (
+        defaultDiscount !== undefined &&
+        (defaultDiscount < 0 || defaultDiscount > 100)
+      ) {
+        errors.push({
+          row: rowNumber,
+          message: 'Chiết khấu phải từ 0 đến 100.',
+        });
         return;
       }
 
@@ -515,7 +591,12 @@ export class CustomerService {
       const duplicates = phones.filter((p, i) => phones.indexOf(p) !== i);
       return {
         success: 0,
-        errors: [{ row: 0, message: `Số điện thoại trùng trong file: ${[...new Set(duplicates)].join(', ')}` }],
+        errors: [
+          {
+            row: 0,
+            message: `Số điện thoại trùng trong file: ${[...new Set(duplicates)].join(', ')}`,
+          },
+        ],
       };
     }
 

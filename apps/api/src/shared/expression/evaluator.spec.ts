@@ -5,7 +5,13 @@
  * expression lưu trong DB, grammar chỉ được MỞ RỘNG (thêm test mới),
  * không được sửa/đổi ngữ nghĩa các case đã có.
  */
-import { evaluate, evaluateNumber, evaluateBoolean, validate, ExpressionError } from './evaluator';
+import {
+  evaluate,
+  evaluateNumber,
+  evaluateBoolean,
+  validate,
+  ExpressionError,
+} from './evaluator';
 
 describe('ExpressionEvaluator — số học', () => {
   it.each<[string, Record<string, number>, number]>([
@@ -21,8 +27,16 @@ describe('ExpressionEvaluator — số học', () => {
     ['0.5 * 4', {}, 2],
     ['.5 * 4', {}, 2],
     ['chieurong * 2', { chieurong: 250 }, 500],
-    ['(chieucao/100)*(chieurong/100)*328000', { chieucao: 200, chieurong: 100 }, 656000],
-    ['socanh*(chieucao*chieurong)*100000/10000', { socanh: 2, chieucao: 100, chieurong: 100 }, 200000],
+    [
+      '(chieucao/100)*(chieurong/100)*328000',
+      { chieucao: 200, chieurong: 100 },
+      656000,
+    ],
+    [
+      'socanh*(chieucao*chieurong)*100000/10000',
+      { socanh: 2, chieucao: 100, chieurong: 100 },
+      200000,
+    ],
   ])('%s = %p', (expr, ctx, expected) => {
     expect(evaluateNumber(expr, ctx)).toBeCloseTo(expected, 10);
   });
@@ -95,7 +109,9 @@ describe('ExpressionEvaluator — lỗi rõ ràng, không âm thầm', () => {
   });
 
   it('cú pháp sai → throw', () => {
-    expect(() => evaluateNumber('width *', { width: 1 })).toThrow(ExpressionError);
+    expect(() => evaluateNumber('width *', { width: 1 })).toThrow(
+      ExpressionError,
+    );
     expect(() => evaluateNumber('2 +* 3', {})).toThrow(ExpressionError);
     expect(() => evaluateNumber('(2 + 3', {})).toThrow(/ngoặc/);
   });
@@ -122,7 +138,9 @@ describe('ExpressionEvaluator — lỗi rõ ràng, không âm thầm', () => {
   });
 
   it('điều kiện if() không phải boolean → throw', () => {
-    expect(() => evaluateNumber('if(width, 1, 2)', { width: 5 })).toThrow(/boolean/);
+    expect(() => evaluateNumber('if(width, 1, 2)', { width: 5 })).toThrow(
+      /boolean/,
+    );
   });
 
   it('dùng "=" thay vì "==" → thông báo hướng dẫn', () => {
@@ -144,8 +162,12 @@ describe('ExpressionEvaluator — lỗi rõ ràng, không âm thầm', () => {
 
   it('KHÔNG thực thi code JS tùy ý (an toàn hơn new Function)', () => {
     expect(() => evaluate('process.exit(1)', {})).toThrow(ExpressionError);
-    expect(() => evaluate('constructor.constructor("return 1")()', {})).toThrow(ExpressionError);
-    expect(() => evaluate('width > 2000 ? 6 : 4', { width: 1 })).toThrow(ExpressionError); // ternary JS không hỗ trợ — dùng if()
+    expect(() => evaluate('constructor.constructor("return 1")()', {})).toThrow(
+      ExpressionError,
+    );
+    expect(() => evaluate('width > 2000 ? 6 : 4', { width: 1 })).toThrow(
+      ExpressionError,
+    ); // ternary JS không hỗ trợ — dùng if()
   });
 });
 

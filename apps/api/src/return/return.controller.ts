@@ -45,7 +45,10 @@ export class ReturnController {
   @Post(':id/complete')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('return.update')
-  complete(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
+  complete(
+    @Param('id') id: string,
+    @Req() req: { user?: { userId?: string } },
+  ) {
     return this.returnService.complete(id, req.user?.userId ?? null);
   }
 }

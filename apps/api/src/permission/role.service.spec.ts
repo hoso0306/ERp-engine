@@ -20,7 +20,12 @@ function makeRole(overrides: Record<string, unknown> = {}) {
 describe('RoleService', () => {
   let service: RoleService;
   let prisma: {
-    role: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
+    role: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     user: { count: jest.Mock };
     permission: { findMany: jest.Mock };
     rolePermission: { create: jest.Mock; deleteMany: jest.Mock };
@@ -29,7 +34,12 @@ describe('RoleService', () => {
 
   beforeEach(async () => {
     prisma = {
-      role: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+      role: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       user: { count: jest.fn() },
       permission: { findMany: jest.fn() },
       rolePermission: { create: jest.fn(), deleteMany: jest.fn() },
@@ -52,7 +62,9 @@ describe('RoleService', () => {
       prisma.role.findUnique.mockResolvedValue(makeRole());
       prisma.user.count.mockResolvedValue(2);
 
-      await expect(service.disable('role-1', 'actor-1')).rejects.toThrow(BadRequestException);
+      await expect(service.disable('role-1', 'actor-1')).rejects.toThrow(
+        BadRequestException,
+      );
       expect(prisma.role.update).not.toHaveBeenCalled();
     });
 
@@ -85,7 +97,9 @@ describe('RoleService', () => {
 
     it('creates the Role and records ROLE_CREATED', async () => {
       prisma.role.findUnique.mockResolvedValue(null);
-      prisma.role.create.mockResolvedValue(makeRole({ id: 'role-new', code: 'SUPPORT' }));
+      prisma.role.create.mockResolvedValue(
+        makeRole({ id: 'role-new', code: 'SUPPORT' }),
+      );
 
       await service.create({ code: 'SUPPORT', name: 'Hỗ trợ' }, 'actor-1');
 
@@ -99,15 +113,24 @@ describe('RoleService', () => {
     it('grants newly added permissions and revokes removed ones, auditing each', async () => {
       const role = makeRole({
         rolePermissions: [
-          { permissionId: 'perm-view', permission: { id: 'perm-view', key: 'customer.view' } },
+          {
+            permissionId: 'perm-view',
+            permission: { id: 'perm-view', key: 'customer.view' },
+          },
         ],
       });
-      prisma.role.findUnique.mockResolvedValueOnce(role).mockResolvedValueOnce(role);
+      prisma.role.findUnique
+        .mockResolvedValueOnce(role)
+        .mockResolvedValueOnce(role);
       prisma.permission.findMany
         .mockResolvedValueOnce([{ id: 'perm-create', key: 'customer.create' }])
         .mockResolvedValueOnce([{ id: 'perm-view', key: 'customer.view' }]);
 
-      await service.update('role-1', { permissionIds: ['perm-create'] }, 'actor-1');
+      await service.update(
+        'role-1',
+        { permissionIds: ['perm-create'] },
+        'actor-1',
+      );
 
       expect(prisma.rolePermission.create).toHaveBeenCalledWith({
         data: { roleId: 'role-1', permissionId: 'perm-create' },
@@ -116,10 +139,16 @@ describe('RoleService', () => {
         where: { roleId: 'role-1', permissionId: { in: ['perm-view'] } },
       });
       expect(permissionService.recordAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'GRANT', permissionId: 'perm-create' }),
+        expect.objectContaining({
+          action: 'GRANT',
+          permissionId: 'perm-create',
+        }),
       );
       expect(permissionService.recordAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'REVOKE', permissionId: 'perm-view' }),
+        expect.objectContaining({
+          action: 'REVOKE',
+          permissionId: 'perm-view',
+        }),
       );
     });
   });

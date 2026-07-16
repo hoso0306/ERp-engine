@@ -20,7 +20,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { coerceParameters } from '../shared/derived-params';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
-import { BomEngineService, BomConfig, BomLine } from '../bom-engine/bom-engine.service';
+import {
+  BomEngineService,
+  BomConfig,
+  BomLine,
+} from '../bom-engine/bom-engine.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
@@ -29,12 +33,17 @@ import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
 
-const EDITABLE_STATUSES: QuotationStatus[] = [QuotationStatus.DRAFT, QuotationStatus.SENT];
+const EDITABLE_STATUSES: QuotationStatus[] = [
+  QuotationStatus.DRAFT,
+  QuotationStatus.SENT,
+];
 
 const QUOTATION_INCLUDE = {
   customer: {
     include: {
-      customerGroup: { select: { id: true, name: true, discountPercent: true } },
+      customerGroup: {
+        select: { id: true, name: true, discountPercent: true },
+      },
     },
   },
   items: {
@@ -89,7 +98,12 @@ export class QuotationWorkflowService {
     }
 
     // Hỗ trợ nhiều trạng thái phân tách dấu phẩy (tab "Chờ xử lý" = DRAFT,SENT).
-    const validStatuses: QuotationStatus[] = ['DRAFT', 'SENT', 'APPROVED', 'CANCELLED'];
+    const validStatuses: QuotationStatus[] = [
+      'DRAFT',
+      'SENT',
+      'APPROVED',
+      'CANCELLED',
+    ];
     if (query.status) {
       const statuses = query.status
         .split(',')
@@ -128,7 +142,9 @@ export class QuotationWorkflowService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          customer: { select: { id: true, code: true, name: true, phone: true } },
+          customer: {
+            select: { id: true, code: true, name: true, phone: true },
+          },
           items: { select: { id: true, subtotal: true } },
         },
       }),
@@ -273,7 +289,9 @@ export class QuotationWorkflowService {
       where: { id: quotation.customerId },
       include: { customerGroup: { select: { discountPercent: true } } },
     });
-    const groupDiscount = Number(customerWithGroup?.customerGroup?.discountPercent ?? 0);
+    const groupDiscount = Number(
+      customerWithGroup?.customerGroup?.discountPercent ?? 0,
+    );
 
     const additionalDiscountPercent = dto.additionalDiscountPercent ?? 0;
     const additionalDiscountAmount = dto.additionalDiscountAmount ?? 0;
@@ -331,7 +349,11 @@ export class QuotationWorkflowService {
     });
   }
 
-  async updateItem(quotationId: string, itemId: string, dto: UpdateQuotationItemDto) {
+  async updateItem(
+    quotationId: string,
+    itemId: string,
+    dto: UpdateQuotationItemDto,
+  ) {
     const quotation = await this.findOne(quotationId);
 
     if (!EDITABLE_STATUSES.includes(quotation.status)) {
@@ -362,7 +384,9 @@ export class QuotationWorkflowService {
         ? dto.discountReason?.trim() || null
         : item.discountReason;
     const discountBy =
-      dto.discountBy !== undefined ? dto.discountBy?.trim() || null : item.discountBy;
+      dto.discountBy !== undefined
+        ? dto.discountBy?.trim() || null
+        : item.discountBy;
 
     this.validateDiscountFields(
       additionalDiscountPercent,
@@ -407,13 +431,17 @@ export class QuotationWorkflowService {
 
     return this.prisma.$transaction(async (tx) => {
       if (newParameters !== undefined) {
-        await tx.quotationItemParameter.deleteMany({ where: { quotationItemId: itemId } });
+        await tx.quotationItemParameter.deleteMany({
+          where: { quotationItemId: itemId },
+        });
 
         const product = await tx.product.findUnique({
           where: { id: item.productId },
           include: { parameters: { orderBy: { displayOrder: 'asc' } } },
         });
-        const paramMap = new Map((product?.parameters ?? []).map((p) => [p.name, p]));
+        const paramMap = new Map(
+          (product?.parameters ?? []).map((p) => [p.name, p]),
+        );
 
         await tx.quotationItemParameter.createMany({
           data: newParameters.map((p, idx) => {
@@ -445,7 +473,9 @@ export class QuotationWorkflowService {
           finalPrice,
           subtotal,
           warnings: warnings ?? [],
-          ...(dto.displayOrder !== undefined ? { displayOrder: dto.displayOrder } : {}),
+          ...(dto.displayOrder !== undefined
+            ? { displayOrder: dto.displayOrder }
+            : {}),
         },
         include: {
           product: { select: { id: true, code: true, name: true } },
@@ -490,7 +520,9 @@ export class QuotationWorkflowService {
     }
 
     if (quotation.items.length === 0) {
-      throw new BadRequestException('Báo giá phải có ít nhất một sản phẩm trước khi gửi.');
+      throw new BadRequestException(
+        'Báo giá phải có ít nhất một sản phẩm trước khi gửi.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -530,7 +562,9 @@ export class QuotationWorkflowService {
     }
 
     if (quotation.items.length === 0) {
-      throw new BadRequestException('Báo giá chưa có sản phẩm nào để tính lại giá.');
+      throw new BadRequestException(
+        'Báo giá chưa có sản phẩm nào để tính lại giá.',
+      );
     }
 
     // Tính giá mới cho từng dòng bằng Pricing Engine (đọc version ACTIVE hiện tại).
@@ -558,7 +592,10 @@ export class QuotationWorkflowService {
     for (const item of quotation.items) {
       const priceResult = await this.pricingEngine.calculate({
         productId: item.productId,
-        parameters: item.parameters.map((p) => ({ name: p.name, value: p.value })),
+        parameters: item.parameters.map((p) => ({
+          name: p.name,
+          value: p.value,
+        })),
       });
 
       const newSystemPrice = priceResult.systemPrice;
@@ -568,7 +605,10 @@ export class QuotationWorkflowService {
         Number(item.additionalDiscountPercent),
         Number(item.additionalDiscountAmount),
       );
-      const newSubtotal = this.calcSubtotal(newFinalPrice, Number(item.quantity));
+      const newSubtotal = this.calcSubtotal(
+        newFinalPrice,
+        Number(item.quantity),
+      );
 
       changes.push({
         itemId: item.id,
@@ -630,7 +670,10 @@ export class QuotationWorkflowService {
         },
       });
 
-      return tx.quotation.findUnique({ where: { id }, include: QUOTATION_INCLUDE });
+      return tx.quotation.findUnique({
+        where: { id },
+        include: QUOTATION_INCLUDE,
+      });
     });
 
     // changes trả kèm để FE hiển thị chênh lệch giá cũ/mới cho người dùng
@@ -696,21 +739,22 @@ export class QuotationWorkflowService {
 
     const validStatuses = Object.values(QuotationStatus) as string[];
     if (!dto.newStatus || !validStatuses.includes(dto.newStatus)) {
-      throw new BadRequestException(`Trạng thái "${dto.newStatus}" không hợp lệ.`);
+      throw new BadRequestException(
+        `Trạng thái "${dto.newStatus}" không hợp lệ.`,
+      );
     }
 
     const quotation = await this.findOne(id);
 
     if (quotation.status === (dto.newStatus as QuotationStatus)) {
-      throw new BadRequestException('Trạng thái mới phải khác trạng thái hiện tại.');
+      throw new BadRequestException(
+        'Trạng thái mới phải khác trạng thái hiện tại.',
+      );
     }
 
     // Giới hạn Manual Override (quotation.md): không được dùng Override để
     // Cancel báo giá đã có salesOrderId — xử lý ở Sales Order.
-    if (
-      dto.newStatus === QuotationStatus.CANCELLED &&
-      quotation.salesOrderId
-    ) {
+    if (dto.newStatus === QuotationStatus.CANCELLED && quotation.salesOrderId) {
       throw new ForbiddenException(
         'Manual Override không được dùng để huỷ báo giá đã chuyển thành Đơn hàng. Muốn dừng thương vụ, hãy huỷ Đơn hàng.',
       );
@@ -809,11 +853,15 @@ export class QuotationWorkflowService {
     }
 
     if (quotation.salesOrderId) {
-      throw new ForbiddenException('Báo giá đã được chuyển thành đơn hàng trước đó.');
+      throw new ForbiddenException(
+        'Báo giá đã được chuyển thành đơn hàng trước đó.',
+      );
     }
 
     if (quotation.items.length === 0) {
-      throw new BadRequestException('Báo giá phải có ít nhất một sản phẩm trước khi duyệt.');
+      throw new BadRequestException(
+        'Báo giá phải có ít nhất một sản phẩm trước khi duyệt.',
+      );
     }
 
     // Validate each item
@@ -848,7 +896,8 @@ export class QuotationWorkflowService {
         });
       }
 
-      const activeMaterialVersion = item.product.materialRequirement?.versions[0];
+      const activeMaterialVersion =
+        item.product.materialRequirement?.versions[0];
       if (!activeMaterialVersion) {
         throw new BadRequestException(
           `Sản phẩm "${item.product.name}" không có Phiên bản Định mức vật tư đang hoạt động.`,
@@ -909,14 +958,20 @@ export class QuotationWorkflowService {
       if (item.materialRequirementVersionId) {
         let config = bomConfigCache.get(item.materialRequirementVersionId);
         if (!config) {
-          config = await this.bomEngine.loadConfigForVersion(item.materialRequirementVersionId);
+          config = await this.bomEngine.loadConfigForVersion(
+            item.materialRequirementVersionId,
+          );
           bomConfigCache.set(item.materialRequirementVersionId, config);
         }
 
         // BOM nhận KÍCH THƯỚC GỐC khách đặt — không bao giờ nhận billable
         // params của Pricing Engine (nguyên tắc billable ≠ actual).
         const rawParams = coerceParameters(item.parameters);
-        const bomResult = this.bomEngine.calculateBom(config, rawParams, Number(item.quantity));
+        const bomResult = this.bomEngine.calculateBom(
+          config,
+          rawParams,
+          Number(item.quantity),
+        );
         bomLines = bomResult.lines;
         itemPlannedCost = bomResult.plannedCost;
       }
@@ -927,8 +982,14 @@ export class QuotationWorkflowService {
     // All validations pass — execute in a single transaction
     return this.prisma.$transaction(async (tx) => {
       // Planned Financials (order.md): computed once at creation, never re-derived later.
-      const totalAmount = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
-      const plannedCost = itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
+      const totalAmount = quotation.items.reduce(
+        (s, i) => s + Number(i.subtotal),
+        0,
+      );
+      const plannedCost = itemComputations.reduce(
+        (s, c) => s + c.itemPlannedCost,
+        0,
+      );
       const plannedProfit = totalAmount - plannedCost;
       const totalProductionOrders = new Set(
         quotation.items.map((i) => i.product.productionCenterId),
@@ -1182,7 +1243,9 @@ export class QuotationWorkflowService {
       throw new BadRequestException('Giảm thêm theo số tiền không được âm.');
     }
     if ((pct > 0 || amt > 0) && !discountReason?.trim()) {
-      throw new BadRequestException('Lý do giảm giá là bắt buộc khi áp dụng chiết khấu thêm.');
+      throw new BadRequestException(
+        'Lý do giảm giá là bắt buộc khi áp dụng chiết khấu thêm.',
+      );
     }
   }
 
@@ -1208,5 +1271,4 @@ export class QuotationWorkflowService {
   private calcSubtotal(finalPrice: number, quantity: number): number {
     return Math.round(finalPrice * quantity);
   }
-
 }

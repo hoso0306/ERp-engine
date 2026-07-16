@@ -7,13 +7,16 @@ import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
 import { ExcelService } from '../shared/excel/excel.service';
 
-async function buildWorkbookBuffer(header: string[], rows: (string | number)[][]): Promise<Buffer> {
+async function buildWorkbookBuffer(
+  header: string[],
+  rows: (string | number)[][],
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Data');
   sheet.addRow(header);
   for (const row of rows) sheet.addRow(row);
   const arrayBuffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(arrayBuffer as ArrayBuffer);
+  return Buffer.from(arrayBuffer);
 }
 
 describe('ProductService — Excel Import (Matrix + BOM)', () => {
@@ -34,7 +37,9 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
       materialRequirementVersion: { findUnique: jest.fn() },
       material: { findMany: jest.fn() },
       materialRequirementItem: { update: jest.fn(), create: jest.fn() },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,14 +59,22 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
   describe('previewPriceMatrixImport()', () => {
     const enumParams = [
       {
-        id: 'p1', name: 'mausac', label: 'Màu sắc', type: 'ENUM', usedInPricing: true,
+        id: 'p1',
+        name: 'mausac',
+        label: 'Màu sắc',
+        type: 'ENUM',
+        usedInPricing: true,
         options: [
           { value: 'xanh', label: 'Xanh' },
           { value: 'do', label: 'Đỏ' },
         ],
       },
       {
-        id: 'p2', name: 'size', label: 'Kích cỡ', type: 'ENUM', usedInPricing: true,
+        id: 'p2',
+        name: 'size',
+        label: 'Kích cỡ',
+        type: 'ENUM',
+        usedInPricing: true,
         options: [
           { value: 's', label: 'S' },
           { value: 'l', label: 'L' },
@@ -71,23 +84,37 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
 
     beforeEach(() => {
       prisma.pricingRuleVersion.findUnique.mockResolvedValue({
-        id: 'v1', status: 'DRAFT', pricingRule: { productId: 'prod-1' },
+        id: 'v1',
+        status: 'DRAFT',
+        pricingRule: { productId: 'prod-1' },
       });
       prisma.productParameter.findMany.mockResolvedValue(enumParams);
     });
 
     it('throws NotFoundException when version does not exist', async () => {
       prisma.pricingRuleVersion.findUnique.mockResolvedValue(null);
-      const buf = await buildWorkbookBuffer(['Màu sắc', 'Kích cỡ', 'Đơn giá'], []);
-      await expect(service.previewPriceMatrixImport('missing', buf)).rejects.toThrow(NotFoundException);
+      const buf = await buildWorkbookBuffer(
+        ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
+        [],
+      );
+      await expect(
+        service.previewPriceMatrixImport('missing', buf),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws BadRequestException when version is not DRAFT', async () => {
       prisma.pricingRuleVersion.findUnique.mockResolvedValue({
-        id: 'v1', status: 'ACTIVE', pricingRule: { productId: 'prod-1' },
+        id: 'v1',
+        status: 'ACTIVE',
+        pricingRule: { productId: 'prod-1' },
       });
-      const buf = await buildWorkbookBuffer(['Màu sắc', 'Kích cỡ', 'Đơn giá'], []);
-      await expect(service.previewPriceMatrixImport('v1', buf)).rejects.toThrow(BadRequestException);
+      const buf = await buildWorkbookBuffer(
+        ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
+        [],
+      );
+      await expect(service.previewPriceMatrixImport('v1', buf)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('parses a valid file into rows with 0 errors', async () => {
@@ -114,14 +141,20 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     });
 
     it('matches enum by raw value too, not just label', async () => {
-      const buf = await buildWorkbookBuffer(['Màu sắc', 'Kích cỡ', 'Đơn giá'], [['xanh', 's', 100000]]);
+      const buf = await buildWorkbookBuffer(
+        ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
+        [['xanh', 's', 100000]],
+      );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.errors).toEqual([]);
       expect(result.rows[0].dimensions).toEqual({ mausac: 'xanh', size: 's' });
     });
 
     it('reports an error for missing enum value', async () => {
-      const buf = await buildWorkbookBuffer(['Màu sắc', 'Kích cỡ', 'Đơn giá'], [['', 'S', 100000]]);
+      const buf = await buildWorkbookBuffer(
+        ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
+        [['', 'S', 100000]],
+      );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.rows).toHaveLength(0);
       expect(result.errors).toHaveLength(1);
@@ -129,7 +162,10 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     });
 
     it('reports an error for an invalid enum value not in options', async () => {
-      const buf = await buildWorkbookBuffer(['Màu sắc', 'Kích cỡ', 'Đơn giá'], [['Tím', 'S', 100000]]);
+      const buf = await buildWorkbookBuffer(
+        ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
+        [['Tím', 'S', 100000]],
+      );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.rows).toHaveLength(0);
       expect(result.errors[0].message).toContain('Tím');
@@ -138,7 +174,11 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     it('reports an error for zero/negative/non-numeric unit price', async () => {
       const buf = await buildWorkbookBuffer(
         ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
-        [['Xanh', 'S', 0], ['Xanh', 'L', -5], ['Đỏ', 'S', 'abc']],
+        [
+          ['Xanh', 'S', 0],
+          ['Xanh', 'L', -5],
+          ['Đỏ', 'S', 'abc'],
+        ],
       );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.rows).toHaveLength(0);
@@ -148,7 +188,10 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     it('reports an error for duplicate config combos within the file', async () => {
       const buf = await buildWorkbookBuffer(
         ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
-        [['Xanh', 'S', 100000], ['Xanh', 'S', 999999]],
+        [
+          ['Xanh', 'S', 100000],
+          ['Xanh', 'S', 999999],
+        ],
       );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.rows).toHaveLength(1);
@@ -159,7 +202,10 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     it('skips fully blank trailing rows silently', async () => {
       const buf = await buildWorkbookBuffer(
         ['Màu sắc', 'Kích cỡ', 'Đơn giá'],
-        [['Xanh', 'S', 100000], ['', '', '']],
+        [
+          ['Xanh', 'S', 100000],
+          ['', '', ''],
+        ],
       );
       const result = await service.previewPriceMatrixImport('v1', buf);
       expect(result.rows).toHaveLength(1);
@@ -174,48 +220,105 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     ];
 
     beforeEach(() => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'DRAFT' });
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'DRAFT',
+      });
       prisma.material.findMany.mockResolvedValue(materials);
     });
 
     it('throws NotFoundException when version does not exist', async () => {
       prisma.materialRequirementVersion.findUnique.mockResolvedValue(null);
-      const buf = await buildWorkbookBuffer(['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'], []);
-      await expect(service.previewMaterialRequirementImport('missing', buf)).rejects.toThrow(NotFoundException);
+      const buf = await buildWorkbookBuffer(
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
+        [],
+      );
+      await expect(
+        service.previewMaterialRequirementImport('missing', buf),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws BadRequestException when version is not DRAFT', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'ACTIVE' });
-      const buf = await buildWorkbookBuffer(['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'], []);
-      await expect(service.previewMaterialRequirementImport('mrv-1', buf)).rejects.toThrow(BadRequestException);
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'ACTIVE',
+      });
+      const buf = await buildWorkbookBuffer(
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
+        [],
+      );
+      await expect(
+        service.previewMaterialRequirementImport('mrv-1', buf),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('parses a valid file into rows with 0 errors', async () => {
       const buf = await buildWorkbookBuffer(
-        ['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'],
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
         [
           ['NL000001', '(chieucao+chieurong)*2', '', 5, 0.1, 'khung'],
           ['nl000002', 'chieucao*chieurong', 'socanh == 2', '', '', ''],
         ],
       );
 
-      const result = await service.previewMaterialRequirementImport('mrv-1', buf);
+      const result = await service.previewMaterialRequirementImport(
+        'mrv-1',
+        buf,
+      );
 
       expect(result.errors).toEqual([]);
       expect(result.rows).toHaveLength(2);
       expect(result.rows[0]).toMatchObject({
-        materialId: 'mat-1', materialCode: 'NL000001', wastePercent: 5, roundStep: 0.1, note: 'khung',
+        materialId: 'mat-1',
+        materialCode: 'NL000001',
+        wastePercent: 5,
+        roundStep: 0.1,
+        note: 'khung',
       });
       // Mã vật tư khớp không phân biệt hoa/thường.
-      expect(result.rows[1]).toMatchObject({ materialId: 'mat-2', condition: 'socanh == 2' });
+      expect(result.rows[1]).toMatchObject({
+        materialId: 'mat-2',
+        condition: 'socanh == 2',
+      });
     });
 
     it('reports an error and does NOT auto-create when material code is unknown', async () => {
       const buf = await buildWorkbookBuffer(
-        ['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'],
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
         [['NL999999', 'chieucao', '', '', '', '']],
       );
-      const result = await service.previewMaterialRequirementImport('mrv-1', buf);
+      const result = await service.previewMaterialRequirementImport(
+        'mrv-1',
+        buf,
+      );
       expect(result.rows).toHaveLength(0);
       expect(result.errors[0].message).toContain('NL999999');
       expect(prisma.material.findMany).toHaveBeenCalledTimes(1); // không gọi thêm create nào
@@ -223,23 +326,43 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
 
     it('reports an error for invalid expression syntax', async () => {
       const buf = await buildWorkbookBuffer(
-        ['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'],
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
         [['NL000001', 'chieucao +', '', '', '', '']],
       );
-      const result = await service.previewMaterialRequirementImport('mrv-1', buf);
+      const result = await service.previewMaterialRequirementImport(
+        'mrv-1',
+        buf,
+      );
       expect(result.rows).toHaveLength(0);
       expect(result.errors[0].message).toContain('Expression lỗi');
     });
 
     it('reports an error for duplicate material code within the file', async () => {
       const buf = await buildWorkbookBuffer(
-        ['Mã vật tư', 'Expression', 'Condition', 'Hao hụt (%)', 'Round Step', 'Ghi chú'],
+        [
+          'Mã vật tư',
+          'Expression',
+          'Condition',
+          'Hao hụt (%)',
+          'Round Step',
+          'Ghi chú',
+        ],
         [
           ['NL000001', 'chieucao', '', '', '', ''],
           ['NL000001', 'chieurong', '', '', '', ''],
         ],
       );
-      const result = await service.previewMaterialRequirementImport('mrv-1', buf);
+      const result = await service.previewMaterialRequirementImport(
+        'mrv-1',
+        buf,
+      );
       expect(result.rows).toHaveLength(1);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].message).toContain('trùng');
@@ -256,7 +379,10 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
           { id: 'item-untouched', materialId: 'mat-99', displayOrder: 1 },
         ],
       });
-      prisma.material.findMany.mockResolvedValue([{ id: 'mat-1' }, { id: 'mat-2' }]);
+      prisma.material.findMany.mockResolvedValue([
+        { id: 'mat-1' },
+        { id: 'mat-2' },
+      ]);
       const findUniqueFinal = { id: 'mrv-1', items: [] };
       prisma.materialRequirementVersion.findUnique
         .mockResolvedValueOnce({
@@ -274,11 +400,17 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
         { materialId: 'mat-2', expression: 'chieurong', roundStep: 1 },
       ];
 
-      const result = await service.bulkUpsertMaterialRequirementItems('mrv-1', rows);
+      const result = await service.bulkUpsertMaterialRequirementItems(
+        'mrv-1',
+        rows,
+      );
 
       expect(prisma.materialRequirementItem.update).toHaveBeenCalledWith({
         where: { id: 'item-existing' },
-        data: expect.objectContaining({ expression: 'chieucao * 2', wastePercent: 3 }),
+        data: expect.objectContaining({
+          expression: 'chieucao * 2',
+          wastePercent: 3,
+        }),
       });
       expect(prisma.materialRequirementItem.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -298,19 +430,35 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     });
 
     it('throws BadRequestException when version is not DRAFT', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'ACTIVE', items: [] });
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'ACTIVE',
+        items: [],
+      });
       await expect(
-        service.bulkUpsertMaterialRequirementItems('mrv-1', [{ materialId: 'mat-1', expression: 'chieucao' }]),
+        service.bulkUpsertMaterialRequirementItems('mrv-1', [
+          { materialId: 'mat-1', expression: 'chieucao' },
+        ]),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException on empty rows', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'DRAFT', items: [] });
-      await expect(service.bulkUpsertMaterialRequirementItems('mrv-1', [])).rejects.toThrow(BadRequestException);
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'DRAFT',
+        items: [],
+      });
+      await expect(
+        service.bulkUpsertMaterialRequirementItems('mrv-1', []),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException on duplicate materialId within payload', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'DRAFT', items: [] });
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'DRAFT',
+        items: [],
+      });
       await expect(
         service.bulkUpsertMaterialRequirementItems('mrv-1', [
           { materialId: 'mat-1', expression: 'chieucao' },
@@ -320,10 +468,16 @@ describe('ProductService — Excel Import (Matrix + BOM)', () => {
     });
 
     it('throws BadRequestException when a materialId does not exist', async () => {
-      prisma.materialRequirementVersion.findUnique.mockResolvedValue({ id: 'mrv-1', status: 'DRAFT', items: [] });
+      prisma.materialRequirementVersion.findUnique.mockResolvedValue({
+        id: 'mrv-1',
+        status: 'DRAFT',
+        items: [],
+      });
       prisma.material.findMany.mockResolvedValue([]);
       await expect(
-        service.bulkUpsertMaterialRequirementItems('mrv-1', [{ materialId: 'mat-missing', expression: 'chieucao' }]),
+        service.bulkUpsertMaterialRequirementItems('mrv-1', [
+          { materialId: 'mat-missing', expression: 'chieucao' },
+        ]),
       ).rejects.toThrow(BadRequestException);
     });
   });

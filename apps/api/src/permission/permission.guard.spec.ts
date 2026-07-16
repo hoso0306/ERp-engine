@@ -4,7 +4,10 @@ import { PermissionGuard } from './permission.guard';
 import { PermissionService } from './permission.service';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 
-function makeContext(user: AuthenticatedRequest['user'] | undefined, requiredKey?: string) {
+function makeContext(
+  user: AuthenticatedRequest['user'] | undefined,
+  requiredKey?: string,
+) {
   const request: Partial<AuthenticatedRequest> = { user };
   const context = {
     switchToHttp: () => ({ getRequest: () => request }),
@@ -39,7 +42,9 @@ describe('PermissionGuard', () => {
     reflector.get.mockReturnValue('customer.view');
     const { context } = makeContext({ userId: 'u1', roleId: undefined });
 
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('rejects when the Role lacks the required permission', async () => {
@@ -47,8 +52,13 @@ describe('PermissionGuard', () => {
     permissionService.hasPermission.mockResolvedValue(false);
     const { context } = makeContext({ userId: 'u1', roleId: 'r1' });
 
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-    expect(permissionService.hasPermission).toHaveBeenCalledWith('r1', 'sales-order.ship');
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(permissionService.hasPermission).toHaveBeenCalledWith(
+      'r1',
+      'sales-order.ship',
+    );
   });
 
   it('allows through when the Role has the required permission', async () => {

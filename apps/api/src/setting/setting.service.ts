@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { SettingValueType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -33,11 +37,14 @@ export class SettingService {
       data: {
         companyName: dto.companyName?.trim() ?? undefined,
         logo: dto.logo !== undefined ? dto.logo?.trim() || null : undefined,
-        address: dto.address !== undefined ? dto.address?.trim() || null : undefined,
+        address:
+          dto.address !== undefined ? dto.address?.trim() || null : undefined,
         phone: dto.phone !== undefined ? dto.phone?.trim() || null : undefined,
         email: dto.email !== undefined ? dto.email?.trim() || null : undefined,
-        website: dto.website !== undefined ? dto.website?.trim() || null : undefined,
-        taxCode: dto.taxCode !== undefined ? dto.taxCode?.trim() || null : undefined,
+        website:
+          dto.website !== undefined ? dto.website?.trim() || null : undefined,
+        taxCode:
+          dto.taxCode !== undefined ? dto.taxCode?.trim() || null : undefined,
         currency: dto.currency?.trim() ?? undefined,
         currencySymbol: dto.currencySymbol?.trim() ?? undefined,
         timezone: dto.timezone?.trim() ?? undefined,
@@ -55,7 +62,9 @@ export class SettingService {
   }
 
   async updateRunningNumber(type: string, dto: UpdateRunningNumberDto) {
-    const runningNumber = await this.prisma.runningNumber.findUnique({ where: { type } });
+    const runningNumber = await this.prisma.runningNumber.findUnique({
+      where: { type },
+    });
     if (!runningNumber) {
       throw new NotFoundException(`Running Number "${type}" không tồn tại.`);
     }
@@ -85,7 +94,9 @@ export class SettingService {
   // ─────────────────────────────────────────────────────
 
   async findAllSettings() {
-    return this.prisma.setting.findMany({ orderBy: [{ module: 'asc' }, { key: 'asc' }] });
+    return this.prisma.setting.findMany({
+      orderBy: [{ module: 'asc' }, { key: 'asc' }],
+    });
   }
 
   async findSettingsByModule(module: string) {
@@ -106,7 +117,9 @@ export class SettingService {
           where: { module_key: { module, key } },
         });
         if (!setting) {
-          throw new NotFoundException(`Setting "${module}.${key}" không tồn tại.`);
+          throw new NotFoundException(
+            `Setting "${module}.${key}" không tồn tại.`,
+          );
         }
 
         const value = this.serializeValue(setting.valueType, rawValue);
@@ -117,21 +130,31 @@ export class SettingService {
         });
       }
 
-      return tx.setting.findMany({ where: { module }, orderBy: { key: 'asc' } });
+      return tx.setting.findMany({
+        where: { module },
+        orderBy: { key: 'asc' },
+      });
     });
   }
 
-  private serializeValue(valueType: SettingValueType, rawValue: string | number | boolean): string {
+  private serializeValue(
+    valueType: SettingValueType,
+    rawValue: string | number | boolean,
+  ): string {
     switch (valueType) {
       case SettingValueType.BOOLEAN: {
         if (typeof rawValue === 'boolean') return String(rawValue);
         if (rawValue === 'true' || rawValue === 'false') return rawValue;
-        throw new BadRequestException(`Giá trị phải là boolean (true/false), nhận được "${rawValue}".`);
+        throw new BadRequestException(
+          `Giá trị phải là boolean (true/false), nhận được "${rawValue}".`,
+        );
       }
       case SettingValueType.NUMBER: {
         const n = Number(rawValue);
         if (!Number.isFinite(n)) {
-          throw new BadRequestException(`Giá trị phải là số, nhận được "${rawValue}".`);
+          throw new BadRequestException(
+            `Giá trị phải là số, nhận được "${rawValue}".`,
+          );
         }
         return String(n);
       }

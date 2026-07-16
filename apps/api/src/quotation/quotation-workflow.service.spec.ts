@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { QuotationWorkflowService } from './quotation-workflow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
@@ -72,7 +76,10 @@ function makeQuotation(overrides: Record<string, unknown> = {}) {
 
 describe('QuotationWorkflowService.approve()', () => {
   let service: QuotationWorkflowService;
-  let prisma: { quotation: { findUnique: jest.Mock; update: jest.Mock }; $transaction: jest.Mock };
+  let prisma: {
+    quotation: { findUnique: jest.Mock; update: jest.Mock };
+    $transaction: jest.Mock;
+  };
   // BomEngineService thật (logic Filter/Formula chạy thật) với Prisma mock riêng
   let bomPrisma: { materialRequirementVersion: { findUnique: jest.Mock } };
 
@@ -106,7 +113,9 @@ describe('QuotationWorkflowService.approve()', () => {
 
   it('throws NotFoundException when quotation does not exist', async () => {
     prisma.quotation.findUnique.mockResolvedValue(null);
-    await expect(service.approve('nonexistent')).rejects.toThrow(NotFoundException);
+    await expect(service.approve('nonexistent')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('rejects approve when salesOrderId IS NOT NULL (double approve)', async () => {
@@ -123,7 +132,9 @@ describe('QuotationWorkflowService.approve()', () => {
         pricingRule: { versions: [] },
       },
     });
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ items: [itemNoPricing] }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [itemNoPricing] }),
+    );
     await expect(service.approve('q-1')).rejects.toThrow(BadRequestException);
   });
 
@@ -134,7 +145,9 @@ describe('QuotationWorkflowService.approve()', () => {
         materialRequirement: { versions: [] },
       },
     });
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ items: [itemNoMaterial] }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [itemNoMaterial] }),
+    );
     await expect(service.approve('q-1')).rejects.toThrow(BadRequestException);
   });
 
@@ -145,18 +158,24 @@ describe('QuotationWorkflowService.approve()', () => {
         status: 'INACTIVE',
       },
     });
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ items: [itemInactive] }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [itemInactive] }),
+    );
     await expect(service.approve('q-1')).rejects.toThrow(BadRequestException);
   });
 
   it('rejects approve when status is not SENT', async () => {
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
     await expect(service.approve('q-1')).rejects.toThrow(ForbiddenException);
   });
 
   it('chặn approve khi expression định mức lỗi — không sinh SalesOrder với plannedCost thiếu', async () => {
     const item = makeItem({ materialRequirementVersionId: 'mrv-1' });
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ items: [item] }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [item] }),
+    );
 
     bomPrisma.materialRequirementVersion.findUnique.mockResolvedValue({
       id: 'mrv-1',
@@ -168,7 +187,12 @@ describe('QuotationWorkflowService.approve()', () => {
           wastePercent: 0,
           roundType: 'NONE',
           roundValue: null,
-          material: { code: 'NL000001', name: 'Khung nhôm', unit: null, prices: [] },
+          material: {
+            code: 'NL000001',
+            name: 'Khung nhôm',
+            unit: null,
+            prices: [],
+          },
         },
       ],
       materialRequirement: { product: { derivedParameters: [] } },
@@ -178,7 +202,9 @@ describe('QuotationWorkflowService.approve()', () => {
       salesOrder: { create: jest.fn() },
       runningNumber: { update: jest.fn() },
     };
-    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) => fn(tx));
+    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
+      fn(tx),
+    );
 
     await expect(service.approve('q-1')).rejects.toThrow(BadRequestException);
     await expect(service.approve('q-1')).rejects.toThrow(/Khung nhôm/);
@@ -190,12 +216,32 @@ describe('QuotationWorkflowService.approve()', () => {
     const item = makeItem({
       materialRequirementVersionId: 'mrv-1',
       parameters: [
-        { name: 'chieurong', value: '250', label: 'Rộng', unit: 'cm', displayOrder: 0 },
-        { name: 'chieucao', value: '200', label: 'Cao', unit: 'cm', displayOrder: 1 },
-        { name: 'maukhung', value: 'cafe', label: 'Màu', unit: null, displayOrder: 2 },
+        {
+          name: 'chieurong',
+          value: '250',
+          label: 'Rộng',
+          unit: 'cm',
+          displayOrder: 0,
+        },
+        {
+          name: 'chieucao',
+          value: '200',
+          label: 'Cao',
+          unit: 'cm',
+          displayOrder: 1,
+        },
+        {
+          name: 'maukhung',
+          value: 'cafe',
+          label: 'Màu',
+          unit: null,
+          displayOrder: 2,
+        },
       ],
     });
-    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ items: [item] }));
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [item] }),
+    );
 
     bomPrisma.materialRequirementVersion.findUnique.mockResolvedValue({
       id: 'mrv-1',
@@ -207,7 +253,12 @@ describe('QuotationWorkflowService.approve()', () => {
           wastePercent: 0,
           roundType: 'NONE',
           roundValue: null,
-          material: { code: 'AL30-CAFE', name: 'Thanh Cafe', unit: { name: 'm' }, prices: [{ price: '10000' }] },
+          material: {
+            code: 'AL30-CAFE',
+            name: 'Thanh Cafe',
+            unit: { name: 'm' },
+            prices: [{ price: '10000' }],
+          },
         },
         {
           materialId: 'al-trang',
@@ -216,7 +267,12 @@ describe('QuotationWorkflowService.approve()', () => {
           wastePercent: 0,
           roundType: 'NONE',
           roundValue: null,
-          material: { code: 'AL30-TRANG', name: 'Thanh Trắng', unit: { name: 'm' }, prices: [{ price: '10000' }] },
+          material: {
+            code: 'AL30-TRANG',
+            name: 'Thanh Trắng',
+            unit: { name: 'm' },
+            prices: [{ price: '10000' }],
+          },
         },
       ],
       materialRequirement: { product: { derivedParameters: [] } },
@@ -225,7 +281,11 @@ describe('QuotationWorkflowService.approve()', () => {
     // tx mock đủ cho luồng approve chạy tới OrderBOM
     const orderBomCreate = jest.fn();
     const tx = {
-      runningNumber: { update: jest.fn().mockResolvedValue({ prefix: 'DH', lastNumber: 1, paddingLength: 6 }) },
+      runningNumber: {
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'DH', lastNumber: 1, paddingLength: 6 }),
+      },
       salesOrder: { create: jest.fn().mockResolvedValue({ id: 'so-1' }) },
       receivable: { create: jest.fn() },
       salesOrderItem: { create: jest.fn().mockResolvedValue({ id: 'soi-1' }) },
@@ -236,13 +296,17 @@ describe('QuotationWorkflowService.approve()', () => {
       quotationTimeline: { create: jest.fn() },
       salesOrderTimeline: { create: jest.fn() },
     };
-    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) => fn(tx));
+    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
+      fn(tx),
+    );
 
     await service.approve('q-1');
 
     expect(orderBomCreate).toHaveBeenCalledTimes(1);
     const bomData = orderBomCreate.mock.calls[0][0].data;
-    const codes = bomData.items.create.map((i: { materialCode: string }) => i.materialCode);
+    const codes = bomData.items.create.map(
+      (i: { materialCode: string }) => i.materialCode,
+    );
     expect(codes).toEqual(['AL30-CAFE']);
     // 2 × 250cm / 100 = 5m × quantity 2 = 10m
     expect(bomData.items.create[0].quantity).toBeCloseTo(10);

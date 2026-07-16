@@ -28,8 +28,16 @@ export class DashboardController {
     const allowed = await this.permissionKeys(req);
     return {
       sales: overview.sales,
-      production: this.hideUnlessAllowed(overview.production, allowed, 'production.view'),
-      warehouse: this.hideUnlessAllowed(overview.warehouse, allowed, 'warehouse.view'),
+      production: this.hideUnlessAllowed(
+        overview.production,
+        allowed,
+        'production.view',
+      ),
+      warehouse: this.hideUnlessAllowed(
+        overview.warehouse,
+        allowed,
+        'warehouse.view',
+      ),
       debt: this.hideUnlessAllowed(overview.debt, allowed, 'debt.view'),
       returns: this.hideUnlessAllowed(overview.returns, allowed, 'return.view'),
       // Bug fix (verify sống 010-fe-cai-dat-nguoi-dung.md): alerts trong
@@ -62,7 +70,9 @@ export class DashboardController {
   @RequirePermission('dashboard.view')
   getDebt(@Query() query: DashboardDebtQueryDto) {
     // Không truyền query -> DebtService tự đọc Settings.Dashboard.upcomingDueDays.
-    const days = query.upcomingDueDays ? parseInt(query.upcomingDueDays, 10) : undefined;
+    const days = query.upcomingDueDays
+      ? parseInt(query.upcomingDueDays, 10)
+      : undefined;
     return this.dashboardService.getDebtDashboard(
       days !== undefined && Number.isFinite(days) ? days : undefined,
     );
@@ -82,13 +92,21 @@ export class DashboardController {
     return this.buildGatedAlerts(alerts, allowed);
   }
 
-  private async permissionKeys(req: AuthenticatedRequest): Promise<Set<string>> {
+  private async permissionKeys(
+    req: AuthenticatedRequest,
+  ): Promise<Set<string>> {
     const roleId = req.user.roleId;
     if (!roleId) return new Set();
-    return new Set(await this.permissionService.getPermissionKeysForRole(roleId));
+    return new Set(
+      await this.permissionService.getPermissionKeysForRole(roleId),
+    );
   }
 
-  private hideUnlessAllowed<T>(data: T, allowed: Set<string>, key: string): T | null {
+  private hideUnlessAllowed<T>(
+    data: T,
+    allowed: Set<string>,
+    key: string,
+  ): T | null {
     return allowed.has(key) ? data : null;
   }
 
@@ -100,7 +118,11 @@ export class DashboardController {
     allowed: Set<string>,
   ) {
     return {
-      overdueDebt: this.hideUnlessAllowed(alerts.overdueDebt, allowed, 'debt.view'),
+      overdueDebt: this.hideUnlessAllowed(
+        alerts.overdueDebt,
+        allowed,
+        'debt.view',
+      ),
       creditLimitExceeded: this.hideUnlessAllowed(
         alerts.creditLimitExceeded,
         allowed,

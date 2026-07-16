@@ -1,4 +1,11 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
 import { PricingEngineService } from './pricing-engine.service';
 import { CalculatePriceDto } from './dto/calculate-price.dto';
 import { AuthGuard } from '../auth/auth.guard';

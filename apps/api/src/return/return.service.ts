@@ -21,7 +21,10 @@ import { UpdateRecoveryInventoryDto } from './dto/update-recovery-inventory.dto'
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 const RETURN_INCLUDE = {
-  items: { include: { recoveryInventory: true }, orderBy: { createdAt: 'asc' as const } },
+  items: {
+    include: { recoveryInventory: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
 } satisfies Prisma.ReturnInclude;
 
 @Injectable()
@@ -128,7 +131,9 @@ export class ReturnService {
     const salesOrder = await this.prisma.salesOrder.findUnique({
       where: { id: dto.salesOrderId },
       include: {
-        items: { include: { parameters: { orderBy: { displayOrder: 'asc' } } } },
+        items: {
+          include: { parameters: { orderBy: { displayOrder: 'asc' } } },
+        },
       },
     });
 
@@ -150,13 +155,17 @@ export class ReturnService {
     const requestedByItem = new Map<string, number>();
     for (const item of dto.items) {
       if (!item.salesOrderItemId) {
-        throw new BadRequestException('salesOrderItemId là bắt buộc cho từng dòng trả hàng.');
+        throw new BadRequestException(
+          'salesOrderItemId là bắt buộc cho từng dòng trả hàng.',
+        );
       }
       if (!item.returnedQuantity || item.returnedQuantity <= 0) {
         throw new BadRequestException('Số lượng trả phải lớn hơn 0.');
       }
       if (!item.reason || !validReasons.includes(item.reason)) {
-        throw new BadRequestException(`Lý do trả hàng "${item.reason}" không hợp lệ.`);
+        throw new BadRequestException(
+          `Lý do trả hàng "${item.reason}" không hợp lệ.`,
+        );
       }
       if (!salesOrderItemMap.has(item.salesOrderItemId)) {
         throw new NotFoundException(
@@ -166,7 +175,8 @@ export class ReturnService {
 
       requestedByItem.set(
         item.salesOrderItemId,
-        (requestedByItem.get(item.salesOrderItemId) ?? 0) + item.returnedQuantity,
+        (requestedByItem.get(item.salesOrderItemId) ?? 0) +
+          item.returnedQuantity,
       );
     }
 
@@ -177,8 +187,11 @@ export class ReturnService {
         where: { salesOrderItemId },
         _sum: { returnedQuantity: true },
       });
-      const orderedQuantity = Number(salesOrderItemMap.get(salesOrderItemId)!.quantity);
-      const totalAfter = Number(alreadyReturned._sum.returnedQuantity ?? 0) + requestedQuantity;
+      const orderedQuantity = Number(
+        salesOrderItemMap.get(salesOrderItemId)!.quantity,
+      );
+      const totalAfter =
+        Number(alreadyReturned._sum.returnedQuantity ?? 0) + requestedQuantity;
 
       if (totalAfter > orderedQuantity) {
         throw new BadRequestException(
@@ -276,7 +289,12 @@ export class ReturnService {
         { code: { contains: query.search, mode: 'insensitive' } },
         { productCode: { contains: query.search, mode: 'insensitive' } },
         { productName: { contains: query.search, mode: 'insensitive' } },
-        { createdFromReturnCode: { contains: query.search, mode: 'insensitive' } },
+        {
+          createdFromReturnCode: {
+            contains: query.search,
+            mode: 'insensitive',
+          },
+        },
       ];
     }
 
@@ -302,7 +320,9 @@ export class ReturnService {
   }
 
   async findOneRecoveryInventory(id: string) {
-    const item = await this.prisma.recoveryInventory.findUnique({ where: { id } });
+    const item = await this.prisma.recoveryInventory.findUnique({
+      where: { id },
+    });
     if (!item) {
       throw new NotFoundException('Hàng thu hồi không tồn tại.');
     }
@@ -367,7 +387,9 @@ export class ReturnService {
     if (dto.status !== undefined) {
       const validStatuses = Object.values(RecoveryInventoryStatus) as string[];
       if (!validStatuses.includes(dto.status)) {
-        throw new BadRequestException(`Trạng thái "${dto.status}" không hợp lệ.`);
+        throw new BadRequestException(
+          `Trạng thái "${dto.status}" không hợp lệ.`,
+        );
       }
       data.status = dto.status as RecoveryInventoryStatus;
     }
@@ -381,26 +403,32 @@ export class ReturnService {
   // ─────────────────────────────────────────────────────
 
   async getDashboardSummary(monthStart: Date = this.startOfMonth()) {
-    const [monthReturns, monthItems, valueAgg, availableCount, availableAgg] = await Promise.all([
-      this.prisma.return.count({ where: { returnDate: { gte: monthStart } } }),
-      this.prisma.returnItem.findMany({
-        where: { return: { returnDate: { gte: monthStart } } },
-        select: { returnedQuantity: true },
-      }),
-      this.prisma.returnItem.findMany({
-        where: { return: { returnDate: { gte: monthStart } } },
-        select: { returnedQuantity: true, unitPriceSnapshot: true },
-      }),
-      this.prisma.recoveryInventory.count({
-        where: { status: RecoveryInventoryStatus.AVAILABLE },
-      }),
-      this.prisma.recoveryInventory.aggregate({
-        where: { status: RecoveryInventoryStatus.AVAILABLE },
-        _sum: { quantity: true },
-      }),
-    ]);
+    const [monthReturns, monthItems, valueAgg, availableCount, availableAgg] =
+      await Promise.all([
+        this.prisma.return.count({
+          where: { returnDate: { gte: monthStart } },
+        }),
+        this.prisma.returnItem.findMany({
+          where: { return: { returnDate: { gte: monthStart } } },
+          select: { returnedQuantity: true },
+        }),
+        this.prisma.returnItem.findMany({
+          where: { return: { returnDate: { gte: monthStart } } },
+          select: { returnedQuantity: true, unitPriceSnapshot: true },
+        }),
+        this.prisma.recoveryInventory.count({
+          where: { status: RecoveryInventoryStatus.AVAILABLE },
+        }),
+        this.prisma.recoveryInventory.aggregate({
+          where: { status: RecoveryInventoryStatus.AVAILABLE },
+          _sum: { quantity: true },
+        }),
+      ]);
 
-    const totalProductsReturned = monthItems.reduce((s, i) => s + Number(i.returnedQuantity), 0);
+    const totalProductsReturned = monthItems.reduce(
+      (s, i) => s + Number(i.returnedQuantity),
+      0,
+    );
     const returnValue = valueAgg.reduce(
       (s, i) => s + Number(i.returnedQuantity) * Number(i.unitPriceSnapshot),
       0,
@@ -425,7 +453,9 @@ export class ReturnService {
     let over30 = 0;
     let over90 = 0;
     for (const item of available) {
-      const daysInStock = Math.floor((now - item.createdAt.getTime()) / MS_PER_DAY);
+      const daysInStock = Math.floor(
+        (now - item.createdAt.getTime()) / MS_PER_DAY,
+      );
       if (daysInStock > 90) over90 += 1;
       if (daysInStock > 30) over30 += 1;
     }
@@ -447,7 +477,8 @@ export class ReturnService {
         reason: g.reason,
         count: g._count._all,
         returnedQuantity: Number(g._sum.returnedQuantity ?? 0),
-        percent: totalCount > 0 ? Math.round((g._count._all / totalCount) * 100) : 0,
+        percent:
+          totalCount > 0 ? Math.round((g._count._all / totalCount) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
   }

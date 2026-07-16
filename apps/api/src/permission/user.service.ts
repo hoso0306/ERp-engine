@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
@@ -27,7 +31,10 @@ export class UserService {
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { role: true },
+    });
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
@@ -37,9 +44,13 @@ export class UserService {
   // Không có đăng ký công khai — chỉ Admin/Owner (đã có quyền user.create) tạo
   // User mới (xem permission.md mục "Quản lý User").
   async create(dto: CreateUserDto, actorId: string | null) {
-    const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } });
+    const role = await this.prisma.role.findUnique({
+      where: { id: dto.roleId },
+    });
     if (!role || !role.isActive) {
-      throw new BadRequestException('Role không tồn tại hoặc đã bị vô hiệu hoá.');
+      throw new BadRequestException(
+        'Role không tồn tại hoặc đã bị vô hiệu hoá.',
+      );
     }
 
     // Placeholder — được ghi đè ngay bởi setTemporaryPassword() bên dưới.
@@ -60,7 +71,9 @@ export class UserService {
 
     // Không tự viết logic hash mật khẩu ở Permission — gọi qua AuthService
     // (Module Ownership, xem permission.md mục "Phụ thuộc Module Authentication").
-    const temporaryPassword = await this.authService.setTemporaryPassword(user.id);
+    const temporaryPassword = await this.authService.setTemporaryPassword(
+      user.id,
+    );
 
     await this.permissionService.recordAudit({
       roleId: dto.roleId,
@@ -79,7 +92,10 @@ export class UserService {
   }
 
   async update(id: string, dto: UpdateUserDto, actorId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { role: true },
+    });
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
@@ -105,9 +121,13 @@ export class UserService {
 
     let newRole: { id: string; code: string; isActive: boolean } | null = null;
     if (dto.roleId !== undefined && dto.roleId !== user.roleId) {
-      newRole = await this.prisma.role.findUnique({ where: { id: dto.roleId } });
+      newRole = await this.prisma.role.findUnique({
+        where: { id: dto.roleId },
+      });
       if (!newRole || !newRole.isActive) {
-        throw new BadRequestException('Role không tồn tại hoặc đã bị vô hiệu hoá.');
+        throw new BadRequestException(
+          'Role không tồn tại hoặc đã bị vô hiệu hoá.',
+        );
       }
     }
 

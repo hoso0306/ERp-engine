@@ -16,7 +16,9 @@ function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
     priceRoundValue: 0,
     ruleItems: [],
     matrixRows: [],
-    derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+    derivedParameters: [
+      { name: 'area', expression: 'chieurong * chieucao / 10000' },
+    ],
     validationRules: [],
     enumParameterNames: [],
     ...overrides,
@@ -25,21 +27,49 @@ function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
 
 // Bảng giá thật (ảnh bảo giá cửa lưới Hệ 30): Trắng/Cafe × 1/2 cánh
 const HE30_MATRIX = [
-  { dimensions: { maukhung: 'trang', socanh: '1' }, unitPrice: 385000, displayOrder: 0 },
-  { dimensions: { maukhung: 'trang', socanh: '2' }, unitPrice: 408000, displayOrder: 1 },
-  { dimensions: { maukhung: 'cafe', socanh: '1' }, unitPrice: 428000, displayOrder: 2 },
-  { dimensions: { maukhung: 'cafe', socanh: '2' }, unitPrice: 450000, displayOrder: 3 },
+  {
+    dimensions: { maukhung: 'trang', socanh: '1' },
+    unitPrice: 385000,
+    displayOrder: 0,
+  },
+  {
+    dimensions: { maukhung: 'trang', socanh: '2' },
+    unitPrice: 408000,
+    displayOrder: 1,
+  },
+  {
+    dimensions: { maukhung: 'cafe', socanh: '1' },
+    unitPrice: 428000,
+    displayOrder: 2,
+  },
+  {
+    dimensions: { maukhung: 'cafe', socanh: '2' },
+    unitPrice: 450000,
+    displayOrder: 3,
+  },
 ];
 
 // Ghi chú bảng giá: 1 cánh rộng <70cm tính 70cm; 2 cánh rộng <100cm tính 100cm
 const HE30_MIN_RULES = [
   {
-    ruleType: 'MIN_DIMENSION', targetParameter: 'chieurong', value: 70,
-    condition: 'socanh == 1', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 0,
+    ruleType: 'MIN_DIMENSION',
+    targetParameter: 'chieurong',
+    value: 70,
+    condition: 'socanh == 1',
+    rangeFrom: null,
+    rangeTo: null,
+    billValue: null,
+    displayOrder: 0,
   },
   {
-    ruleType: 'MIN_DIMENSION', targetParameter: 'chieurong', value: 100,
-    condition: 'socanh == 2', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 1,
+    ruleType: 'MIN_DIMENSION',
+    targetParameter: 'chieurong',
+    value: 100,
+    condition: 'socanh == 2',
+    rangeFrom: null,
+    rangeTo: null,
+    billValue: null,
+    displayOrder: 1,
   },
 ];
 
@@ -74,7 +104,10 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
 
   it('Công thức dùng unitPrice kết hợp thêm phụ phí cố định', () => {
     const result = service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area + 20000' }),
+      makeConfig({
+        matrixRows: HE30_MATRIX,
+        expression: 'unitPrice * area + 20000',
+      }),
       { chieurong: 100, chieucao: 100, maukhung: 'trang', socanh: 1 },
     );
     expect(result.unitPrice).toBe(385000);
@@ -93,7 +126,10 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
   it('có Ma trận nhưng KHÔNG có Công thức → lỗi bắt buộc phải có Công thức', () => {
     expect(() =>
       service().calculatePrice(makeConfig({ matrixRows: HE30_MATRIX }), {
-        chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1,
+        chieurong: 100,
+        chieucao: 100,
+        maukhung: 'cafe',
+        socanh: 1,
       }),
     ).toThrow(/cần có Công thức/);
   });
@@ -101,7 +137,11 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
   it('sản phẩm dùng matrix nhưng thiếu derived param area → Công thức lỗi biến "area" không tồn tại', () => {
     expect(() =>
       service().calculatePrice(
-        makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area', derivedParameters: [] }),
+        makeConfig({
+          matrixRows: HE30_MATRIX,
+          expression: 'unitPrice * area',
+          derivedParameters: [],
+        }),
         { chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1 },
       ),
     ).toThrow(/area/);
@@ -115,7 +155,11 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
 describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
   it('cửa 1 cánh rộng 60cm → tính tiền theo 70cm (diện tích tính lại từ chiều đã nâng)', () => {
     const result = service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
+      makeConfig({
+        matrixRows: HE30_MATRIX,
+        ruleItems: HE30_MIN_RULES,
+        expression: 'unitPrice * area',
+      }),
       { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 },
     );
 
@@ -127,7 +171,11 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
 
   it('rule min 1 cánh KHÔNG áp cho cửa 2 cánh (condition) — 2 cánh dùng min 100cm', () => {
     const result = service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
+      makeConfig({
+        matrixRows: HE30_MATRIX,
+        ruleItems: HE30_MIN_RULES,
+        expression: 'unitPrice * area',
+      }),
       { chieurong: 80, chieucao: 200, maukhung: 'cafe', socanh: 2 },
     );
 
@@ -139,7 +187,11 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
   it('KHÔNG ghi đè tham số gốc — rawParams giữ nguyên (billable ≠ actual)', () => {
     const raw = { chieurong: 60, chieucao: 200, maukhung: 'cafe', socanh: 1 };
     service().calculatePrice(
-      makeConfig({ matrixRows: HE30_MATRIX, ruleItems: HE30_MIN_RULES, expression: 'unitPrice * area' }),
+      makeConfig({
+        matrixRows: HE30_MATRIX,
+        ruleItems: HE30_MIN_RULES,
+        expression: 'unitPrice * area',
+      }),
       raw,
     );
     expect(raw.chieurong).toBe(60); // xưởng vẫn cắt theo 60cm
@@ -148,35 +200,67 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
   it('BILLABLE_STEP (rèm kéo đứng): 0,85m² rơi vào bậc [0.7, 1) → tính 1m²', () => {
     const stepRules = [
       {
-        ruleType: 'BILLABLE_STEP', targetParameter: null, value: 0,
-        condition: null, rangeFrom: 0, rangeTo: 0.7, billValue: 0.7, displayOrder: 0,
+        ruleType: 'BILLABLE_STEP',
+        targetParameter: null,
+        value: 0,
+        condition: null,
+        rangeFrom: 0,
+        rangeTo: 0.7,
+        billValue: 0.7,
+        displayOrder: 0,
       },
       {
-        ruleType: 'BILLABLE_STEP', targetParameter: null, value: 0,
-        condition: null, rangeFrom: 0.7, rangeTo: 1, billValue: 1, displayOrder: 1,
+        ruleType: 'BILLABLE_STEP',
+        targetParameter: null,
+        value: 0,
+        condition: null,
+        rangeFrom: 0.7,
+        rangeTo: 1,
+        billValue: 1,
+        displayOrder: 1,
       },
     ];
-    const config = makeConfig({ expression: 'area * 415000', ruleItems: stepRules });
+    const config = makeConfig({
+      expression: 'area * 415000',
+      ruleItems: stepRules,
+    });
 
     // 0.85m² → bậc 1m²
-    const mid = service().calculatePrice(config, { chieurong: 85, chieucao: 100 });
+    const mid = service().calculatePrice(config, {
+      chieurong: 85,
+      chieucao: 100,
+    });
     expect(mid.billableParams.area).toBe(1);
     expect(mid.systemPrice).toBe(415000);
 
     // 0.5m² → bậc 0.7m²
-    const small = service().calculatePrice(config, { chieurong: 50, chieucao: 100 });
+    const small = service().calculatePrice(config, {
+      chieurong: 50,
+      chieucao: 100,
+    });
     expect(small.billableParams.area).toBe(0.7);
 
     // 2.5m² → giữ nguyên
-    const large = service().calculatePrice(config, { chieurong: 125, chieucao: 200 });
+    const large = service().calculatePrice(config, {
+      chieurong: 125,
+      chieucao: 200,
+    });
     expect(large.billableParams.area).toBe(2.5);
   });
 
   it('condition của rule lỗi → throw, không âm thầm bỏ rule', () => {
-    const badRule = [{
-      ruleType: 'MIN_AREA', targetParameter: null, value: 0.7,
-      condition: 'bienkhongton >', rangeFrom: null, rangeTo: null, billValue: null, displayOrder: 0,
-    }];
+    const badRule = [
+      {
+        ruleType: 'MIN_AREA',
+        targetParameter: null,
+        value: 0.7,
+        condition: 'bienkhongton >',
+        rangeFrom: null,
+        rangeTo: null,
+        billValue: null,
+        displayOrder: 0,
+      },
+    ];
     expect(() =>
       service().calculatePrice(
         makeConfig({ expression: 'area * 100000', ruleItems: badRule }),
@@ -193,7 +277,9 @@ describe('PricingEngine.calculatePrice — Normalize (min/bậc thang)', () => {
 describe('PricingEngine.calculatePrice — Expression fallback', () => {
   it('không có matrix → dùng expression (sản phẩm cũ chạy nguyên trạng)', () => {
     const result = service().calculatePrice(
-      makeConfig({ expression: '(chieucao/100)*(chieurong/100)*328000 + 5000' }),
+      makeConfig({
+        expression: '(chieucao/100)*(chieurong/100)*328000 + 5000',
+      }),
       { chieurong: 100, chieucao: 200 },
     );
     expect(result.unitPrice).toBeNull();
@@ -220,9 +306,13 @@ describe('PricingEngine.calculatePrice — Expression fallback', () => {
 
   it('giá âm → lỗi', () => {
     expect(() =>
-      service().calculatePrice(makeConfig({ expression: 'area * 100000 - 999999999' }), {
-        chieurong: 100, chieucao: 100,
-      }),
+      service().calculatePrice(
+        makeConfig({ expression: 'area * 100000 - 999999999' }),
+        {
+          chieurong: 100,
+          chieucao: 100,
+        },
+      ),
     ).toThrow(/số âm/);
   });
 });
@@ -236,11 +326,14 @@ describe('PricingEngine.calculatePrice — Validation', () => {
     const result = service().calculatePrice(
       makeConfig({
         expression: 'area * 100000',
-        validationRules: [{
-          expression: 'chieucao > 2 * chieurong',
-          severity: 'WARN',
-          message: 'Chiều cao vượt quá 2 lần chiều rộng — kiểm tra lại với xưởng.',
-        }],
+        validationRules: [
+          {
+            expression: 'chieucao > 2 * chieurong',
+            severity: 'WARN',
+            message:
+              'Chiều cao vượt quá 2 lần chiều rộng — kiểm tra lại với xưởng.',
+          },
+        ],
       }),
       { chieurong: 100, chieucao: 300 },
     );
@@ -254,11 +347,13 @@ describe('PricingEngine.calculatePrice — Validation', () => {
       service().calculatePrice(
         makeConfig({
           expression: 'area * 100000',
-          validationRules: [{
-            expression: 'chieurong > 500',
-            severity: 'BLOCK',
-            message: 'Chiều rộng vượt khổ tối đa 5m.',
-          }],
+          validationRules: [
+            {
+              expression: 'chieurong > 500',
+              severity: 'BLOCK',
+              message: 'Chiều rộng vượt khổ tối đa 5m.',
+            },
+          ],
         }),
         { chieurong: 600, chieucao: 100 },
       ),
@@ -269,9 +364,13 @@ describe('PricingEngine.calculatePrice — Validation', () => {
     const result = service().calculatePrice(
       makeConfig({
         expression: 'area * 100000',
-        validationRules: [{
-          expression: 'chieucao > 2 * chieurong', severity: 'WARN', message: 'x',
-        }],
+        validationRules: [
+          {
+            expression: 'chieucao > 2 * chieurong',
+            severity: 'WARN',
+            message: 'x',
+          },
+        ],
       }),
       { chieurong: 100, chieucao: 150 },
     );
@@ -286,7 +385,10 @@ describe('PricingEngine.calculatePrice — Validation', () => {
 describe('PricingEngineService.calculate (load + calc)', () => {
   async function build(prisma: unknown): Promise<PricingEngineService> {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PricingEngineService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        PricingEngineService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     return module.get(PricingEngineService);
   }
@@ -294,18 +396,22 @@ describe('PricingEngineService.calculate (load + calc)', () => {
   function mockProduct(overrides: Record<string, unknown> = {}) {
     return {
       id: 'prod-001',
-      derivedParameters: [{ name: 'area', expression: 'chieurong * chieucao / 10000' }],
+      derivedParameters: [
+        { name: 'area', expression: 'chieurong * chieucao / 10000' },
+      ],
       validationRules: [],
       parameters: [{ name: 'maukhung' }, { name: 'socanh' }],
       pricingRule: {
-        versions: [{
-          id: 'ver-001',
-          expression: 'unitPrice * area',
-          priceRoundType: 'NONE',
-          priceRoundValue: null,
-          items: [],
-          matrixRows: HE30_MATRIX,
-        }],
+        versions: [
+          {
+            id: 'ver-001',
+            expression: 'unitPrice * area',
+            priceRoundType: 'NONE',
+            priceRoundValue: null,
+            items: [],
+            matrixRows: HE30_MATRIX,
+          },
+        ],
       },
       ...overrides,
     };
@@ -333,20 +439,24 @@ describe('PricingEngineService.calculate (load + calc)', () => {
   });
 
   it('sản phẩm không tồn tại → NotFoundException', async () => {
-    const svc = await build({ product: { findUnique: jest.fn().mockResolvedValue(null) } });
-    await expect(svc.calculate({ productId: 'x', parameters: [] })).rejects.toThrow(
-      NotFoundException,
-    );
+    const svc = await build({
+      product: { findUnique: jest.fn().mockResolvedValue(null) },
+    });
+    await expect(
+      svc.calculate({ productId: 'x', parameters: [] }),
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('chưa có version ACTIVE → BadRequestException', async () => {
     const svc = await build({
       product: {
-        findUnique: jest.fn().mockResolvedValue(mockProduct({ pricingRule: { versions: [] } })),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(mockProduct({ pricingRule: { versions: [] } })),
       },
     });
-    await expect(svc.calculate({ productId: 'prod-001', parameters: [] })).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      svc.calculate({ productId: 'prod-001', parameters: [] }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

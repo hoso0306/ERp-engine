@@ -17,7 +17,9 @@ import { RequirePermission } from '../permission/require-permission.decorator';
 @Controller('production-orders')
 @UseGuards(AuthGuard, PermissionGuard)
 export class ProductionOrderController {
-  constructor(private readonly productionOrderService: ProductionOrderService) {}
+  constructor(
+    private readonly productionOrderService: ProductionOrderService,
+  ) {}
 
   // Production Order không có Create / Update / Delete API — chỉ sinh tự động
   // từ POST /quotations/:id/approve.

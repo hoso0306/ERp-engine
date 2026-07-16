@@ -318,15 +318,23 @@ export class WarehouseService {
   // (Task 04, 010-cai-dat.md) nếu caller không truyền — không hard-code.
   async getTopConsumedMaterials(days?: number, limit?: number) {
     const windowDays =
-      days ?? (await this.settingService.getNumberValue('Dashboard', 'defaultDashboardPeriod'));
-    const take = limit ?? (await this.settingService.getNumberValue('Dashboard', 'topMaterials'));
+      days ??
+      (await this.settingService.getNumberValue(
+        'Dashboard',
+        'defaultDashboardPeriod',
+      ));
+    const take =
+      limit ??
+      (await this.settingService.getNumberValue('Dashboard', 'topMaterials'));
 
     const where: Prisma.WarehouseTransactionWhereInput = {
       direction: WarehouseDirection.OUT,
       transactionType: WarehouseTransactionType.MATERIAL_ISSUE,
     };
     if (windowDays > 0) {
-      where.createdAt = { gte: new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000) };
+      where.createdAt = {
+        gte: new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000),
+      };
     }
 
     const grouped = await this.prisma.warehouseTransaction.groupBy({
@@ -373,7 +381,11 @@ export class WarehouseService {
   // Nhận sẵn `lowStockMaterials` nếu caller (vd DashboardService) đã gọi
   // getLowStockMaterials() trước đó — tránh lặp lại cùng một query
   // (009-dashboard.md Task 07 — không N+1 / không query trùng lặp).
-  async getInventorySummary(lowStockMaterials?: Awaited<ReturnType<WarehouseService['getLowStockMaterials']>>) {
+  async getInventorySummary(
+    lowStockMaterials?: Awaited<
+      ReturnType<WarehouseService['getLowStockMaterials']>
+    >,
+  ) {
     const [totalMaterials, aggregate, lowStock] = await Promise.all([
       this.prisma.material.count({ where: { isActive: true } }),
       this.prisma.material.aggregate({

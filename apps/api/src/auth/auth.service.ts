@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -32,12 +36,17 @@ export class AuthService {
       throw invalidCredentials();
     }
 
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (!user || !user.isActive) {
       throw invalidCredentials();
     }
 
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
+    const passwordMatches = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
     if (!passwordMatches) {
       throw invalidCredentials();
     }
@@ -100,7 +109,10 @@ export class AuthService {
       throw new UnauthorizedException('Người dùng không tồn tại.');
     }
 
-    const oldPasswordMatches = await bcrypt.compare(dto.oldPassword, user.passwordHash);
+    const oldPasswordMatches = await bcrypt.compare(
+      dto.oldPassword,
+      user.passwordHash,
+    );
     if (!oldPasswordMatches) {
       throw new BadRequestException('Mật khẩu hiện tại không đúng.');
     }
@@ -135,12 +147,16 @@ export class AuthService {
     }
 
     const temporaryPassword = crypto.randomBytes(9).toString('base64url');
-    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_SALT_ROUNDS);
-
-    const forceChangePasswordOnFirstLogin = await this.settingService.getBooleanValue(
-      'Security',
-      'forceChangePasswordOnFirstLogin',
+    const passwordHash = await bcrypt.hash(
+      temporaryPassword,
+      BCRYPT_SALT_ROUNDS,
     );
+
+    const forceChangePasswordOnFirstLogin =
+      await this.settingService.getBooleanValue(
+        'Security',
+        'forceChangePasswordOnFirstLogin',
+      );
 
     await this.prisma.user.update({
       where: { id: userId },

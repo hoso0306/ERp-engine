@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ReturnService } from './return.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -47,8 +51,18 @@ describe('ReturnService', () => {
   let service: ReturnService;
   let prisma: {
     salesOrder: { findUnique: jest.Mock };
-    returnItem: { aggregate: jest.Mock; create: jest.Mock; groupBy: jest.Mock; findMany: jest.Mock };
-    return: { create: jest.Mock; findUniqueOrThrow: jest.Mock; count: jest.Mock; groupBy: jest.Mock };
+    returnItem: {
+      aggregate: jest.Mock;
+      create: jest.Mock;
+      groupBy: jest.Mock;
+      findMany: jest.Mock;
+    };
+    return: {
+      create: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+      count: jest.Mock;
+      groupBy: jest.Mock;
+    };
     recoveryInventory: {
       create: jest.Mock;
       findUnique: jest.Mock;
@@ -65,7 +79,9 @@ describe('ReturnService', () => {
     prisma = {
       salesOrder: { findUnique: jest.fn() },
       returnItem: {
-        aggregate: jest.fn().mockResolvedValue({ _sum: { returnedQuantity: 0 } }),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { returnedQuantity: 0 } }),
         create: jest.fn(),
         groupBy: jest.fn(),
         findMany: jest.fn(),
@@ -85,9 +101,13 @@ describe('ReturnService', () => {
         findMany: jest.fn(),
       },
       runningNumber: {
-        update: jest.fn().mockResolvedValue({ prefix: 'RT', lastNumber: 1, paddingLength: 6 }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'RT', lastNumber: 1, paddingLength: 6 }),
       },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -99,9 +119,9 @@ describe('ReturnService', () => {
 
   describe('create() — Task 02/03 validation', () => {
     it('rejects when items is empty', async () => {
-      await expect(service.create({ salesOrderId: 'so-1', items: [] })).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.create({ salesOrderId: 'so-1', items: [] }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects when SalesOrder does not exist', async () => {
@@ -109,17 +129,23 @@ describe('ReturnService', () => {
       await expect(
         service.create({
           salesOrderId: 'nonexistent',
-          items: [{ salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'OTHER' }],
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'OTHER' },
+          ],
         }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('rejects when SalesOrder is not DELIVERED', async () => {
-      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder({ status: 'IN_PRODUCTION' }));
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({ status: 'IN_PRODUCTION' }),
+      );
       await expect(
         service.create({
           salesOrderId: 'so-1',
-          items: [{ salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'OTHER' }],
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'OTHER' },
+          ],
         }),
       ).rejects.toThrow(ForbiddenException);
     });
@@ -129,7 +155,13 @@ describe('ReturnService', () => {
       await expect(
         service.create({
           salesOrderId: 'so-1',
-          items: [{ salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'NOT_A_REAL_REASON' }],
+          items: [
+            {
+              salesOrderItemId: 'soi-1',
+              returnedQuantity: 1,
+              reason: 'NOT_A_REAL_REASON',
+            },
+          ],
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -139,7 +171,13 @@ describe('ReturnService', () => {
       await expect(
         service.create({
           salesOrderId: 'so-1',
-          items: [{ salesOrderItemId: 'other-item', returnedQuantity: 1, reason: 'OTHER' }],
+          items: [
+            {
+              salesOrderItemId: 'other-item',
+              returnedQuantity: 1,
+              reason: 'OTHER',
+            },
+          ],
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -152,7 +190,11 @@ describe('ReturnService', () => {
           salesOrderId: 'so-1',
           items: [
             { salesOrderItemId: 'soi-1', returnedQuantity: 3, reason: 'OTHER' },
-            { salesOrderItemId: 'soi-1', returnedQuantity: 3, reason: 'WRONG_SIZE' },
+            {
+              salesOrderItemId: 'soi-1',
+              returnedQuantity: 3,
+              reason: 'WRONG_SIZE',
+            },
           ],
         }),
       ).rejects.toThrow(BadRequestException);
@@ -161,12 +203,16 @@ describe('ReturnService', () => {
     it('rejects when cumulative returnedQuantity across PREVIOUS Returns + this request exceeds orderedQuantity', async () => {
       prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
       // Already returned 4 out of 5 previously (from a different Return)
-      prisma.returnItem.aggregate.mockResolvedValue({ _sum: { returnedQuantity: 4 } });
+      prisma.returnItem.aggregate.mockResolvedValue({
+        _sum: { returnedQuantity: 4 },
+      });
 
       await expect(
         service.create({
           salesOrderId: 'so-1',
-          items: [{ salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' }],
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+          ],
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -175,11 +221,21 @@ describe('ReturnService', () => {
       prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
       prisma.return.create.mockResolvedValue({ id: 'ret-1', code: 'RT000001' });
       prisma.returnItem.create.mockResolvedValue({ id: 'item-1' });
-      prisma.return.findUniqueOrThrow.mockResolvedValue({ id: 'ret-1', code: 'RT000001', items: [] });
+      prisma.return.findUniqueOrThrow.mockResolvedValue({
+        id: 'ret-1',
+        code: 'RT000001',
+        items: [],
+      });
 
       await service.create({
         salesOrderId: 'so-1',
-        items: [{ salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'WRONG_SIZE' }],
+        items: [
+          {
+            salesOrderItemId: 'soi-1',
+            returnedQuantity: 2,
+            reason: 'WRONG_SIZE',
+          },
+        ],
       });
 
       expect(prisma.returnItem.create).toHaveBeenCalledWith(
@@ -208,12 +264,18 @@ describe('ReturnService', () => {
 
   describe('markUsed() / dispose() — Task 05 workflow', () => {
     it('markUsed() rejects when status is not AVAILABLE', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory({ status: 'USED' }));
-      await expect(service.markUsed('ri-1', {})).rejects.toThrow(ForbiddenException);
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory({ status: 'USED' }),
+      );
+      await expect(service.markUsed('ri-1', {})).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('markUsed() succeeds from AVAILABLE and stores usedForNote', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory());
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory(),
+      );
       await service.markUsed('ri-1', { usedForNote: 'SO000231' });
       expect(prisma.recoveryInventory.update).toHaveBeenCalledWith({
         where: { id: 'ri-1' },
@@ -229,12 +291,16 @@ describe('ReturnService', () => {
     });
 
     it('rejects USED -> DISPOSED (no cross-transition)', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory({ status: 'USED' }));
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory({ status: 'USED' }),
+      );
       await expect(service.dispose('ri-1')).rejects.toThrow(ForbiddenException);
     });
 
     it('dispose() succeeds from AVAILABLE', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory());
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory(),
+      );
       await service.dispose('ri-1');
       expect(prisma.recoveryInventory.update).toHaveBeenCalledWith({
         where: { id: 'ri-1' },
@@ -245,14 +311,18 @@ describe('ReturnService', () => {
 
   describe('updateRecoveryInventory() — Task 06 management', () => {
     it('rejects an invalid status value', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory());
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory(),
+      );
       await expect(
         service.updateRecoveryInventory('ri-1', { status: 'NOT_REAL' }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('only touches location/status/imageUrl — never Snapshot fields', async () => {
-      prisma.recoveryInventory.findUnique.mockResolvedValue(makeRecoveryInventory());
+      prisma.recoveryInventory.findUnique.mockResolvedValue(
+        makeRecoveryInventory(),
+      );
       await service.updateRecoveryInventory('ri-1', {
         location: 'Kho A',
         status: 'DISPOSED',

@@ -48,7 +48,9 @@ describe('UserService', () => {
       },
       role: { findUnique: jest.fn() },
     };
-    authService = { setTemporaryPassword: jest.fn().mockResolvedValue('tempPass123') };
+    authService = {
+      setTemporaryPassword: jest.fn().mockResolvedValue('tempPass123'),
+    };
     permissionService = { recordAudit: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -151,7 +153,10 @@ describe('UserService', () => {
 
   describe('create', () => {
     it('creates the user then calls AuthService.setTemporaryPassword and records USER_CREATED', async () => {
-      prisma.role.findUnique.mockResolvedValue({ id: 'role-sales', isActive: true });
+      prisma.role.findUnique.mockResolvedValue({
+        id: 'role-sales',
+        isActive: true,
+      });
       prisma.user.create.mockResolvedValue(makeUser());
       prisma.user.findUniqueOrThrow.mockResolvedValue(makeUser());
 
@@ -168,7 +173,10 @@ describe('UserService', () => {
     });
 
     it('rejects when the target Role is disabled', async () => {
-      prisma.role.findUnique.mockResolvedValue({ id: 'role-x', isActive: false });
+      prisma.role.findUnique.mockResolvedValue({
+        id: 'role-x',
+        isActive: false,
+      });
 
       await expect(
         service.create({ email: 'a@b.com', roleId: 'role-x' }, 'actor-1'),
