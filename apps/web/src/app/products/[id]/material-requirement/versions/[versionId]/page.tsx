@@ -23,6 +23,7 @@ import {
   type MaterialRequirementItem,
 } from "@/components/product/material-requirement-item-dialog";
 import { ExcelImportDialog } from "@/components/product/excel-import-dialog";
+import type { DerivedParameter } from "@/components/product/derived-parameter-dialog";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiPut, apiDelete, ApiError } from "@/lib/api";
 import { useSetBreadcrumbExtra } from "@/context/breadcrumb-context";
@@ -71,6 +72,7 @@ export default function MaterialRequirementVersionPage() {
 
   const [version, setVersion] = useState<MaterialRequirementVersion | null>(null);
   const [parameters, setParameters] = useState<ProductParameter[]>([]);
+  const [derivedParameters, setDerivedParameters] = useState<DerivedParameter[]>([]);
   const [productName, setProductName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +136,9 @@ export default function MaterialRequirementVersionPage() {
       .catch(() => {});
     apiGet<{ name: string }>(`/products/${productId}`)
       .then((data) => setProductName(data.name))
+      .catch(() => {});
+    apiGet<DerivedParameter[]>(`/products/${productId}/derived-parameters`)
+      .then((data) => setDerivedParameters(data))
       .catch(() => {});
   }, [productId, loadVersion]);
 
@@ -315,12 +320,20 @@ export default function MaterialRequirementVersionPage() {
         </div>
 
         {/* Available variables */}
-        {parameters.filter((p) => p.usedInMaterial).length > 0 && (
+        {(parameters.filter((p) => p.usedInMaterial).length > 0 || derivedParameters.length > 0) && (
           <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
             <p className="font-medium">Biến có thể dùng trong Công thức/Điều kiện:</p>
-            <p className="font-mono">
-              {parameters.filter((p) => p.usedInMaterial).map((p) => p.name).join(", ")}
-            </p>
+            {parameters.filter((p) => p.usedInMaterial).length > 0 && (
+              <p className="font-mono">
+                {parameters.filter((p) => p.usedInMaterial).map((p) => p.name).join(", ")}
+              </p>
+            )}
+            {derivedParameters.map((dp) => (
+              <p key={dp.id}>
+                <code className="font-mono">{dp.name}</code>{" "}
+                <span>(= {dp.expression}, tự tính)</span>
+              </p>
+            ))}
           </div>
         )}
 
@@ -543,6 +556,7 @@ export default function MaterialRequirementVersionPage() {
         productId={productId}
         versionId={versionId}
         parameters={parameters}
+        derivedParameters={derivedParameters}
         item={editItem}
         onSaved={loadVersion}
       />

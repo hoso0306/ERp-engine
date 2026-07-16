@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { apiPost, apiPatch, ApiError } from "@/lib/api";
 import { ConditionBuilder, type ConditionParameter } from "./condition-builder";
 import { MaterialTypeahead, type MaterialOption } from "@/components/warehouse/material-typeahead";
+import type { DerivedParameter } from "./derived-parameter-dialog";
 
 export interface MaterialRequirementItem {
   id: string;
@@ -36,6 +37,7 @@ interface MaterialRequirementItemDialogProps {
   productId: string;
   versionId: string;
   parameters: ConditionParameter[];
+  derivedParameters?: DerivedParameter[];
   item?: MaterialRequirementItem | null;
   onSaved: () => void;
 }
@@ -46,6 +48,7 @@ export function MaterialRequirementItemDialog({
   productId,
   versionId,
   parameters,
+  derivedParameters = [],
   item,
   onSaved,
 }: MaterialRequirementItemDialogProps) {
@@ -161,10 +164,18 @@ export function MaterialRequirementItemDialog({
             <p className="text-xs text-muted-foreground">
               Công thức tính số lượng vật tư. Dùng tên biến của thông số sản phẩm.
             </p>
-            {materialVariables.length > 0 && (
+            {(materialVariables.length > 0 || derivedParameters.length > 0) && (
               <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium">Biến có thể dùng:</p>
-                <p className="font-mono">{materialVariables.map((p) => p.name).join(", ")}</p>
+                {materialVariables.length > 0 && (
+                  <p className="font-mono">{materialVariables.map((p) => p.name).join(", ")}</p>
+                )}
+                {derivedParameters.map((dp) => (
+                  <p key={dp.id}>
+                    <code className="font-mono">{dp.name}</code>{" "}
+                    <span>(= {dp.expression}, tự tính)</span>
+                  </p>
+                ))}
               </div>
             )}
           </div>

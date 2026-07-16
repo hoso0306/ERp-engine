@@ -1289,15 +1289,30 @@ export class ProductService {
       { header: 'Đơn giá', key: 'unitPrice', width: 16 },
     ];
 
-    const rows = version.matrixRows.map((row) => {
-      const dims = row.dimensions as Record<string, string>;
+    // Sinh đủ tích Descartes mọi tổ hợp option (giống bảng hiển thị trên FE — Sprint 04),
+    // không chỉ những dòng đã lưu, để file mẫu luôn khớp với bản nháp đang xem trên màn hình.
+    let combos: Record<string, string>[] = [{}];
+    for (const param of enumParams) {
+      const next: Record<string, string>[] = [];
+      for (const combo of combos) {
+        for (const opt of param.options) {
+          next.push({ ...combo, [param.name]: opt.value });
+        }
+      }
+      combos = next;
+    }
+
+    const rows = combos.map((combo) => {
+      const existing = version.matrixRows.find((row) => {
+        const dims = row.dimensions as Record<string, string>;
+        return enumParams.every((p) => dims[p.name] === combo[p.name]);
+      });
       const record: Record<string, unknown> = {};
       for (const param of enumParams) {
-        const rawValue = dims[param.name] ?? '';
-        const option = param.options.find((o) => o.value === rawValue);
-        record[param.name] = option?.label ?? option?.value ?? rawValue;
+        const option = param.options.find((o) => o.value === combo[param.name]);
+        record[param.name] = option?.label ?? option?.value ?? combo[param.name];
       }
-      record.unitPrice = Number(row.unitPrice);
+      record.unitPrice = existing ? Number(existing.unitPrice) : '';
       return record;
     });
 
