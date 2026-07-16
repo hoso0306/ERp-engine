@@ -27,13 +27,18 @@ interface MaterialStockRow {
   unit: { id: string; name: string } | null;
 }
 
-interface MaterialReceiptRow {
+interface MaterialReceiptItemRow {
   id: string;
-  code: string;
   materialCode: string;
   materialName: string;
   unit: string;
   quantity: number;
+}
+
+interface MaterialReceiptRow {
+  id: string;
+  code: string;
+  items: MaterialReceiptItemRow[];
   supplierName: string | null;
   createdAt: string;
 }

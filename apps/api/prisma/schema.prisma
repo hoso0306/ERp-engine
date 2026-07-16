@@ -422,7 +422,7 @@ model Material {
   unit              Unit                       @relation(fields: [unitId], references: [id])
   prices            MaterialPrice[]
   requirementItems  MaterialRequirementItem[]
-  receipts          MaterialReceipt[]
+  receiptItems      MaterialReceiptItem[]
   transactions      WarehouseTransaction[]
   productionCenters MaterialProductionCenter[]
 
@@ -1108,45 +1108,60 @@ model ProductionOrderTimeline {
 // Warehouse (Material Receipt / Warehouse Transaction)
 // ──────────────────────────────────────
 
+// Header — một phiếu có thể gồm nhiều vật tư (Sprint 04, chốt 16/07/2026).
+// Chi tiết từng vật tư nằm ở MaterialReceiptItem.
 model MaterialReceipt {
   id           String   @id @default(cuid())
   code         String   @unique
-  materialId   String   @map("material_id")
-  materialCode String   @map("material_code")
-  materialName String   @map("material_name")
-  unit         String
-  quantity     Decimal  @db.Decimal(15, 4)
   supplierName String?  @map("supplier_name")
   note         String?
   createdBy    String?  @map("created_by")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  material    Material              @relation(fields: [materialId], references: [id])
-  transaction WarehouseTransaction?
+  items MaterialReceiptItem[]
 
-  @@index([materialId])
   // Báo cáo (report.md mục 3) — báo cáo nhập kho lọc theo ngày tạo phiếu.
   @@index([createdAt])
   @@map("material_receipts")
 }
 
-model WarehouseTransaction {
-  id                String                   @id @default(cuid())
-  direction         WarehouseDirection
-  transactionType   WarehouseTransactionType @map("transaction_type")
-  materialId        String                   @map("material_id")
-  materialCode      String                   @map("material_code")
-  materialName      String                   @map("material_name")
+model MaterialReceiptItem {
+  id                String   @id @default(cuid())
+  materialReceiptId String   @map("material_receipt_id")
+  materialId        String   @map("material_id")
+  materialCode      String   @map("material_code")
+  materialName      String   @map("material_name")
   unit              String
-  quantity          Decimal                  @db.Decimal(15, 4)
-  materialReceiptId String?                  @unique @map("material_receipt_id")
-  productionOrderId String?                  @map("production_order_id")
-  createdAt         DateTime                 @default(now()) @map("created_at")
+  quantity          Decimal  @db.Decimal(15, 4)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  material        Material         @relation(fields: [materialId], references: [id])
-  materialReceipt MaterialReceipt? @relation(fields: [materialReceiptId], references: [id])
-  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  materialReceipt MaterialReceipt       @relation(fields: [materialReceiptId], references: [id], onDelete: Cascade)
+  material        Material             @relation(fields: [materialId], references: [id])
+  transaction     WarehouseTransaction?
+
+  @@index([materialReceiptId])
+  @@index([materialId])
+  @@map("material_receipt_items")
+}
+
+model WarehouseTransaction {
+  id                    String                   @id @default(cuid())
+  direction             WarehouseDirection
+  transactionType       WarehouseTransactionType @map("transaction_type")
+  materialId            String                   @map("material_id")
+  materialCode          String                   @map("material_code")
+  materialName          String                   @map("material_name")
+  unit                  String
+  quantity              Decimal                  @db.Decimal(15, 4)
+  materialReceiptItemId String?                  @unique @map("material_receipt_item_id")
+  productionOrderId     String?                  @map("production_order_id")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+
+  material            Material             @relation(fields: [materialId], references: [id])
+  materialReceiptItem MaterialReceiptItem? @relation(fields: [materialReceiptItemId], references: [id])
+  productionOrder     ProductionOrder?     @relation(fields: [productionOrderId], references: [id])
 
   // Idempotency (Task 03/07): một Production Order chỉ xuất kho đúng một lần cho mỗi vật tư —
   // enforce ở DB, không chỉ dựa vào validate status = PENDING ở tầng application.

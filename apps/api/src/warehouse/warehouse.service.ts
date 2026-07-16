@@ -16,7 +16,7 @@ import { WarehouseTransactionQueryDto } from './dto/warehouse-transaction-query.
 import { StockQueryDto } from './dto/stock-query.dto';
 
 const MATERIAL_RECEIPT_INCLUDE = {
-  transaction: true,
+  items: { include: { transaction: true }, orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.MaterialReceiptInclude;
 
 @Injectable()
@@ -27,27 +27,43 @@ export class WarehouseService {
   ) {}
 
   // ─────────────────────────────────────────────────────
-  // Material Receipt (Task 02) — document Create API duy nhất của module này
+  // Material Receipt (Task 02, mở rộng nhiều dòng vật tư/phiếu — Sprint 04
+  // chốt 16/07/2026) — document Create API duy nhất của module này
   // ─────────────────────────────────────────────────────
 
   async createMaterialReceipt(dto: CreateMaterialReceiptDto) {
-    if (!dto.materialId) {
-      throw new BadRequestException('Nguyên liệu là bắt buộc.');
-    }
-    if (!dto.quantity || dto.quantity <= 0) {
-      throw new BadRequestException('Số lượng phải lớn hơn 0.');
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('Cần ít nhất một dòng vật tư.');
     }
 
-    const material = await this.prisma.material.findUnique({
-      where: { id: dto.materialId },
+    const seen = new Set<string>();
+    for (const item of dto.items) {
+      if (!item.materialId) {
+        throw new BadRequestException('Nguyên liệu là bắt buộc.');
+      }
+      if (!item.quantity || item.quantity <= 0) {
+        throw new BadRequestException('Số lượng phải lớn hơn 0.');
+      }
+      if (seen.has(item.materialId)) {
+        throw new BadRequestException('Một vật tư không được lặp lại trong cùng phiếu.');
+      }
+      seen.add(item.materialId);
+    }
+
+    const materials = await this.prisma.material.findMany({
+      where: { id: { in: dto.items.map((i) => i.materialId) } },
       include: { unit: { select: { name: true } } },
     });
+    const materialMap = new Map(materials.map((m) => [m.id, m]));
 
-    if (!material) {
-      throw new NotFoundException('Nguyên liệu không tồn tại.');
-    }
-    if (!material.isActive) {
-      throw new BadRequestException('Nguyên liệu không còn hoạt động.');
+    for (const item of dto.items) {
+      const material = materialMap.get(item.materialId);
+      if (!material) {
+        throw new NotFoundException('Nguyên liệu không tồn tại.');
+      }
+      if (!material.isActive) {
+        throw new BadRequestException(`Nguyên liệu "${material.name}" không còn hoạt động.`);
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -60,34 +76,44 @@ export class WarehouseService {
       const receipt = await tx.materialReceipt.create({
         data: {
           code,
-          materialId: material.id,
-          materialCode: material.code,
-          materialName: material.name,
-          unit: material.unit.name,
-          quantity: dto.quantity,
           supplierName: dto.supplierName?.trim() || null,
           note: dto.note?.trim() || null,
           createdBy: dto.createdBy?.trim() || null,
         },
       });
 
-      await tx.warehouseTransaction.create({
-        data: {
-          direction: WarehouseDirection.IN,
-          transactionType: WarehouseTransactionType.MATERIAL_RECEIPT,
-          materialId: material.id,
-          materialCode: material.code,
-          materialName: material.name,
-          unit: material.unit.name,
-          quantity: dto.quantity,
-          materialReceiptId: receipt.id,
-        },
-      });
+      for (const item of dto.items) {
+        const material = materialMap.get(item.materialId)!;
 
-      await tx.material.update({
-        where: { id: material.id },
-        data: { currentStock: { increment: dto.quantity } },
-      });
+        const receiptItem = await tx.materialReceiptItem.create({
+          data: {
+            materialReceiptId: receipt.id,
+            materialId: material.id,
+            materialCode: material.code,
+            materialName: material.name,
+            unit: material.unit.name,
+            quantity: item.quantity,
+          },
+        });
+
+        await tx.warehouseTransaction.create({
+          data: {
+            direction: WarehouseDirection.IN,
+            transactionType: WarehouseTransactionType.MATERIAL_RECEIPT,
+            materialId: material.id,
+            materialCode: material.code,
+            materialName: material.name,
+            unit: material.unit.name,
+            quantity: item.quantity,
+            materialReceiptItemId: receiptItem.id,
+          },
+        });
+
+        await tx.material.update({
+          where: { id: material.id },
+          data: { currentStock: { increment: item.quantity } },
+        });
+      }
 
       return tx.materialReceipt.findUniqueOrThrow({
         where: { id: receipt.id },
@@ -110,13 +136,13 @@ export class WarehouseService {
     if (query.search) {
       where.OR = [
         { code: { contains: query.search, mode: 'insensitive' } },
-        { materialCode: { contains: query.search, mode: 'insensitive' } },
-        { materialName: { contains: query.search, mode: 'insensitive' } },
+        { items: { some: { materialCode: { contains: query.search, mode: 'insensitive' } } } },
+        { items: { some: { materialName: { contains: query.search, mode: 'insensitive' } } } },
       ];
     }
 
     if (query.materialId) {
-      where.materialId = query.materialId;
+      where.items = { some: { materialId: query.materialId } };
     }
 
     const [data, total] = await Promise.all([
@@ -125,6 +151,7 @@ export class WarehouseService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        include: { items: { orderBy: { createdAt: 'asc' } } },
       }),
       this.prisma.materialReceipt.count({ where }),
     ]);

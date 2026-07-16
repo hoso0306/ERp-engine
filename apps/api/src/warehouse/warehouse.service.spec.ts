@@ -23,9 +23,10 @@ function makeMaterial(overrides: Record<string, unknown> = {}) {
 describe('WarehouseService', () => {
   let service: WarehouseService;
   let prisma: {
-    material: { findUnique: jest.Mock; update: jest.Mock };
+    material: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     runningNumber: { update: jest.Mock };
     materialReceipt: { create: jest.Mock; findUniqueOrThrow: jest.Mock };
+    materialReceiptItem: { create: jest.Mock };
     warehouseTransaction: { create: jest.Mock };
     productionOrderItem: { findMany: jest.Mock };
     orderBOM: { findMany: jest.Mock };
@@ -34,9 +35,10 @@ describe('WarehouseService', () => {
 
   beforeEach(async () => {
     prisma = {
-      material: { findUnique: jest.fn(), update: jest.fn() },
+      material: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
       runningNumber: { update: jest.fn() },
       materialReceipt: { create: jest.fn(), findUniqueOrThrow: jest.fn() },
+      materialReceiptItem: { create: jest.fn() },
       warehouseTransaction: { create: jest.fn() },
       productionOrderItem: { findMany: jest.fn() },
       orderBOM: { findMany: jest.fn() },
@@ -59,63 +61,111 @@ describe('WarehouseService', () => {
     service = module.get<WarehouseService>(WarehouseService);
   });
 
-  describe('createMaterialReceipt() — Task 02/07 validation', () => {
-    it('rejects when quantity <= 0', async () => {
+  describe('createMaterialReceipt() — Task 02/07 + nhiều dòng vật tư (Sprint 04)', () => {
+    it('rejects when items is empty', async () => {
       await expect(
-        service.createMaterialReceipt({ materialId: 'mat-1', quantity: 0 }),
+        service.createMaterialReceipt({ items: [] }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects when Material does not exist', async () => {
-      prisma.material.findUnique.mockResolvedValue(null);
+    it('rejects when quantity <= 0', async () => {
       await expect(
         service.createMaterialReceipt({
-          materialId: 'nonexistent',
-          quantity: 10,
+          items: [{ materialId: 'mat-1', quantity: 0 }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects when the same material is repeated in one receipt', async () => {
+      await expect(
+        service.createMaterialReceipt({
+          items: [
+            { materialId: 'mat-1', quantity: 10 },
+            { materialId: 'mat-1', quantity: 20 },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects when a Material does not exist', async () => {
+      prisma.material.findMany.mockResolvedValue([]);
+      await expect(
+        service.createMaterialReceipt({
+          items: [{ materialId: 'nonexistent', quantity: 10 }],
         }),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('rejects when Material is not ACTIVE', async () => {
-      prisma.material.findUnique.mockResolvedValue(
+    it('rejects when a Material is not ACTIVE', async () => {
+      prisma.material.findMany.mockResolvedValue([
         makeMaterial({ isActive: false }),
-      );
+      ]);
       await expect(
-        service.createMaterialReceipt({ materialId: 'mat-1', quantity: 10 }),
+        service.createMaterialReceipt({
+          items: [{ materialId: 'mat-1', quantity: 10 }],
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('creates MaterialReceipt + WarehouseTransaction(IN) and increments currentStock by delta', async () => {
-      prisma.material.findUnique.mockResolvedValue(makeMaterial());
+    it('creates 1 MaterialReceipt header + N MaterialReceiptItem + N WarehouseTransaction(IN), tăng currentStock đúng từng vật tư', async () => {
+      prisma.material.findMany.mockResolvedValue([
+        makeMaterial({ id: 'mat-1', code: 'NL000001' }),
+        makeMaterial({ id: 'mat-2', code: 'NL000002', name: 'Lưới chống muỗi' }),
+      ]);
       prisma.runningNumber.update.mockResolvedValue({
         prefix: 'PN',
         lastNumber: 1,
         paddingLength: 6,
       });
       prisma.materialReceipt.create.mockResolvedValue({ id: 'receipt-1' });
+      prisma.materialReceiptItem.create
+        .mockResolvedValueOnce({ id: 'item-1' })
+        .mockResolvedValueOnce({ id: 'item-2' });
       prisma.materialReceipt.findUniqueOrThrow.mockResolvedValue({
         id: 'receipt-1',
         code: 'PN000001',
       });
 
       await service.createMaterialReceipt({
-        materialId: 'mat-1',
-        quantity: 50,
+        items: [
+          { materialId: 'mat-1', quantity: 50 },
+          { materialId: 'mat-2', quantity: 30 },
+        ],
       });
 
-      expect(prisma.warehouseTransaction.create).toHaveBeenCalledWith(
+      expect(prisma.materialReceiptItem.create).toHaveBeenCalledTimes(2);
+      expect(prisma.warehouseTransaction.create).toHaveBeenCalledTimes(2);
+      expect(prisma.warehouseTransaction.create).toHaveBeenNthCalledWith(
+        1,
         expect.objectContaining({
           data: expect.objectContaining({
             direction: 'IN',
             transactionType: 'MATERIAL_RECEIPT',
+            materialId: 'mat-1',
             quantity: 50,
-            materialReceiptId: 'receipt-1',
+            materialReceiptItemId: 'item-1',
+          }),
+        }),
+      );
+      expect(prisma.warehouseTransaction.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            direction: 'IN',
+            transactionType: 'MATERIAL_RECEIPT',
+            materialId: 'mat-2',
+            quantity: 30,
+            materialReceiptItemId: 'item-2',
           }),
         }),
       );
       expect(prisma.material.update).toHaveBeenCalledWith({
         where: { id: 'mat-1' },
         data: { currentStock: { increment: 50 } },
+      });
+      expect(prisma.material.update).toHaveBeenCalledWith({
+        where: { id: 'mat-2' },
+        data: { currentStock: { increment: 30 } },
       });
     });
   });

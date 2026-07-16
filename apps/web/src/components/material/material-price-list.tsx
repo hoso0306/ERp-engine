@@ -132,6 +132,7 @@ export function MaterialPriceList({ materialId, prices, onChanged }: MaterialPri
       />
 
       <MaterialPriceDialog
+        key={editTarget?.id}
         open={!!editTarget}
         onOpenChange={(open) => !open && setEditTarget(null)}
         materialId={materialId}

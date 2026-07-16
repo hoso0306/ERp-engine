@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiPost, ApiError } from "@/lib/api";
 import { MaterialTypeahead, type MaterialOption } from "./material-typeahead";
@@ -18,31 +19,62 @@ interface MaterialReceiptDialogProps {
   onSaved: () => void;
 }
 
+interface ReceiptRow {
+  material: MaterialOption | null;
+  quantity: string;
+}
+
+function emptyRow(): ReceiptRow {
+  return { material: null, quantity: "" };
+}
+
+// Một phiếu nhập kho có thể gồm nhiều dòng vật tư (Sprint 04, chốt 16/07/2026) —
+// mỗi dòng sinh đúng 1 WarehouseTransaction riêng ở BE, xem warehouse.service.ts.
 export function MaterialReceiptDialog({ open, onOpenChange, onSaved }: MaterialReceiptDialogProps) {
-  const [material, setMaterial] = useState<MaterialOption | null>(null);
-  const [quantity, setQuantity] = useState("");
+  const [rows, setRows] = useState<ReceiptRow[]>([emptyRow()]);
   const [supplierName, setSupplierName] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   function reset() {
-    setMaterial(null);
-    setQuantity("");
+    setRows([emptyRow()]);
     setSupplierName("");
     setNote("");
   }
 
+  function addRow() {
+    setRows((prev) => [...prev, emptyRow()]);
+  }
+
+  function removeRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateRow(idx: number, patch: Partial<ReceiptRow>) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!material) { toast.error("Vui lòng chọn vật tư."); return; }
-    const qty = parseFloat(quantity);
-    if (!qty || qty <= 0) { toast.error("Số lượng phải lớn hơn 0."); return; }
+
+    const materialIds = new Set<string>();
+    const items: { materialId: string; quantity: number }[] = [];
+    for (const row of rows) {
+      if (!row.material) { toast.error("Vui lòng chọn vật tư cho từng dòng."); return; }
+      const qty = parseFloat(row.quantity);
+      if (!qty || qty <= 0) { toast.error("Số lượng phải lớn hơn 0."); return; }
+      if (materialIds.has(row.material.id)) {
+        toast.error(`Vật tư "${row.material.name}" bị lặp lại trong phiếu.`);
+        return;
+      }
+      materialIds.add(row.material.id);
+      items.push({ materialId: row.material.id, quantity: qty });
+    }
 
     setSaving(true);
     try {
       await apiPost("/material-receipts", {
-        materialId: material.id,
-        quantity: qty,
+        items,
         supplierName: supplierName.trim() || undefined,
         note: note.trim() || undefined,
       });
@@ -57,30 +89,51 @@ export function MaterialReceiptDialog({ open, onOpenChange, onSaved }: MaterialR
     }
   }
 
+  const canSubmit = rows.every((r) => r.material && r.quantity);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Tạo phiếu nhập kho</DialogTitle>
         </DialogHeader>
         <form id="material-receipt-form" onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Label>Vật tư *</Label>
-            <MaterialTypeahead value={material} onChange={setMaterial} />
+            {rows.map((row, idx) => (
+              <div key={idx} className="flex gap-2">
+                <div className="flex-1">
+                  <MaterialTypeahead
+                    value={row.material}
+                    onChange={(m) => updateRow(idx, { material: m })}
+                  />
+                </div>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={row.quantity}
+                  onChange={(e) => updateRow(idx, { quantity: e.target.value })}
+                  placeholder="Số lượng"
+                  className="w-32 shrink-0"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeRow(idx)}
+                  disabled={rows.length === 1}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Thêm dòng vật tư
+            </Button>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="receipt-quantity">Số lượng *</Label>
-            <Input
-              id="receipt-quantity"
-              type="number"
-              min="0"
-              step="any"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="0"
-              required
-            />
-          </div>
+
           <div className="space-y-2">
             <Label htmlFor="receipt-supplier">Nhà cung cấp</Label>
             <Input
@@ -105,7 +158,7 @@ export function MaterialReceiptDialog({ open, onOpenChange, onSaved }: MaterialR
           <Button
             type="submit"
             form="material-receipt-form"
-            disabled={saving || !material || !quantity}
+            disabled={saving || !canSubmit}
           >
             {saving ? "Đang lưu..." : "Tạo phiếu nhập"}
           </Button>

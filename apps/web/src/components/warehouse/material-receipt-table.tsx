@@ -7,13 +7,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-interface MaterialReceiptRow {
+interface MaterialReceiptItemRow {
   id: string;
-  code: string;
   materialCode: string;
   materialName: string;
   unit: string;
   quantity: number;
+}
+
+interface MaterialReceiptRow {
+  id: string;
+  code: string;
+  items: MaterialReceiptItemRow[];
   supplierName: string | null;
   createdAt: string;
 }
@@ -42,7 +47,6 @@ export function MaterialReceiptTable({ receipts, meta, onPageChange }: MaterialR
             <TableRow>
               <TableHead className="w-32">Mã phiếu</TableHead>
               <TableHead>Vật tư</TableHead>
-              <TableHead className="text-right">Số lượng</TableHead>
               <TableHead>Nhà cung cấp</TableHead>
               <TableHead>Ngày tạo</TableHead>
             </TableRow>
@@ -56,11 +60,19 @@ export function MaterialReceiptTable({ receipts, meta, onPageChange }: MaterialR
               >
                 <TableCell className="font-mono text-xs font-medium">{r.code}</TableCell>
                 <TableCell>
-                  <div className="font-medium">{r.materialName}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{r.materialCode}</div>
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {Number(r.quantity).toLocaleString("vi-VN", { maximumFractionDigits: 4 })} {r.unit}
+                  {r.items.length === 1 ? (
+                    <>
+                      <div className="font-medium">{r.items[0].materialName}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{r.items[0].materialCode}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-medium">{r.items[0]?.materialName ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        + {r.items.length - 1} vật tư khác
+                      </div>
+                    </>
+                  )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{r.supplierName ?? "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
