@@ -969,6 +969,29 @@ export class ProductService {
         throw new ConflictException(
           'Tên thông số đã tồn tại trong sản phẩm này.',
         );
+
+      // Chốt 16/07/2026: tên tham số là "khóa" trong Bảng giá ma trận
+      // (dimensions lưu JSON theo tên) — đổi tên khi phiên bản ACTIVE đang
+      // tham chiếu sẽ làm ma trận tra cứu sai âm thầm (bug thật đã gặp ở
+      // SP000036: nhommau → maukhung). Chặn đổi tên trong trường hợp này,
+      // bắt buộc tạo version mới (Sửa) và cập nhật Bảng giá trước.
+      if (dto.name.trim() !== param.name) {
+        const activeVersion = await this.prisma.pricingRuleVersion.findFirst({
+          where: { pricingRule: { productId: param.productId }, status: 'ACTIVE' },
+          include: { matrixRows: { select: { dimensions: true } } },
+        });
+        const referencedByActiveMatrix = activeVersion?.matrixRows.some((row) =>
+          Object.prototype.hasOwnProperty.call(
+            row.dimensions as Record<string, unknown>,
+            param.name,
+          ),
+        );
+        if (referencedByActiveMatrix) {
+          throw new BadRequestException(
+            `Không thể đổi tên "${param.name}" — đang được Bảng giá ma trận của phiên bản ACTIVE sử dụng. Hãy bấm "Sửa" để tạo phiên bản mới, cập nhật lại Bảng giá theo tên mới, rồi kích hoạt phiên bản đó trước khi đổi tên tham số.`,
+          );
+        }
+      }
     }
 
     if (dto.type !== undefined && !this.validParamTypes.includes(dto.type)) {

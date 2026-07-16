@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
+import { ProductTypeahead, type ProductOption } from "./product-typeahead";
 
 interface ProductParam {
   id: string;
@@ -26,13 +27,6 @@ interface ProductParam {
   isRequired: boolean;
   displayOrder: number;
   options: { value: string; label: string | null }[];
-}
-
-interface ProductOption {
-  id: string;
-  code: string;
-  name: string;
-  parameters: ProductParam[];
 }
 
 interface ExistingItem {
@@ -72,9 +66,9 @@ export function QuotationItemDialog({
 }: QuotationItemDialogProps) {
   const isEdit = !!item;
 
-  const [products, setProducts] = useState<ProductOption[]>([]);
   const [productId, setProductId] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
+  const [pickedProduct, setPickedProduct] = useState<ProductOption | null>(null);
+  const [productParams, setProductParams] = useState<ProductParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState("1");
 
@@ -91,33 +85,27 @@ export function QuotationItemDialog({
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load active products (lightweight list, no parameters)
-  useEffect(() => {
-    if (!open) return;
-    apiGet<{ data: ProductOption[] }>("/products?status=ACTIVE&limit=200")
-      .then((json) => setProducts(json.data ?? []))
-      .catch(() => {});
-  }, [open]);
-
-  // Fetch parameters for a given productId and update selectedProduct
+  // Fetch parameters for a given productId
   const loadProductParameters = useCallback(async (id: string) => {
-    const base = products.find((p) => p.id === id);
-    if (!base) return;
     try {
       const params = await apiGet<ProductParam[]>(`/products/${id}/parameters`);
-      setSelectedProduct({ ...base, parameters: params ?? [] });
+      setProductParams(params ?? []);
       return params;
     } catch {
-      setSelectedProduct({ ...base, parameters: [] });
+      setProductParams([]);
       return [];
     }
-  }, [products]);
+  }, []);
 
-  // Populate form when editing
+  // Populate form when editing — sản phẩm không đổi được lúc sửa (Select cũ đã
+  // disabled={isEdit}), nên chỉ cần lấy code/name để hiển thị trong Typeahead.
   useEffect(() => {
     if (!open) return;
     if (item) {
       setProductId(item.productId);
+      apiGet<ProductOption>(`/products/${item.productId}`)
+        .then((p) => setPickedProduct({ id: p.id, code: p.code, name: p.name }))
+        .catch(() => setPickedProduct(null));
       setQuantity(String(item.quantity));
       setSystemPrice(item.systemPrice);
       setAddlDiscountPct(String(item.additionalDiscountPercent ?? 0));
@@ -129,7 +117,8 @@ export function QuotationItemDialog({
       setParamValues(vals);
     } else {
       setProductId("");
-      setSelectedProduct(null);
+      setPickedProduct(null);
+      setProductParams([]);
       setParamValues({});
       setQuantity("1");
       setAddlDiscountPct("0");
@@ -143,21 +132,20 @@ export function QuotationItemDialog({
     setPriceWarnings([]);
   }, [open, item]);
 
-  // Sync selectedProduct (with parameters) when products load or productId changes
+  // Nạp thông số + giá trị mặc định khi productId đổi (chọn mới hoặc lúc sửa mở lên)
   useEffect(() => {
-    if (productId && products.length > 0) {
-      loadProductParameters(productId).then((params) => {
-        if (!item && params) {
-          const defaults: Record<string, string> = {};
-          for (const p of params) defaults[p.name] = p.defaultValue ?? "";
-          setParamValues(defaults);
-        }
-      });
-    }
-  }, [productId, products]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!productId) return;
+    loadProductParameters(productId).then((params) => {
+      if (!item && params) {
+        const defaults: Record<string, string> = {};
+        for (const p of params) defaults[p.name] = p.defaultValue ?? "";
+        setParamValues(defaults);
+      }
+    });
+  }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const calculatePrice = useCallback(async () => {
-    if (!productId || !selectedProduct) return;
+    if (!productId || productParams.length === 0) return;
     const parameters = Object.entries(paramValues).map(([name, value]) => ({ name, value }));
     if (parameters.length === 0) return;
 
@@ -181,7 +169,7 @@ export function QuotationItemDialog({
     } finally {
       setPriceLoading(false);
     }
-  }, [productId, paramValues, selectedProduct]);
+  }, [productId, paramValues, productParams]);
 
   useEffect(() => {
     if (!open || !productId) return;
@@ -189,21 +177,17 @@ export function QuotationItemDialog({
     return () => clearTimeout(timer);
   }, [open, productId, paramValues, calculatePrice]);
 
-  async function handleProductChange(id: string | null) {
-    setProductId(id ?? "");
+  function handleProductChange(product: ProductOption | null) {
+    setPickedProduct(product);
+    setProductId(product?.id ?? "");
     setSystemPrice(null);
     setUnitPrice(null);
     setAdjustedVariables({});
     setPriceWarnings([]);
-    if (!id) {
-      setSelectedProduct(null);
+    if (!product) {
+      setProductParams([]);
       setParamValues({});
-      return;
     }
-    const params = await loadProductParameters(id);
-    const defaults: Record<string, string> = {};
-    for (const p of params ?? []) defaults[p.name] = p.defaultValue ?? "";
-    setParamValues(defaults);
   }
 
   // Price preview calculation
@@ -270,27 +254,16 @@ export function QuotationItemDialog({
           {/* Product */}
           <div className="space-y-2">
             <Label>Sản phẩm *</Label>
-            <Select value={productId} onValueChange={handleProductChange} disabled={isEdit}>
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn sản phẩm..." />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code} — {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ProductTypeahead value={pickedProduct} onChange={handleProductChange} disabled={isEdit} />
           </div>
 
           {/* Parameters */}
-          {selectedProduct && selectedProduct.parameters.length > 0 && (
+          {productParams.length > 0 && (
             <>
               <Separator />
               <p className="text-sm font-medium">Thông số sản phẩm</p>
               <div className="grid grid-cols-2 gap-3">
-                {selectedProduct.parameters.map((p) => (
+                {productParams.map((p) => (
                   <div key={p.name} className="space-y-1.5">
                     <Label htmlFor={`param-${p.name}`} className="text-sm">
                       {p.label}
@@ -427,7 +400,7 @@ export function QuotationItemDialog({
                 const rawValue = Number(paramValues[key]);
                 const wasAdjusted = !isNaN(rawValue) && rawValue !== adjustedValue;
                 if (!wasAdjusted) return null;
-                const label = selectedProduct?.parameters.find((p) => p.name === key)?.label ?? key;
+                const label = productParams.find((p) => p.name === key)?.label ?? key;
                 return (
                   <p key={key} className="text-xs text-muted-foreground">
                     Tính theo tối thiểu — {label}: {rawValue} → {adjustedValue}

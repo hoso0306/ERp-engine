@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
@@ -316,5 +316,88 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
       expect(sourceVersion.status).toBe('ACTIVE');
       expect(sourceVersion.items).toHaveLength(2);
     });
+  });
+});
+
+// Bug thật gặp ở SP000036 (chốt 16/07/2026): đổi tên tham số "nhommau" →
+// "maukhung" trong khi Bảng giá ma trận của phiên bản ACTIVE vẫn còn khóa cũ
+// → tra cứu giá âm thầm sai. Chặn ngay tại chỗ đổi tên.
+describe('ProductService.updateProductParameter() — chặn đổi tên khi Bảng giá ma trận ACTIVE đang tham chiếu', () => {
+  let service: ProductService;
+  let prisma: {
+    productParameter: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    pricingRuleVersion: { findFirst: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      productParameter: {
+        findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null), // không trùng tên trong sản phẩm
+        update: jest.fn(),
+      },
+      pricingRuleVersion: { findFirst: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ProductService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: {} },
+        { provide: BomEngineService, useValue: {} },
+        { provide: ExcelService, useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<ProductService>(ProductService);
+  });
+
+  const param = {
+    id: 'param-1',
+    productId: 'prod-1',
+    name: 'nhommau',
+    label: 'Nhóm màu khung',
+    type: 'ENUM',
+  };
+
+  it('chặn đổi tên khi tên cũ vẫn còn trong dimensions của Bảng giá ma trận ACTIVE', async () => {
+    prisma.productParameter.findUnique.mockResolvedValue(param);
+    prisma.pricingRuleVersion.findFirst.mockResolvedValue({
+      matrixRows: [{ dimensions: { socanh: '1', nhommau: 'van_go' } }],
+    });
+
+    await expect(
+      service.updateProductParameter('param-1', { name: 'maukhung' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.productParameter.update).not.toHaveBeenCalled();
+  });
+
+  it('cho phép đổi tên khi không có phiên bản ACTIVE nào (vd sản phẩm còn DRAFT)', async () => {
+    prisma.productParameter.findUnique.mockResolvedValue(param);
+    prisma.pricingRuleVersion.findFirst.mockResolvedValue(null);
+    prisma.productParameter.update.mockResolvedValue({ ...param, name: 'maukhung' });
+
+    await service.updateProductParameter('param-1', { name: 'maukhung' });
+    expect(prisma.productParameter.update).toHaveBeenCalled();
+  });
+
+  it('cho phép đổi tên khi ACTIVE tồn tại nhưng dimensions không còn dùng tên cũ (đã migrate)', async () => {
+    prisma.productParameter.findUnique.mockResolvedValue(param);
+    prisma.pricingRuleVersion.findFirst.mockResolvedValue({
+      matrixRows: [{ dimensions: { socanh: '1', maukhung: 'van_go' } }],
+    });
+    prisma.productParameter.update.mockResolvedValue({ ...param, name: 'maukhung' });
+
+    await service.updateProductParameter('param-1', { name: 'maukhung' });
+    expect(prisma.productParameter.update).toHaveBeenCalled();
+  });
+
+  it('không chặn khi chỉ đổi label/các field khác, không đổi name', async () => {
+    prisma.productParameter.findUnique.mockResolvedValue(param);
+    prisma.productParameter.update.mockResolvedValue({ ...param, label: 'Màu khung mới' });
+
+    await service.updateProductParameter('param-1', { label: 'Màu khung mới' });
+    expect(prisma.pricingRuleVersion.findFirst).not.toHaveBeenCalled();
+    expect(prisma.productParameter.update).toHaveBeenCalled();
   });
 });
