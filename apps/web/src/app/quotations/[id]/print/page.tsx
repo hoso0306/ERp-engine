@@ -313,7 +313,29 @@ export default function QuotationPrintPage() {
       </div>
 
       {/* Page content */}
-      <div style={{ maxWidth: 780, margin: "0 auto", padding: "20px 24px" }}>
+      {/* zIndex:0 (không phải "auto") tạo stacking context riêng, cô lập —
+          watermark bên trong dùng zIndex:-1 chỉ nằm dưới nội dung của DIV
+          NÀY, không phụ thuộc ancestor bên ngoài. */}
+      <div style={{ maxWidth: 780, margin: "0 auto", padding: "20px 24px", position: "relative", zIndex: 0 }}>
+        {company?.logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={company.logo}
+            alt=""
+            style={{
+              position: "absolute",
+              top: 300,
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 340,
+              height: 340,
+              objectFit: "contain",
+              opacity: 0.1,
+              zIndex: -1,
+              pointerEvents: "none",
+            }}
+          />
+        )}
         {/* Block 1 — Thông tin công ty + tiêu đề chứng từ */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid var(--navy)", paddingBottom: 14, marginBottom: 20 }}>
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", maxWidth: 380 }}>
