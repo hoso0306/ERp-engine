@@ -1,6 +1,5 @@
 [build]
-  base = "apps/web"
-  command = "pnpm exec next build --webpack"
+  command = "pnpm build:netlify"
 
 [build.environment]
   NODE_VERSION = "20"
