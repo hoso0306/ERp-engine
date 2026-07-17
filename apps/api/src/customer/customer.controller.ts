@@ -71,6 +71,12 @@ export class CustomerController {
     return this.customerService.findOne(id);
   }
 
+  @Get(':id/debt-summary')
+  @RequirePermission('customer.view')
+  getDebtSummary(@Param('id') id: string) {
+    return this.customerService.getDebtSummary(id);
+  }
+
   @Post()
   @RequirePermission('customer.create')
   create(@Body() dto: CreateCustomerDto) {

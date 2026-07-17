@@ -36,6 +36,7 @@ interface QuotationItem {
   productId: string;
   quantity: number;
   systemPrice: number;
+  unitPrice: number | null;
   discountPercent: number;
   finalPrice: number;
   subtotal: number;

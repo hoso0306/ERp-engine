@@ -12,7 +12,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-discount.dto';
 import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, SalesOrderStatus } from '@prisma/client';
 
 @Injectable()
 export class CustomerService {
@@ -152,6 +152,24 @@ export class CustomerService {
       throw new NotFoundException('Khách hàng không tồn tại.');
     }
     return customer;
+  }
+
+  // Công nợ hiện tại của khách hàng — tổng SUM(remainingAmount) các Receivable
+  // thuộc SalesOrder chưa CANCELLED (theo đúng pattern debt.service.ts
+  // notCancelledFilter). Dùng cho bản in Báo giá/Xác nhận đơn hàng — không có
+  // khái niệm "Nợ đầu kỳ" cố định, luôn tính real-time (xem debt.md).
+  async getDebtSummary(id: string) {
+    await this.findOne(id);
+
+    const totals = await this.prisma.receivable.aggregate({
+      where: {
+        customerId: id,
+        salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
+      },
+      _sum: { remainingAmount: true },
+    });
+
+    return { totalRemaining: Number(totals._sum.remainingAmount ?? 0) };
   }
 
   async update(id: string, dto: UpdateCustomerDto) {

@@ -18,6 +18,7 @@ interface QuotationItemRow {
   productId: string;
   quantity: number;
   systemPrice: number;
+  unitPrice: number | null;
   discountPercent: number;
   finalPrice: number;
   subtotal: number;
@@ -46,6 +47,10 @@ interface QuotationItemTableProps {
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
+}
+
+function formatNumber(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 export function QuotationItemTable({ items, editable, onEdit, onDelete, discountAmount = 0 }: QuotationItemTableProps) {
@@ -97,7 +102,14 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
                 </div>
               </TableCell>
               <TableCell className="text-right font-mono text-sm">
-                {formatMoney(Number(item.systemPrice))}
+                {item.unitPrice !== null ? (
+                  <>
+                    <div className="font-semibold">{formatNumber(Number(item.unitPrice))}</div>
+                    <div className="text-xs text-muted-foreground font-sans">đ/m²</div>
+                  </>
+                ) : (
+                  formatMoney(Number(item.systemPrice))
+                )}
               </TableCell>
               <TableCell className="text-center text-sm">
                 {Number(item.discountPercent) > 0 ? `${item.discountPercent}%` : "—"}

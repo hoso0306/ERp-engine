@@ -25,6 +25,16 @@ export class SettingService {
     return company;
   }
 
+  // Endpoint công khai (không auth) cho trang Login/Sidebar — CHỈ trả field
+  // an toàn để lộ trước khi đăng nhập. Không bao giờ thêm stamp/bankName/
+  // bankAccountNumber/address/phone/taxCode vào đây.
+  async getBranding() {
+    const company = await this.prisma.company.findFirst({
+      select: { companyName: true, logo: true },
+    });
+    return company ?? { companyName: null, logo: null };
+  }
+
   async updateCompany(dto: UpdateCompanyDto) {
     const company = await this.getCompany();
 
@@ -37,6 +47,7 @@ export class SettingService {
       data: {
         companyName: dto.companyName?.trim() ?? undefined,
         logo: dto.logo !== undefined ? dto.logo?.trim() || null : undefined,
+        stamp: dto.stamp !== undefined ? dto.stamp?.trim() || null : undefined,
         address:
           dto.address !== undefined ? dto.address?.trim() || null : undefined,
         phone: dto.phone !== undefined ? dto.phone?.trim() || null : undefined,
@@ -45,6 +56,18 @@ export class SettingService {
           dto.website !== undefined ? dto.website?.trim() || null : undefined,
         taxCode:
           dto.taxCode !== undefined ? dto.taxCode?.trim() || null : undefined,
+        bankName:
+          dto.bankName !== undefined
+            ? dto.bankName?.trim() || null
+            : undefined,
+        bankAccountNumber:
+          dto.bankAccountNumber !== undefined
+            ? dto.bankAccountNumber?.trim() || null
+            : undefined,
+        bankAccountHolder:
+          dto.bankAccountHolder !== undefined
+            ? dto.bankAccountHolder?.trim() || null
+            : undefined,
         currency: dto.currency?.trim() ?? undefined,
         currencySymbol: dto.currencySymbol?.trim() ?? undefined,
         timezone: dto.timezone?.trim() ?? undefined,

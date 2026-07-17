@@ -318,6 +318,7 @@ export class QuotationWorkflowService {
         quantity: dto.quantity,
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         systemPrice,
+        unitPrice: priceResult.unitPrice,
         discountPercent,
         finalPrice,
         subtotal,
@@ -375,6 +376,8 @@ export class QuotationWorkflowService {
 
     const quantity = dto.quantity ?? Number(item.quantity);
     let systemPrice = Number(item.systemPrice);
+    let unitPrice =
+      item.unitPrice !== null ? Number(item.unitPrice) : null;
     let pricingRuleVersionId = item.pricingRuleVersionId;
     let warnings = item.warnings as string[] | null;
     let vatRate = Number(item.vatRate);
@@ -386,6 +389,7 @@ export class QuotationWorkflowService {
         parameters: dto.parameters,
       });
       systemPrice = priceResult.systemPrice;
+      unitPrice = priceResult.unitPrice;
       pricingRuleVersionId = priceResult.pricingRuleVersionId;
       warnings = priceResult.warnings;
       vatRate = priceResult.vatRate;
@@ -446,6 +450,7 @@ export class QuotationWorkflowService {
           productName: snapshotProduct.name,
           quantity,
           systemPrice,
+          unitPrice,
           pricingRuleVersionId,
           finalPrice,
           subtotal,
@@ -569,6 +574,7 @@ export class QuotationWorkflowService {
     const itemUpdates: Array<{
       id: string;
       systemPrice: number;
+      unitPrice: number | null;
       pricingRuleVersionId: string;
       finalPrice: number;
       subtotal: number;
@@ -612,6 +618,7 @@ export class QuotationWorkflowService {
       itemUpdates.push({
         id: item.id,
         systemPrice: newSystemPrice,
+        unitPrice: priceResult.unitPrice,
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         finalPrice: newFinalPrice,
         subtotal: newSubtotal,
@@ -629,6 +636,7 @@ export class QuotationWorkflowService {
           where: { id: u.id },
           data: {
             systemPrice: u.systemPrice,
+            unitPrice: u.unitPrice,
             pricingRuleVersionId: u.pricingRuleVersionId,
             finalPrice: u.finalPrice,
             subtotal: u.subtotal,
@@ -1148,6 +1156,8 @@ export class QuotationWorkflowService {
             productionCenterName: item.product.productionCenter.name,
             pricingRuleVersionId: item.pricingRuleVersionId,
             systemPrice: Number(item.systemPrice),
+            unitPrice:
+              item.unitPrice !== null ? Number(item.unitPrice) : null,
             discountPercent: Number(item.discountPercent),
             finalPrice: Number(item.finalPrice),
             quantity: Number(item.quantity),

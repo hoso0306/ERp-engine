@@ -17,18 +17,25 @@ import {
 } from "@/components/ui/sidebar";
 import { navigation } from "@/config/navigation";
 import { useAuth } from "@/context/auth-context";
+import { useBranding } from "@/lib/use-branding";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
+  const branding = useBranding();
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-            E
-          </div>
+          {branding?.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logo} alt="" className="h-8 w-8 shrink-0 rounded-md object-contain bg-white" />
+          ) : (
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
+              E
+            </div>
+          )}
           <span className="truncate text-sm font-semibold">ERP Engine</span>
         </div>
       </SidebarHeader>

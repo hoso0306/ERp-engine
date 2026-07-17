@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
+import { useBranding } from "@/lib/use-branding";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
   const [submitting, setSubmitting] = React.useState(false);
+  const branding = useBranding();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,9 +40,14 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-sm space-y-6 rounded-xl bg-popover p-6 text-popover-foreground ring-1 ring-foreground/10">
         <div className="space-y-1 text-center">
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground text-lg font-bold">
-            E
-          </div>
+          {branding?.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logo} alt="" className="mx-auto mb-2 h-10 w-10 rounded-md object-contain bg-white" />
+          ) : (
+            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground text-lg font-bold">
+              E
+            </div>
+          )}
           <h1 className="text-lg font-semibold">Đăng nhập ERP Engine</h1>
           <p className="text-sm text-muted-foreground">
             Nhập email và mật khẩu để tiếp tục.

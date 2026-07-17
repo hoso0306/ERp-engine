@@ -30,6 +30,7 @@ interface SalesOrderItemRow {
   productName: string;
   quantity: number;
   systemPrice: number;
+  unitPrice: number | null;
   discountPercent: number;
   finalPrice: number;
   subtotal: number;
@@ -49,6 +50,10 @@ interface SalesOrderItemTableProps {
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
+}
+
+function formatNumber(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderItemTableProps) {
@@ -120,7 +125,14 @@ export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderIte
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm">
-                    {formatMoney(Number(item.systemPrice))}
+                    {item.unitPrice !== null ? (
+                      <>
+                        <div className="font-semibold">{formatNumber(Number(item.unitPrice))}</div>
+                        <div className="text-xs text-muted-foreground font-sans">đ/m²</div>
+                      </>
+                    ) : (
+                      formatMoney(Number(item.systemPrice))
+                    )}
                   </TableCell>
                   <TableCell className="text-center text-sm">
                     {Number(item.discountPercent) > 0 ? `${item.discountPercent}%` : "—"}

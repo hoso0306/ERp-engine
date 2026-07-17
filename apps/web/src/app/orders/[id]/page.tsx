@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle,
+  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle, FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SalesOrderStatusBadge, SALES_ORDER_STATUS_LABEL } from "@/components/sales-order/sales-order-status-badge";
@@ -49,6 +49,7 @@ interface SalesOrderItem {
   productName: string;
   quantity: number;
   systemPrice: number;
+  unitPrice: number | null;
   discountPercent: number;
   finalPrice: number;
   subtotal: number;
@@ -273,6 +274,16 @@ export default function SalesOrderDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
+            {/* Dùng chung route in với Báo giá (/quotations/[id]/print) — tự
+                đổi tiêu đề/dữ liệu sang "Xác nhận đơn hàng" khi đã duyệt. */}
+            {order.quotation && hasPermission("quotation.print") && (
+              <a href={`/quotations/${order.quotation.id}/print`} target="_blank" rel="noreferrer">
+                <Button variant="outline">
+                  <FileDown className="mr-2 h-4 w-4" />
+                  In / Tải PDF
+                </Button>
+              </a>
+            )}
             {canShip && (
               <Button onClick={handleShip} disabled={shipping}>
                 <Truck className="mr-2 h-4 w-4" />

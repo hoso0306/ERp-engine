@@ -845,6 +845,10 @@ model QuotationItem {
   materialRequirementVersionId String? @map("material_requirement_version_id")
 
   systemPrice     Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
+  // Đơn giá/m² tra từ Price Matrix tại thời điểm tính giá (PricingEngineService)
+  // — null khi sản phẩm không dùng Matrix (Expression fallback). Chỉ để hiển
+  // thị trên bản in ("Giá bán"), không dùng để tính lại systemPrice/subtotal.
+  unitPrice       Decimal? @map("unit_price") @db.Decimal(15, 0)
   // Snapshot % từ CustomerProductDiscount(customerId, productId) tại thời điểm
   // thêm/sửa dòng (Sprint 04, chốt 16/07/2026) — THAY THẾ groupDiscount
   // ("CK nhóm") + additionalDiscountPercent/Amount/discountReason/discountBy cũ.
@@ -992,6 +996,9 @@ model SalesOrderItem {
 
   pricingRuleVersionId String? @map("pricing_rule_version_id")
   systemPrice          Decimal @map("system_price") @db.Decimal(15, 0)
+  // Snapshot từ QuotationItem.unitPrice tại Approve — đơn giá/m² tra từ Price
+  // Matrix, null khi sản phẩm không dùng Matrix. Chỉ để hiển thị bản in.
+  unitPrice            Decimal? @map("unit_price") @db.Decimal(15, 0)
   // Snapshot từ QuotationItem.discountPercent tại Approve (Sprint 04, chốt
   // 16/07/2026) — THAY THẾ groupDiscount + additionalDiscountPercent/Amount cũ.
   discountPercent      Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
@@ -1321,11 +1328,19 @@ model Company {
   id             String   @id @default(cuid())
   companyName    String   @map("company_name")
   logo           String?
+  // Ảnh con dấu công ty (base64) — chèn đè lên ô ký "Đại diện công ty" khi in
+  // Báo giá/Xác nhận đơn hàng.
+  stamp          String?
   address        String?
   phone          String?
   email          String?
   website        String?
   taxCode        String?  @map("tax_code")
+  // Thông tin ngân hàng hiển thị ở Block "Thông tin thanh toán" trên bản in
+  // Báo giá/Xác nhận đơn hàng.
+  bankName          String? @map("bank_name")
+  bankAccountNumber String? @map("bank_account_number")
+  bankAccountHolder String? @map("bank_account_holder")
   // Chỉ là nhãn hiển thị, không phải công tắc đa tiền tệ — xem setting.md.
   currency       String   @default("VND")
   currencySymbol String   @default("₫") @map("currency_symbol")
