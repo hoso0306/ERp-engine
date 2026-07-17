@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "pnpm -r dev",
     "build": "pnpm -r build",
-    "build:netlify": "pnpm --filter ./apps/web run build:netlify",
     "lint": "pnpm -r lint"
   }
 }

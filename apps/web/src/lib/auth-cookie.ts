@@ -1,6 +1,6 @@
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_FALLBACK_MAX_AGE } from "./auth-constants";
 
-// Cookie không-httpOnly (client tự set sau khi login) — cho phép middleware.ts
+// Cookie không-httpOnly (client tự set sau khi login) — cho phép proxy.ts
 // đọc được để guard route ở server, khớp rủi ro XSS với localStorage (không
 // tệ hơn). Xem workbench/sprint-02/003-fe-dang-nhap.md mục "Kết quả khảo sát".
 function decodeJwtExpiry(token: string): number | null {
