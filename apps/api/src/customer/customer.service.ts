@@ -10,6 +10,8 @@ import { ExcelService } from '../shared/excel/excel.service';
 import { CustomerQueryDto } from './dto/customer-query.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-discount.dto';
+import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -83,12 +85,6 @@ export class CustomerService {
     if (dto.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw new BadRequestException('Email không đúng định dạng.');
     }
-    if (
-      dto.defaultDiscount !== undefined &&
-      (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)
-    ) {
-      throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
-    }
     if (dto.debtLimit !== undefined && dto.debtLimit < 0) {
       throw new BadRequestException('Hạn mức công nợ phải ≥ 0.');
     }
@@ -122,7 +118,6 @@ export class CustomerService {
         saleId: dto.saleId || null,
         priority: dto.priority || 'MEDIUM',
         status: dto.status || 'ACTIVE',
-        defaultDiscount: dto.defaultDiscount ?? 0,
         debtLimit: dto.debtLimit ?? 0,
         debtTermDays: dto.debtTermDays ?? 30,
         note: dto.note?.trim() || null,
@@ -171,12 +166,6 @@ export class CustomerService {
     if (dto.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw new BadRequestException('Email không đúng định dạng.');
     }
-    if (
-      dto.defaultDiscount !== undefined &&
-      (dto.defaultDiscount < 0 || dto.defaultDiscount > 100)
-    ) {
-      throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
-    }
     if (dto.debtLimit !== undefined && dto.debtLimit < 0) {
       throw new BadRequestException('Hạn mức công nợ phải ≥ 0.');
     }
@@ -209,8 +198,6 @@ export class CustomerService {
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
     if (dto.priority !== undefined) data.priority = dto.priority;
     if (dto.status !== undefined) data.status = dto.status;
-    if (dto.defaultDiscount !== undefined)
-      data.defaultDiscount = dto.defaultDiscount;
     if (dto.debtLimit !== undefined) data.debtLimit = dto.debtLimit;
     if (dto.debtTermDays !== undefined) data.debtTermDays = dto.debtTermDays;
 
@@ -347,7 +334,6 @@ export class CustomerService {
       { header: 'Tuyến GH', key: 'routeName', width: 15 },
       { header: 'Ưu tiên', key: 'priority', width: 10 },
       { header: 'Trạng thái', key: 'status', width: 12 },
-      { header: 'Chiết khấu (%)', key: 'defaultDiscount', width: 14 },
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
@@ -372,7 +358,6 @@ export class CustomerService {
       routeName: c.deliveryRoute?.name || '',
       priority: c.priority,
       status: c.status,
-      defaultDiscount: Number(c.defaultDiscount),
       debtLimit: Number(c.debtLimit),
       debtTermDays: c.debtTermDays,
       note: c.note || '',
@@ -395,7 +380,6 @@ export class CustomerService {
       { header: 'Tuyến GH', key: 'routeName', width: 15 },
       { header: 'Ưu tiên', key: 'priority', width: 10 },
       { header: 'Trạng thái', key: 'status', width: 12 },
-      { header: 'Chiết khấu (%)', key: 'defaultDiscount', width: 14 },
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
@@ -418,7 +402,6 @@ export class CustomerService {
         routeName: 'Nội thành',
         priority: 'MEDIUM',
         status: 'ACTIVE',
-        defaultDiscount: 5,
         debtLimit: 50000000,
         debtTermDays: 30,
         note: '',
@@ -437,7 +420,6 @@ export class CustomerService {
         routeName: 'Liên tỉnh',
         priority: 'HIGH',
         status: 'ACTIVE',
-        defaultDiscount: 0,
         debtLimit: 0,
         debtTermDays: 30,
         note: 'Khách VIP',
@@ -488,13 +470,12 @@ export class CustomerService {
       const routeName = cell(9);
       const priority = cell(10).toUpperCase() || undefined;
       const status = cell(11).toUpperCase() || undefined;
-      const defaultDiscount = numCell(12);
-      const debtLimit = numCell(13);
-      const debtTermDays = numCell(14);
-      const companyName = cell(16) || undefined;
+      const debtLimit = numCell(12);
+      const debtTermDays = numCell(13);
+      const companyName = cell(15) || undefined;
       // MST VN 10 số thường bắt đầu bằng 0 (mã tỉnh) — Excel cắt như SĐT.
       let taxCode: string | undefined =
-        cell(17).replace(/\s/g, '') || undefined;
+        cell(16).replace(/\s/g, '') || undefined;
       if (taxCode && /^\d{9}$/.test(taxCode)) taxCode = '0' + taxCode;
 
       if (!name) {
@@ -548,17 +529,6 @@ export class CustomerService {
         });
         return;
       }
-      if (
-        defaultDiscount !== undefined &&
-        (defaultDiscount < 0 || defaultDiscount > 100)
-      ) {
-        errors.push({
-          row: rowNumber,
-          message: 'Chiết khấu phải từ 0 đến 100.',
-        });
-        return;
-      }
-
       toCreate.push({
         name,
         phone,
@@ -571,10 +541,9 @@ export class CustomerService {
         deliveryRouteId: routeName ? routeMap.get(routeName) : undefined,
         priority: (priority as 'LOW' | 'MEDIUM' | 'HIGH') || undefined,
         status: (status as 'ACTIVE' | 'INACTIVE') || undefined,
-        defaultDiscount,
         debtLimit,
         debtTermDays,
-        note: cell(15) || undefined,
+        note: cell(14) || undefined,
         companyName,
         taxCode,
       });
@@ -634,7 +603,6 @@ export class CustomerService {
           deliveryRouteId: dto.deliveryRouteId || null,
           priority: dto.priority || 'MEDIUM',
           status: dto.status || 'ACTIVE',
-          defaultDiscount: dto.defaultDiscount ?? 0,
           debtLimit: dto.debtLimit ?? 0,
           debtTermDays: dto.debtTermDays ?? 30,
           note: dto.note || null,
@@ -644,5 +612,105 @@ export class CustomerService {
     }
 
     return { success: created, errors: [] };
+  }
+
+  // ──────────────────────────────────────
+  // Chiết khấu theo Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026)
+  // ──────────────────────────────────────
+
+  async findProductDiscounts(customerId: string) {
+    await this.findOne(customerId);
+    return this.prisma.customerProductDiscount.findMany({
+      where: { customerId },
+      include: { product: { select: { id: true, code: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createProductDiscount(
+    customerId: string,
+    dto: CreateCustomerProductDiscountDto,
+  ) {
+    await this.findOne(customerId);
+
+    if (!dto.productId) {
+      throw new BadRequestException('Sản phẩm là bắt buộc.');
+    }
+    if (
+      dto.discountPercent === undefined ||
+      dto.discountPercent < 0 ||
+      dto.discountPercent > 100
+    ) {
+      throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: dto.productId, deletedAt: null },
+    });
+    if (!product) {
+      throw new NotFoundException('Sản phẩm không tồn tại.');
+    }
+
+    const existing = await this.prisma.customerProductDiscount.findUnique({
+      where: {
+        customerId_productId: { customerId, productId: dto.productId },
+      },
+    });
+    if (existing) {
+      throw new ConflictException('Sản phẩm này đã được cấu hình chiết khấu.');
+    }
+
+    return this.prisma.customerProductDiscount.create({
+      data: {
+        customerId,
+        productId: dto.productId,
+        discountPercent: dto.discountPercent,
+      },
+      include: { product: { select: { id: true, code: true, name: true } } },
+    });
+  }
+
+  async updateProductDiscount(
+    customerId: string,
+    id: string,
+    dto: UpdateCustomerProductDiscountDto,
+  ) {
+    const discount = await this.prisma.customerProductDiscount.findFirst({
+      where: { id, customerId },
+    });
+    if (!discount) {
+      throw new NotFoundException('Cấu hình chiết khấu không tồn tại.');
+    }
+    if (
+      dto.discountPercent === undefined ||
+      dto.discountPercent < 0 ||
+      dto.discountPercent > 100
+    ) {
+      throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
+    }
+
+    return this.prisma.customerProductDiscount.update({
+      where: { id },
+      data: { discountPercent: dto.discountPercent },
+      include: { product: { select: { id: true, code: true, name: true } } },
+    });
+  }
+
+  async deleteProductDiscount(customerId: string, id: string) {
+    const discount = await this.prisma.customerProductDiscount.findFirst({
+      where: { id, customerId },
+    });
+    if (!discount) {
+      throw new NotFoundException('Cấu hình chiết khấu không tồn tại.');
+    }
+    return this.prisma.customerProductDiscount.delete({ where: { id } });
+  }
+
+  // Lookup dùng khi thêm dòng báo giá — 0% nếu chưa cấu hình (không throw).
+  async lookupProductDiscount(customerId: string, productId: string) {
+    const discount = await this.prisma.customerProductDiscount.findUnique({
+      where: { customerId_productId: { customerId, productId } },
+    });
+    return { discountPercent: discount ? Number(discount.discountPercent) : 0 };
   }
 }

@@ -217,7 +217,6 @@ model User {
   salesOrderTimelines      SalesOrderTimeline[]
   productionOrderTimelines ProductionOrderTimeline[]
   completedReturns         Return[]
-  discountedQuotationItems QuotationItem[]
   createdMaterialReceipts  MaterialReceipt[]
 
   @@index([roleId])
@@ -320,15 +319,33 @@ model RunningNumber {
 // ──────────────────────────────────────
 
 model CustomerGroup {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   customers Customer[]
 
   @@map("customer_groups")
+}
+
+// Chiết khấu theo Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026) — THAY THẾ
+// HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm"). Master Data, không
+// versioned — khi thêm/sửa dòng báo giá, hệ thống snapshot % này vào
+// QuotationItem.discountPercent (xem quotation.md mục "Discount Engine").
+model CustomerProductDiscount {
+  id              String   @id @default(cuid())
+  customerId      String   @map("customer_id")
+  productId       String   @map("product_id")
+  discountPercent Decimal  @map("discount_percent") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([customerId, productId])
+  @@map("customer_product_discounts")
 }
 
 model DeliveryRoute {
@@ -476,15 +493,16 @@ model Product {
   updatedAt          DateTime      @updatedAt @map("updated_at")
   deletedAt          DateTime?     @map("deleted_at")
 
-  productType         ProductType          @relation(fields: [productTypeId], references: [id])
-  unit                Unit                 @relation(fields: [unitId], references: [id])
-  productionCenter    ProductionCenter     @relation(fields: [productionCenterId], references: [id])
+  productType         ProductType               @relation(fields: [productTypeId], references: [id])
+  unit                Unit                      @relation(fields: [unitId], references: [id])
+  productionCenter    ProductionCenter          @relation(fields: [productionCenterId], references: [id])
   parameters          ProductParameter[]
   pricingRule         PricingRule?
   materialRequirement MaterialRequirement?
   quotationItems      QuotationItem[]
   validationRules     ValidationRule[]
   derivedParameters   DerivedParameter[]
+  customerDiscounts   CustomerProductDiscount[]
 
   @@index([productTypeId])
   @@index([productionCenterId])
@@ -745,12 +763,11 @@ model Customer {
   deliveryRouteId String? @map("delivery_route_id")
   saleId          String? @map("sale_id")
 
-  priority        Priority       @default(MEDIUM)
-  status          CustomerStatus @default(ACTIVE)
-  defaultDiscount Decimal        @default(0) @map("default_discount") @db.Decimal(5, 2)
-  debtLimit       Decimal        @default(0) @map("debt_limit") @db.Decimal(15, 0)
-  debtTermDays    Int            @default(30) @map("debt_term_days")
-  note            String?
+  priority     Priority       @default(MEDIUM)
+  status       CustomerStatus @default(ACTIVE)
+  debtLimit    Decimal        @default(0) @map("debt_limit") @db.Decimal(15, 0)
+  debtTermDays Int            @default(30) @map("debt_term_days")
+  note         String?
 
   createdBy String?   @map("created_by")
   updatedBy String?   @map("updated_by")
@@ -758,12 +775,13 @@ model Customer {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  customerGroup CustomerGroup? @relation(fields: [customerGroupId], references: [id])
-  deliveryRoute DeliveryRoute? @relation(fields: [deliveryRouteId], references: [id])
-  sale          User?          @relation("CustomerSale", fields: [saleId], references: [id])
-  createdByUser User?          @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?          @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
-  quotations    Quotation[]
+  customerGroup    CustomerGroup?            @relation(fields: [customerGroupId], references: [id])
+  deliveryRoute    DeliveryRoute?            @relation(fields: [deliveryRouteId], references: [id])
+  sale             User?                     @relation("CustomerSale", fields: [saleId], references: [id])
+  createdByUser    User?                     @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser    User?                     @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+  quotations       Quotation[]
+  productDiscounts CustomerProductDiscount[]
 
   @@index([customerGroupId])
   @@index([deliveryRouteId])
@@ -790,6 +808,13 @@ model Quotation {
   updatedBy String?  @map("updated_by")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026) — chuyển từ cấp dòng
+  // sản phẩm lên đây, chỉ giảm bằng số tiền mặt, áp trên Tổng thanh toán (đã
+  // gồm VAT). Action POST /quotations/:id/discount, chỉ khi DRAFT/SENT.
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(15, 0)
+  discountReason String? @map("discount_reason")
+  discountBy     String? @map("discount_by")
 
   customer   Customer            @relation(fields: [customerId], references: [id])
   salesOrder SalesOrder?         @relation(fields: [salesOrderId], references: [id])
@@ -819,16 +844,13 @@ model QuotationItem {
   pricingRuleVersionId         String? @map("pricing_rule_version_id")
   materialRequirementVersionId String? @map("material_requirement_version_id")
 
-  systemPrice               Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
-  groupDiscount             Decimal @default(0) @map("group_discount") @db.Decimal(5, 2)
-  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
-  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
-  discountReason            String? @map("discount_reason")
-  discountBy                String? @map("discount_by")
-  // Snapshot tên tại thời điểm ghi (Sprint 04, 005-nguoi-thuc-hien-lich-su-hoat-dong.md).
-  discountByName            String? @map("discount_by_name")
-  finalPrice                Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
-  subtotal                  Decimal @default(0) @db.Decimal(15, 0)
+  systemPrice     Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
+  // Snapshot % từ CustomerProductDiscount(customerId, productId) tại thời điểm
+  // thêm/sửa dòng (Sprint 04, chốt 16/07/2026) — THAY THẾ groupDiscount
+  // ("CK nhóm") + additionalDiscountPercent/Amount/discountReason/discountBy cũ.
+  discountPercent Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  finalPrice      Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
+  subtotal        Decimal @default(0) @db.Decimal(15, 0)
 
   // VAT (%) — snapshot từ PricingRuleVersion.vatRate tại thời điểm tính giá.
   // vatAmount tính SAU Discount Engine: round(subtotal × vatRate / 100).
@@ -839,14 +861,17 @@ model QuotationItem {
   // (Sprint 03 Task 06) — mảng string, in được trên báo giá, không đọc lại rule.
   warnings Json?
 
+  // Chú thích tay nhập thêm (Sprint 04, chốt 16/07/2026) — hiển thị cạnh warnings
+  // ở cột "Chú thích" trên bảng dòng báo giá và bản in.
+  note String?
+
   displayOrder Int      @default(0) @map("display_order")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  quotation      Quotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  product        Product                  @relation(fields: [productId], references: [id])
-  parameters     QuotationItemParameter[]
-  discountByUser User?                    @relation(fields: [discountBy], references: [id], onDelete: SetNull)
+  quotation  Quotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product    Product                  @relation(fields: [productId], references: [id])
+  parameters QuotationItemParameter[]
 
   @@index([quotationId])
   @@index([productId])
@@ -918,6 +943,16 @@ model SalesOrder {
 
   paymentStatus PaymentStatus @default(UNPAID) @map("payment_status")
 
+  // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026) — snapshot tại Approve từ
+  // Quotation. totalAmount (doanh thu) giữ nguyên công thức cũ, KHÔNG cộng
+  // VAT/trừ Giảm thêm. grandTotal là Derived Data hợp lệ (Snapshot,
+  // Nguyên tắc 13) — số tiền hoá đơn thực tế, bất biến sau Approve.
+  totalVatAmount Decimal @default(0) @map("total_vat_amount") @db.Decimal(15, 0)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(15, 0)
+  discountReason String? @map("discount_reason")
+  discountBy     String? @map("discount_by")
+  grandTotal     Decimal @default(0) @map("grand_total") @db.Decimal(15, 0)
+
   note      String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -955,14 +990,21 @@ model SalesOrderItem {
   productionCenterId   String @map("production_center_id")
   productionCenterName String @map("production_center_name")
 
-  pricingRuleVersionId      String? @map("pricing_rule_version_id")
-  systemPrice               Decimal @map("system_price") @db.Decimal(15, 0)
-  groupDiscount             Decimal @map("group_discount") @db.Decimal(5, 2)
-  additionalDiscountPercent Decimal @default(0) @map("additional_discount_percent") @db.Decimal(5, 2)
-  additionalDiscountAmount  Decimal @default(0) @map("additional_discount_amount") @db.Decimal(15, 0)
-  finalPrice                Decimal @map("final_price") @db.Decimal(15, 0)
-  quantity                  Decimal @db.Decimal(15, 4)
-  subtotal                  Decimal @db.Decimal(15, 0)
+  pricingRuleVersionId String? @map("pricing_rule_version_id")
+  systemPrice          Decimal @map("system_price") @db.Decimal(15, 0)
+  // Snapshot từ QuotationItem.discountPercent tại Approve (Sprint 04, chốt
+  // 16/07/2026) — THAY THẾ groupDiscount + additionalDiscountPercent/Amount cũ.
+  discountPercent      Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  finalPrice           Decimal @map("final_price") @db.Decimal(15, 0)
+  quantity             Decimal @db.Decimal(15, 4)
+  subtotal             Decimal @db.Decimal(15, 0)
+
+  // VAT snapshot từ QuotationItem tại Approve.
+  vatRate   Decimal @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount Decimal @default(0) @map("vat_amount") @db.Decimal(15, 0)
+
+  // Chú thích snapshot từ QuotationItem.note tại Approve.
+  note String?
 
   materialRequirementVersionId String? @map("material_requirement_version_id")
   plannedCost                  Decimal @default(0) @map("planned_cost") @db.Decimal(15, 0)

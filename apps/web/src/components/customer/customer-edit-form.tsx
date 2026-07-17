@@ -37,7 +37,6 @@ interface CustomerData {
   deliveryRouteId: string | null;
   priority: string;
   status: string;
-  defaultDiscount: string;
   debtLimit: string;
   debtTermDays: number;
   note: string | null;
@@ -83,9 +82,6 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
 
     const deliveryRouteId = form.get("deliveryRouteId");
     body.deliveryRouteId = deliveryRouteId && deliveryRouteId !== "none" ? deliveryRouteId : null;
-
-    const discount = form.get("defaultDiscount");
-    if (discount !== null) body.defaultDiscount = Number(discount);
 
     const debtLimit = form.get("debtLimit");
     if (debtLimit !== null) body.debtLimit = Number(debtLimit);
@@ -207,7 +203,7 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Mức độ ưu tiên</Label>
             <Select name="priority" defaultValue={customer.priority}>
@@ -218,10 +214,6 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
                 <SelectItem value="HIGH">Cao</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="defaultDiscount">Chiết khấu (%)</Label>
-            <Input id="defaultDiscount" name="defaultDiscount" type="number" min={0} max={100} defaultValue={Number(customer.defaultDiscount)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="debtTermDays">Thời hạn công nợ (ngày)</Label>

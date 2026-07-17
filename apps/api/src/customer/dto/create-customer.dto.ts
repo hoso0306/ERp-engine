@@ -14,7 +14,6 @@ export class CreateCustomerDto {
   saleId?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
   status?: 'ACTIVE' | 'INACTIVE';
-  defaultDiscount?: number;
   debtLimit?: number;
   debtTermDays?: number;
   note?: string;

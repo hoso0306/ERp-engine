@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
+import { CustomerProductDiscountList } from "@/components/customer/customer-product-discount-list";
 import { toast } from "sonner";
 import { apiGet, apiDelete, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -25,7 +26,6 @@ interface Customer {
   address: string | null;
   priority: string;
   status: string;
-  defaultDiscount: string;
   debtLimit: string;
   debtTermDays: number;
   note: string | null;
@@ -34,6 +34,12 @@ interface Customer {
   customerGroup: { id: string; name: string } | null;
   deliveryRoute: { id: string; name: string } | null;
   sale: { id: string; name: string } | null;
+}
+
+interface ProductDiscount {
+  id: string;
+  discountPercent: number;
+  product: { id: string; code: string; name: string };
 }
 
 const priorityLabels: Record<string, string> = { LOW: "Thấp", MEDIUM: "Trung bình", HIGH: "Cao" };
@@ -53,16 +59,24 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const { hasPermission } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const fetchDiscounts = useCallback(() => {
+    apiGet<ProductDiscount[]>(`/customers/${params.id}/product-discounts`)
+      .then(setDiscounts)
+      .catch(() => setDiscounts([]));
+  }, [params.id]);
 
   useEffect(() => {
     apiGet<Customer>(`/customers/${params.id}`)
       .then(setCustomer)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Không tìm thấy khách hàng."))
       .finally(() => setLoading(false));
-  }, [params.id]);
+    fetchDiscounts();
+  }, [params.id, fetchDiscounts]);
 
   async function handleDelete() {
     try {
@@ -131,11 +145,16 @@ export default function CustomerDetailPage() {
           <Field label="Nhóm khách hàng" value={customer.customerGroup?.name} />
           <Field label="Tuyến giao hàng" value={customer.deliveryRoute?.name} />
           <Field label="Người phụ trách" value={customer.sale?.name} />
-          <Field label="Chiết khấu" value={`${customer.defaultDiscount}%`} />
           <Field label="Hạn mức công nợ" value={`${Number(customer.debtLimit).toLocaleString("vi-VN")} đ`} />
           <Field label="Thời hạn công nợ" value={`${customer.debtTermDays} ngày`} />
         </dl>
       </div>
+
+      <CustomerProductDiscountList
+        customerId={customer.id}
+        discounts={discounts}
+        onChanged={fetchDiscounts}
+      />
 
       {customer.note && (
         <div className="rounded-lg border p-6">

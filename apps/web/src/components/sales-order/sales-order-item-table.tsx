@@ -30,22 +30,28 @@ interface SalesOrderItemRow {
   productName: string;
   quantity: number;
   systemPrice: number;
-  groupDiscount: number;
+  discountPercent: number;
   finalPrice: number;
   subtotal: number;
+  vatRate: number;
+  vatAmount: number;
+  note: string | null;
   parameters: Parameter[];
   bom: { items: OrderBOMItem[] } | null;
 }
 
 interface SalesOrderItemTableProps {
   items: SalesOrderItemRow[];
+  // Giảm thêm cấp toàn đơn (Sprint 04, chốt 16/07/2026) — hiện dòng riêng
+  // trước "Tổng thanh toán" nếu có.
+  discountAmount?: number;
 }
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
 }
 
-export function SalesOrderItemTable({ items }: SalesOrderItemTableProps) {
+export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderItemTableProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function toggle(id: string) {
@@ -61,7 +67,8 @@ export function SalesOrderItemTable({ items }: SalesOrderItemTableProps) {
     return <p className="text-sm text-muted-foreground py-6 text-center">Chưa có sản phẩm nào.</p>;
   }
 
-  const grandTotal = items.reduce((s, i) => s + Number(i.subtotal), 0);
+  const totalAmount = items.reduce((s, i) => s + Number(i.subtotal), 0);
+  const totalVat = items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
 
   return (
     <div className="rounded-md border">
@@ -72,8 +79,11 @@ export function SalesOrderItemTable({ items }: SalesOrderItemTableProps) {
             <TableHead>Sản phẩm</TableHead>
             <TableHead>Thông số</TableHead>
             <TableHead className="text-right">Giá bán</TableHead>
+            <TableHead className="text-center">Chiết khấu</TableHead>
             <TableHead className="text-right">SL</TableHead>
             <TableHead className="text-right">Thành tiền</TableHead>
+            <TableHead className="text-right">VAT</TableHead>
+            <TableHead>Chú thích</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -109,18 +119,29 @@ export function SalesOrderItemTable({ items }: SalesOrderItemTableProps) {
                         : "—"}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-sm font-medium">
-                    {formatMoney(Number(item.finalPrice))}
+                  <TableCell className="text-right font-mono text-sm">
+                    {formatMoney(Number(item.systemPrice))}
+                  </TableCell>
+                  <TableCell className="text-center text-sm">
+                    {Number(item.discountPercent) > 0 ? `${item.discountPercent}%` : "—"}
                   </TableCell>
                   <TableCell className="text-right text-sm">{Number(item.quantity)}</TableCell>
                   <TableCell className="text-right font-mono text-sm font-semibold">
                     {formatMoney(Number(item.subtotal))}
                   </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {Number(item.vatRate) > 0
+                      ? `${item.vatRate}% · ${formatMoney(Number(item.vatAmount))}`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground w-48">
+                    {item.note || "—"}
+                  </TableCell>
                 </TableRow>
                 {isOpen && bomItems.length > 0 && (
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
                     <TableCell />
-                    <TableCell colSpan={5} className="py-3">
+                    <TableCell colSpan={8} className="py-3">
                       <div className="text-xs font-medium text-muted-foreground mb-2">
                         BOM — vật tư cần cho {item.productName}
                       </div>
@@ -163,14 +184,53 @@ export function SalesOrderItemTable({ items }: SalesOrderItemTableProps) {
               </Fragment>
             );
           })}
-          <TableRow className="bg-muted/50">
-            <TableCell colSpan={5} className="text-right text-sm font-medium">
-              Tổng cộng
-            </TableCell>
-            <TableCell className="text-right font-mono font-bold">
-              {formatMoney(grandTotal)}
-            </TableCell>
-          </TableRow>
+          {totalVat > 0 || discountAmount > 0 ? (
+            <>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={8} className="text-right text-sm font-medium">
+                  Tổng tiền hàng
+                </TableCell>
+                <TableCell className="text-right font-mono font-medium">
+                  {formatMoney(totalAmount)}
+                </TableCell>
+              </TableRow>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={8} className="text-right text-sm text-muted-foreground">
+                  Tổng VAT
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatMoney(totalVat)}
+                </TableCell>
+              </TableRow>
+              {discountAmount > 0 && (
+                <TableRow className="bg-muted/50">
+                  <TableCell colSpan={8} className="text-right text-sm text-muted-foreground">
+                    Giảm thêm
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-destructive">
+                    −{formatMoney(discountAmount)}
+                  </TableCell>
+                </TableRow>
+              )}
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={8} className="text-right text-sm font-semibold">
+                  Tổng thanh toán
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold">
+                  {formatMoney(totalAmount + totalVat - discountAmount)}
+                </TableCell>
+              </TableRow>
+            </>
+          ) : (
+            <TableRow className="bg-muted/50">
+              <TableCell colSpan={8} className="text-right text-sm font-medium">
+                Tổng cộng
+              </TableCell>
+              <TableCell className="text-right font-mono font-bold">
+                {formatMoney(totalAmount)}
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

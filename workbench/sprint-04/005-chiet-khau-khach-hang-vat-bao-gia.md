@@ -1,7 +1,7 @@
 # Milestone (Sprint 04) - Chiết khấu theo Khách hàng×Sản phẩm, tái cấu trúc Discount Engine, VAT/Giảm thêm vào Công nợ
 
 > **Tên file:** `workbench/sprint-04/005-chiet-khau-khach-hang-vat-bao-gia.md`
-> **Trạng thái:** 🔄 ĐANG THỰC HIỆN
+> **Trạng thái:** ✅ HOÀN THÀNH (17/07/2026)
 
 ---
 
@@ -104,13 +104,13 @@ Thêm: `discountPercent`, `vatRate`, `vatAmount`, `note` (snapshot đầy đủ 
 
 # Việc 1 — Schema & Migration
 
-- [ ] `CustomerProductDiscount` model mới
-- [ ] `QuotationItem`: bỏ 5 field cũ, thêm `discountPercent`, `note`
-- [ ] `SalesOrderItem`: bỏ 3 field cũ, thêm `discountPercent`, `vatRate`, `vatAmount`, `note`
-- [ ] `Quotation`: thêm `discountAmount`, `discountReason`, `discountBy`
-- [ ] `SalesOrder`: thêm `totalVatAmount`, `discountAmount`, `discountReason`, `discountBy`, `grandTotal`
-- [ ] Xoá `Customer.defaultDiscount`, xoá `CustomerGroup.discountPercent`
-- [ ] `npx prisma migrate dev --name customer_product_discount_and_order_discount`
+- [x] `CustomerProductDiscount` model mới
+- [x] `QuotationItem`: bỏ 5 field cũ, thêm `discountPercent`, `note`
+- [x] `SalesOrderItem`: bỏ 3 field cũ, thêm `discountPercent`, `vatRate`, `vatAmount`, `note`
+- [x] `Quotation`: thêm `discountAmount`, `discountReason`, `discountBy`
+- [x] `SalesOrder`: thêm `totalVatAmount`, `discountAmount`, `discountReason`, `discountBy`, `grandTotal`
+- [x] Xoá `Customer.defaultDiscount`, xoá `CustomerGroup.discountPercent`
+- [x] `npx prisma migrate dev --name customer_product_discount_and_order_discount` (chạy qua `migrate diff` + `migrate deploy` do môi trường non-interactive)
 
 # Việc 2 — Customer module: CRUD Chiết khấu Khách hàng×Sản phẩm
 
@@ -122,58 +122,59 @@ Thêm: `discountPercent`, `vatRate`, `vatAmount`, `note` (snapshot đầy đủ 
 
 # Việc 3 — Dọn dẹp: xoá `Customer.defaultDiscount` và `CustomerGroup.discountPercent`
 
-- [ ] `customer.service.ts`: bỏ toàn bộ validate/gán/export/import liên quan `defaultDiscount` (8 vị trí đã khảo sát)
-- [ ] `create-customer.dto.ts` / `update-customer.dto.ts`: bỏ field
-- [ ] `customer-form.tsx` / `customer-edit-form.tsx` / `customers/[id]/page.tsx`: bỏ input/hiển thị
-- [ ] `prisma/seed.ts`: bỏ field khỏi seed data
-- [ ] `quotation-workflow.service.ts`: bỏ đọc `customerGroup.discountPercent` (thay bằng lookup `CustomerProductDiscount` — xem Việc 4)
-- [ ] FE quotation detail + print: bỏ hiển thị `customerGroup.discountPercent`/CK nhóm
+- [x] `customer.service.ts`: bỏ toàn bộ validate/gán/export/import liên quan `defaultDiscount` (8 vị trí đã khảo sát)
+- [x] `create-customer.dto.ts` / `update-customer.dto.ts`: bỏ field
+- [x] `customer-form.tsx` / `customer-edit-form.tsx` / `customers/[id]/page.tsx`: bỏ input/hiển thị
+- [x] `prisma/seed.ts`: bỏ field khỏi seed data
+- [x] `quotation-workflow.service.ts`: bỏ đọc `customerGroup.discountPercent` (thay bằng lookup `CustomerProductDiscount` — xem Việc 4)
+- [ ] FE quotation detail + print: bỏ hiển thị `customerGroup.discountPercent`/CK nhóm (dời sang Việc 7 — sửa cùng lúc với reorder cột, tránh sửa 2 lần)
 
 # Việc 4 — Quotation module: Discount Engine mới (per-item)
 
-- [ ] `addItem()`/`updateItem()`/`recalculatePrices()`: thay lookup `customerGroup.discountPercent` bằng lookup `CustomerProductDiscount(customerId, productId)`, snapshot vào `discountPercent`
-- [ ] `calcFinalPrice()` rút gọn còn 1 tham số chiết khấu (bỏ 3 tham số cũ)
-- [ ] Bỏ toàn bộ logic `additionalDiscountPercent/Amount/discountReason/discountBy` cấp item khỏi `addItem`/`updateItem` (kể cả `validateDiscountFields` cũ — thay bằng version mới ở Việc 5)
-- [ ] `create-quotation-item.dto.ts`/`update-quotation-item.dto.ts`: bỏ field discount cũ, thêm `note?: string`
+- [x] `addItem()`/`updateItem()`/`recalculatePrices()`: thay lookup `customerGroup.discountPercent` bằng lookup `CustomerProductDiscount(customerId, productId)`, snapshot vào `discountPercent`
+- [x] `calcFinalPrice()` rút gọn còn 1 tham số chiết khấu (bỏ 3 tham số cũ)
+- [x] Bỏ toàn bộ logic `additionalDiscountPercent/Amount/discountReason/discountBy` cấp item khỏi `addItem`/`updateItem` (kể cả `validateDiscountFields` cũ — thay bằng version mới ở Việc 5)
+- [x] `create-quotation-item.dto.ts`/`update-quotation-item.dto.ts`: bỏ field discount cũ, thêm `note?: string`
 
 # Việc 5 — Quotation module: Giảm thêm cấp toàn báo giá
 
-- [ ] `Quotation` DTO/action mới: `POST /quotations/:id/discount`
-- [ ] Validate: chỉ DRAFT/SENT, `discountAmount ≥ 0`, `discountAmount ≤ Tổng tiền hàng + Tổng VAT`, bắt buộc `discountReason` khi `discountAmount > 0`
-- [ ] FE: dialog "Giảm thêm" cấp đơn trên trang chi tiết báo giá
+- [x] `Quotation` DTO/action mới: `POST /quotations/:id/discount`
+- [x] Validate: chỉ DRAFT/SENT, `discountAmount ≥ 0`, `discountAmount ≤ Tổng tiền hàng + Tổng VAT`, bắt buộc `discountReason` khi `discountAmount > 0`
+- [ ] FE: dialog "Giảm thêm" cấp đơn trên trang chi tiết báo giá (dời sang Việc 7 — cùng lúc với cập nhật interface trang, tránh sửa 2 lần; Việc 7 tự liệt kê lại mục này)
 
 # Việc 6 — Approve(): VAT + Giảm thêm vào SalesOrder/Receivable
 
-- [ ] Tính `totalVatAmount = sum(item.vatAmount)`, `grandTotal = totalAmount + totalVatAmount − quotation.discountAmount`
-- [ ] Validate `grandTotal ≥ 0` trước khi cho Approve (chặn rõ ràng, không âm thầm)
-- [ ] `SalesOrder.create()`: lưu thêm `totalVatAmount`, `discountAmount`, `discountReason`, `discountBy`, `grandTotal`
-- [ ] `SalesOrderItem.create()`: lưu `discountPercent`, `vatRate`, `vatAmount`, `note` (bỏ field cũ)
-- [ ] `Receivable.create()`: `totalAmount`/`remainingAmount` = `grandTotal` (thay vì `totalAmount` doanh thu như hiện tại)
+- [x] Tính `totalVatAmount = sum(item.vatAmount)`, `grandTotal = totalAmount + totalVatAmount − quotation.discountAmount`
+- [x] Validate `grandTotal ≥ 0` trước khi cho Approve (chặn rõ ràng, không âm thầm)
+- [x] `SalesOrder.create()`: lưu thêm `totalVatAmount`, `discountAmount`, `discountReason`, `discountBy`, `grandTotal`
+- [x] `SalesOrderItem.create()`: lưu `discountPercent`, `vatRate`, `vatAmount`, `note` (bỏ field cũ)
+- [x] `Receivable.create()`: `totalAmount`/`remainingAmount` = `grandTotal` (thay vì `totalAmount` doanh thu như hiện tại)
 
 # Việc 7 — FE: Reorder cột + Chú thích + Tổng kết
 
-- [ ] `quotation-item-dialog.tsx`: bỏ khối Giảm thêm cũ, hiện "Chiết khấu" read-only (lookup mới) + ô "Ghi chú"
-- [ ] `quotation-item-table.tsx`: đổi thứ tự cột, đổi "Giá hệ thống"+"CK nhóm"+"Giá bán" → "Giá bán"+"Chiết khấu", thêm cột "Chú thích"
-- [ ] `print/page.tsx`: tương tự + thêm dòng "Giảm thêm" trong tfoot trước "TỔNG THANH TOÁN"
-- [ ] `app/quotations/[id]/page.tsx`: cập nhật interface, thêm nút/dialog Giảm thêm cấp đơn
+- [x] `quotation-item-dialog.tsx`: bỏ khối Giảm thêm cũ, hiện "Chiết khấu" read-only (lookup mới) + ô "Ghi chú"
+- [x] `quotation-item-table.tsx`: đổi thứ tự cột, đổi "Giá hệ thống"+"CK nhóm"+"Giá bán" → "Giá bán"+"Chiết khấu", thêm cột "Chú thích"
+- [x] `print/page.tsx`: tương tự + thêm dòng "Giảm thêm" trong tfoot trước "TỔNG THANH TOÁN"
+- [x] `app/quotations/[id]/page.tsx`: cập nhật interface, thêm nút/dialog Giảm thêm cấp đơn (đồng thời bỏ hiển thị "CK nhóm" — dọn nốt phần Việc 3/4 đã dời sang đây)
 
 # Việc 8 — FE: Order/SalesOrder detail (đồng bộ hiển thị)
 
-- [ ] `orders/[id]/page.tsx` + `sales-order-item-table.tsx`: cập nhật interface theo field mới, hiện VAT/Chiết khấu/Giảm thêm nếu trang này hiện có hiển thị dòng chi tiết tương tự
+- [x] `orders/[id]/page.tsx` + `sales-order-item-table.tsx`: cập nhật interface theo field mới, hiện VAT/Chiết khấu/Giảm thêm — khảo sát đầu Việc 8 xác nhận bảng dòng đã có sẵn (Sản phẩm/Thông số/Giá bán/SL/Thành tiền + dòng Tổng cộng), đồng bộ thêm cột Chiết khấu/VAT/Chú thích + breakdown Tổng tiền hàng/Tổng VAT/Giảm thêm/Tổng thanh toán giống bảng báo giá
 
 # Việc 9 — Cập nhật knowledge docs
 
-- [ ] `knowledge/modules/quotation.md`: viết lại mục "Discount Engine" theo cơ chế mới
-- [ ] `knowledge/modules/customer.md`: thêm mục "Chiết khấu sản phẩm"
-- [ ] `knowledge/modules/debt.md`: cập nhật mô tả `Receivable.totalAmount` = snapshot từ `SalesOrder.grandTotal` (không phải `totalAmount`)
+- [x] `knowledge/modules/quotation.md`: viết lại mục "Discount Engine" theo cơ chế mới
+- [x] `knowledge/modules/customer.md`: thêm mục "Chiết khấu sản phẩm"
+- [x] `knowledge/modules/debt.md`: cập nhật mô tả `Receivable.totalAmount` = snapshot từ `SalesOrder.grandTotal` (không phải `totalAmount`)
 
 # Việc 10 — Test & Build
 
-- [ ] Cập nhật `quotation-workflow.service.spec.ts` (approve, discount engine mới)
-- [ ] `tsc --noEmit` sạch api + web
-- [ ] `npx jest` toàn bộ suite liên quan (quotation, customer, debt)
+- [x] Cập nhật `quotation-workflow.service.spec.ts` (approve, discount engine mới) — thay 3 test chiết khấu bổ sung cấp dòng cũ bằng 7 test mới (Discount Engine per-item + `discount()` action)
+- [x] `tsc --noEmit` sạch api + web
+- [x] `npx jest` toàn bộ suite liên quan (quotation, customer, debt) — 31/31 pass; chạy luôn toàn bộ suite dự án — 260/260 pass
+- [x] `nest build` (api) + `next build` (web) — cả hai build thành công
 
 # Việc 11 — Verify thực tế
 
-- [ ] Cấu hình chiết khấu 1 sản phẩm cho 1 khách hàng → tạo báo giá → xác nhận đúng % áp dụng, đúng thứ tự cột
-- [ ] Áp Giảm thêm cấp đơn → Approve → xác nhận Receivable đúng bằng Tổng thanh toán − Giảm thêm
+- [x] Cấu hình chiết khấu 1 sản phẩm cho 1 khách hàng → tạo báo giá → xác nhận đúng % áp dụng — verify qua API thật (server dev + Postgres dev thật, không mock): cấu hình 15% cho KH000007 × SP000036, thêm dòng báo giá → `discountPercent=15`, `finalPrice=981750=round(1155000×0.85)` đúng. Thứ tự cột đã review qua code (Việc 7), không click-through được UI trong môi trường này (không có trình duyệt/Playwright cài sẵn để tự động hoá).
+- [x] Áp Giảm thêm cấp đơn → Approve → xác nhận Receivable đúng bằng Tổng thanh toán − Giảm thêm — verify qua API thật: `discountAmount=50000` → Approve → `SalesOrder.grandTotal=981750+78540-50000=1010290`, `Receivable.totalAmount=1010290` (khác `totalAmount` doanh thu 981750) — khớp chính xác công thức đã thiết kế.

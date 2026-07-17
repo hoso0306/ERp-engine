@@ -33,6 +33,7 @@ import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
+import { DiscountQuotationDto } from './dto/discount-quotation.dto';
 
 const EDITABLE_STATUSES: QuotationStatus[] = [
   QuotationStatus.DRAFT,
@@ -42,9 +43,7 @@ const EDITABLE_STATUSES: QuotationStatus[] = [
 const QUOTATION_INCLUDE = {
   customer: {
     include: {
-      customerGroup: {
-        select: { id: true, name: true, discountPercent: true },
-      },
+      customerGroup: { select: { id: true, name: true } },
     },
   },
   items: {
@@ -252,11 +251,7 @@ export class QuotationWorkflowService {
   // QuotationItem CRUD
   // ─────────────────────────────────────────────────────
 
-  async addItem(
-    quotationId: string,
-    dto: CreateQuotationItemDto,
-    userId?: string | null,
-  ) {
+  async addItem(quotationId: string, dto: CreateQuotationItemDto) {
     const quotation = await this.findOne(quotationId);
 
     if (!EDITABLE_STATUSES.includes(quotation.status)) {
@@ -273,12 +268,6 @@ export class QuotationWorkflowService {
       throw new BadRequestException('Số lượng phải lớn hơn 0.');
     }
 
-    this.validateDiscountFields(
-      dto.additionalDiscountPercent,
-      dto.additionalDiscountAmount,
-      dto.discountReason,
-    );
-
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
       include: { parameters: { orderBy: { displayOrder: 'asc' } } },
@@ -293,38 +282,30 @@ export class QuotationWorkflowService {
       parameters: dto.parameters,
     });
 
-    const customerWithGroup = await this.prisma.customer.findUnique({
-      where: { id: quotation.customerId },
-      include: { customerGroup: { select: { discountPercent: true } } },
-    });
-    const groupDiscount = Number(
-      customerWithGroup?.customerGroup?.discountPercent ?? 0,
+    // Snapshot % Chiết khấu Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026)
+    // — THAY THẾ HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm"). Mặc định
+    // 0% nếu chưa cấu hình.
+    const customerProductDiscount =
+      await this.prisma.customerProductDiscount.findUnique({
+        where: {
+          customerId_productId: {
+            customerId: quotation.customerId,
+            productId: dto.productId,
+          },
+        },
+      });
+    const discountPercent = Number(
+      customerProductDiscount?.discountPercent ?? 0,
     );
 
-    const additionalDiscountPercent = dto.additionalDiscountPercent ?? 0;
-    const additionalDiscountAmount = dto.additionalDiscountAmount ?? 0;
     const systemPrice = priceResult.systemPrice;
-
-    const finalPrice = this.calcFinalPrice(
-      systemPrice,
-      groupDiscount,
-      additionalDiscountPercent,
-      additionalDiscountAmount,
-    );
+    const finalPrice = this.calcFinalPrice(systemPrice, discountPercent);
     const subtotal = this.calcSubtotal(finalPrice, dto.quantity);
     const vatRate = priceResult.vatRate;
     const vatAmount = this.calcVatAmount(subtotal, vatRate);
 
     const paramMap = new Map(product.parameters.map((p) => [p.name, p]));
     const displayOrder = dto.displayOrder ?? quotation.items.length;
-
-    // "Người duyệt" (discountBy/discountByName) chỉ ghi khi dòng có chiết
-    // khấu bổ sung — cùng điều kiện bắt buộc discountReason (validateDiscountFields).
-    const hasAdditionalDiscount =
-      additionalDiscountPercent > 0 || additionalDiscountAmount > 0;
-    const discountByName = hasAdditionalDiscount
-      ? await resolveActorName(this.prisma, userId)
-      : null;
 
     return this.prisma.quotationItem.create({
       data: {
@@ -337,16 +318,12 @@ export class QuotationWorkflowService {
         quantity: dto.quantity,
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
         systemPrice,
-        groupDiscount,
-        additionalDiscountPercent,
-        additionalDiscountAmount,
-        discountReason: dto.discountReason?.trim() || null,
-        discountBy: hasAdditionalDiscount ? (userId ?? null) : null,
-        discountByName,
+        discountPercent,
         finalPrice,
         subtotal,
         vatRate,
         vatAmount,
+        note: dto.note?.trim() || null,
         // Snapshot cảnh báo Validation Rule tại thời điểm tính giá (Task 06)
         warnings: priceResult.warnings,
         displayOrder,
@@ -374,7 +351,6 @@ export class QuotationWorkflowService {
     quotationId: string,
     itemId: string,
     dto: UpdateQuotationItemDto,
-    userId?: string | null,
   ) {
     const quotation = await this.findOne(quotationId);
 
@@ -397,30 +373,6 @@ export class QuotationWorkflowService {
       throw new BadRequestException('Số lượng phải lớn hơn 0.');
     }
 
-    const additionalDiscountPercent =
-      dto.additionalDiscountPercent ?? Number(item.additionalDiscountPercent);
-    const additionalDiscountAmount =
-      dto.additionalDiscountAmount ?? Number(item.additionalDiscountAmount);
-    const discountReason =
-      dto.discountReason !== undefined
-        ? dto.discountReason?.trim() || null
-        : item.discountReason;
-
-    this.validateDiscountFields(
-      additionalDiscountPercent,
-      additionalDiscountAmount,
-      discountReason,
-    );
-
-    // "Người duyệt" (discountBy/discountByName) chỉ ghi khi dòng có chiết
-    // khấu bổ sung — cùng điều kiện bắt buộc discountReason (validateDiscountFields).
-    const hasAdditionalDiscount =
-      additionalDiscountPercent > 0 || additionalDiscountAmount > 0;
-    const discountBy = hasAdditionalDiscount ? (userId ?? null) : null;
-    const discountByName = hasAdditionalDiscount
-      ? await resolveActorName(this.prisma, userId)
-      : null;
-
     const quantity = dto.quantity ?? Number(item.quantity);
     let systemPrice = Number(item.systemPrice);
     let pricingRuleVersionId = item.pricingRuleVersionId;
@@ -439,15 +391,12 @@ export class QuotationWorkflowService {
       vatRate = priceResult.vatRate;
     }
 
-    const groupDiscount = Number(item.groupDiscount);
-    const finalPrice = this.calcFinalPrice(
-      systemPrice,
-      groupDiscount,
-      additionalDiscountPercent,
-      additionalDiscountAmount,
-    );
+    // discountPercent là snapshot cố định từ lúc thêm dòng (giống hệt cách
+    // groupDiscount cũ hoạt động) — sửa dòng không lookup lại CustomerProductDiscount.
+    const discountPercent = Number(item.discountPercent);
+    const finalPrice = this.calcFinalPrice(systemPrice, discountPercent);
     // subtotal (và do đó vatAmount) luôn tính lại dù tham số không đổi —
-    // số lượng/chiết khấu có thể đổi độc lập với tham số sản phẩm.
+    // số lượng có thể đổi độc lập với tham số sản phẩm.
     const subtotal = this.calcSubtotal(finalPrice, quantity);
     const vatAmount = this.calcVatAmount(subtotal, vatRate);
 
@@ -498,16 +447,14 @@ export class QuotationWorkflowService {
           quantity,
           systemPrice,
           pricingRuleVersionId,
-          additionalDiscountPercent,
-          additionalDiscountAmount,
-          discountReason,
-          discountBy,
-          discountByName,
           finalPrice,
           subtotal,
           vatRate,
           vatAmount,
           warnings: warnings ?? [],
+          ...(dto.note !== undefined
+            ? { note: dto.note?.trim() || null }
+            : {}),
           ...(dto.displayOrder !== undefined
             ? { displayOrder: dto.displayOrder }
             : {}),
@@ -642,9 +589,7 @@ export class QuotationWorkflowService {
       const newSystemPrice = priceResult.systemPrice;
       const newFinalPrice = this.calcFinalPrice(
         newSystemPrice,
-        Number(item.groupDiscount),
-        Number(item.additionalDiscountPercent),
-        Number(item.additionalDiscountAmount),
+        Number(item.discountPercent),
       );
       const newSubtotal = this.calcSubtotal(
         newFinalPrice,
@@ -846,6 +791,59 @@ export class QuotationWorkflowService {
   }
 
   // ─────────────────────────────────────────────────────
+  // Workflow: Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026)
+  // ─────────────────────────────────────────────────────
+
+  // Giảm thêm chuyển từ cấp dòng sản phẩm lên cấp toàn báo giá — chỉ giảm
+  // bằng số tiền mặt, áp trên Tổng thanh toán (đã gồm VAT). Không ghi Timeline
+  // riêng — audit đã có sẵn trong 3 field discountAmount/discountReason/discountBy
+  // (tiền lệ đã chốt: quotation.md "Giảm giá thêm đã có audit riêng").
+  async discount(
+    id: string,
+    dto: DiscountQuotationDto,
+    userId?: string | null,
+  ) {
+    const quotation = await this.findOne(id);
+
+    if (!EDITABLE_STATUSES.includes(quotation.status)) {
+      throw new ForbiddenException(
+        `Chỉ có thể áp Giảm thêm khi báo giá ở trạng thái Nháp hoặc Đã gửi. Trạng thái hiện tại: ${quotation.status}.`,
+      );
+    }
+
+    const amount = dto.amount ?? 0;
+    if (amount < 0) {
+      throw new BadRequestException('Giảm thêm không được âm.');
+    }
+
+    const totalPayable = quotation.items.reduce(
+      (s, i) => s + Number(i.subtotal) + Number(i.vatAmount),
+      0,
+    );
+    if (amount > totalPayable) {
+      throw new BadRequestException(
+        'Giảm thêm không được vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
+      );
+    }
+
+    if (amount > 0 && !dto.reason?.trim()) {
+      throw new BadRequestException(
+        'Lý do giảm giá là bắt buộc khi áp dụng Giảm thêm.',
+      );
+    }
+
+    return this.prisma.quotation.update({
+      where: { id },
+      data: {
+        discountAmount: amount,
+        discountReason: amount > 0 ? dto.reason!.trim() : null,
+        discountBy: amount > 0 ? (userId ?? null) : null,
+      },
+      include: QUOTATION_INCLUDE,
+    });
+  }
+
+  // ─────────────────────────────────────────────────────
   // Workflow: Approve (Task 06)
   // ─────────────────────────────────────────────────────
 
@@ -982,6 +980,25 @@ export class QuotationWorkflowService {
       });
     }
 
+    // Planned Financials (order.md): computed once, never re-derived later.
+    // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026): grandTotal là số tiền hoá
+    // đơn thực tế — chặn rõ ràng nếu âm, KHÔNG cho Approve âm thầm.
+    const totalAmount = quotation.items.reduce(
+      (s, i) => s + Number(i.subtotal),
+      0,
+    );
+    const totalVatAmount = quotation.items.reduce(
+      (s, i) => s + Number(i.vatAmount),
+      0,
+    );
+    const grandTotal =
+      totalAmount + totalVatAmount - Number(quotation.discountAmount);
+    if (grandTotal < 0) {
+      throw new BadRequestException(
+        'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
+      );
+    }
+
     // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
     // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
     // Approve. Fallback: createdBy NULL (báo giá trước khi có Auth) → dùng
@@ -1040,11 +1057,6 @@ export class QuotationWorkflowService {
 
     // All validations pass — execute in a single transaction
     return this.prisma.$transaction(async (tx) => {
-      // Planned Financials (order.md): computed once at creation, never re-derived later.
-      const totalAmount = quotation.items.reduce(
-        (s, i) => s + Number(i.subtotal),
-        0,
-      );
       const plannedCost = itemComputations.reduce(
         (s, c) => s + c.itemPlannedCost,
         0,
@@ -1079,18 +1091,27 @@ export class QuotationWorkflowService {
           // Approve, không đọc lại Master Data sau khi tạo.
           ownerId: owner?.id ?? null,
           ownerName: owner ? (owner.name ?? owner.email) : null,
+          // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026) — snapshot từ Quotation
+          // tại Approve. totalAmount (doanh thu) giữ nguyên công thức cũ.
+          totalVatAmount,
+          discountAmount: quotation.discountAmount,
+          discountReason: quotation.discountReason,
+          discountBy: quotation.discountBy,
+          grandTotal,
         },
       });
 
       // Task 02 (Debt module) — Receivable sinh đồng thời với SalesOrder, cùng
       // transaction — snapshot Credit Policy (debtLimitSnapshot/debtTermDaysSnapshot)
       // từ Customer tại thời điểm này. dueDate = NULL cho tới khi Delivered.
+      // totalAmount/remainingAmount = grandTotal (số tiền thực thu, đã gồm VAT
+      // và trừ Giảm thêm — chốt 16/07/2026), KHÔNG phải doanh thu totalAmount.
       await tx.receivable.create({
         data: {
           salesOrderId: salesOrder.id,
           customerId: quotation.customerId,
-          totalAmount,
-          remainingAmount: totalAmount,
+          totalAmount: grandTotal,
+          remainingAmount: grandTotal,
           debtLimitSnapshot: Number(quotation.customer.debtLimit),
           debtTermDaysSnapshot: quotation.customer.debtTermDays,
         },
@@ -1127,12 +1148,13 @@ export class QuotationWorkflowService {
             productionCenterName: item.product.productionCenter.name,
             pricingRuleVersionId: item.pricingRuleVersionId,
             systemPrice: Number(item.systemPrice),
-            groupDiscount: Number(item.groupDiscount),
-            additionalDiscountPercent: Number(item.additionalDiscountPercent),
-            additionalDiscountAmount: Number(item.additionalDiscountAmount),
+            discountPercent: Number(item.discountPercent),
             finalPrice: Number(item.finalPrice),
             quantity: Number(item.quantity),
             subtotal: Number(item.subtotal),
+            vatRate: Number(item.vatRate),
+            vatAmount: Number(item.vatAmount),
+            note: item.note,
             materialRequirementVersionId: item.materialRequirementVersionId,
             plannedCost: itemPlannedCost,
             displayOrder: item.displayOrder,
@@ -1290,36 +1312,8 @@ export class QuotationWorkflowService {
   // Helpers
   // ─────────────────────────────────────────────────────
 
-  private validateDiscountFields(
-    additionalDiscountPercent: number | undefined,
-    additionalDiscountAmount: number | undefined,
-    discountReason: string | null | undefined,
-  ) {
-    const pct = additionalDiscountPercent ?? 0;
-    const amt = additionalDiscountAmount ?? 0;
-
-    if (pct < 0 || pct > 100) {
-      throw new BadRequestException('Giảm thêm theo % phải từ 0 đến 100.');
-    }
-    if (amt < 0) {
-      throw new BadRequestException('Giảm thêm theo số tiền không được âm.');
-    }
-    if ((pct > 0 || amt > 0) && !discountReason?.trim()) {
-      throw new BadRequestException(
-        'Lý do giảm giá là bắt buộc khi áp dụng chiết khấu thêm.',
-      );
-    }
-  }
-
-  private calcFinalPrice(
-    systemPrice: number,
-    groupDiscount: number,
-    additionalDiscountPercent: number,
-    additionalDiscountAmount: number,
-  ): number {
-    const after1 = systemPrice * (1 - groupDiscount / 100);
-    const after2 = after1 * (1 - additionalDiscountPercent / 100);
-    const final = after2 - additionalDiscountAmount;
+  private calcFinalPrice(systemPrice: number, discountPercent: number): number {
+    const final = systemPrice * (1 - discountPercent / 100);
 
     if (final < 0) {
       throw new BadRequestException(

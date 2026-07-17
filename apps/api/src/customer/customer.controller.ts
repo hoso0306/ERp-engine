@@ -18,6 +18,8 @@ import { CustomerService } from './customer.service';
 import { CustomerQueryDto } from './dto/customer-query.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-discount.dto';
+import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -98,5 +100,50 @@ export class CustomerController {
   @RequirePermission('customer.update')
   restore(@Param('id') id: string) {
     return this.customerService.restore(id);
+  }
+
+  // ── Chiết khấu theo Khách hàng × Sản phẩm (nested) ──
+
+  @Get(':id/product-discounts/lookup')
+  @RequirePermission('customer.view')
+  lookupProductDiscount(
+    @Param('id') id: string,
+    @Query('productId') productId: string,
+  ) {
+    return this.customerService.lookupProductDiscount(id, productId);
+  }
+
+  @Get(':id/product-discounts')
+  @RequirePermission('customer.view')
+  findProductDiscounts(@Param('id') id: string) {
+    return this.customerService.findProductDiscounts(id);
+  }
+
+  @Post(':id/product-discounts')
+  @RequirePermission('customer.update')
+  createProductDiscount(
+    @Param('id') id: string,
+    @Body() dto: CreateCustomerProductDiscountDto,
+  ) {
+    return this.customerService.createProductDiscount(id, dto);
+  }
+
+  @Patch(':id/product-discounts/:discountId')
+  @RequirePermission('customer.update')
+  updateProductDiscount(
+    @Param('id') id: string,
+    @Param('discountId') discountId: string,
+    @Body() dto: UpdateCustomerProductDiscountDto,
+  ) {
+    return this.customerService.updateProductDiscount(id, discountId, dto);
+  }
+
+  @Delete(':id/product-discounts/:discountId')
+  @RequirePermission('customer.update')
+  deleteProductDiscount(
+    @Param('id') id: string,
+    @Param('discountId') discountId: string,
+  ) {
+    return this.customerService.deleteProductDiscount(id, discountId);
   }
 }

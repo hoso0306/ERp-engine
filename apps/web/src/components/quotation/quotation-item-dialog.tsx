@@ -34,10 +34,8 @@ interface ExistingItem {
   productId: string;
   quantity: number;
   systemPrice: number;
-  groupDiscount: number;
-  additionalDiscountPercent: number;
-  additionalDiscountAmount: number;
-  discountReason: string | null;
+  discountPercent: number;
+  note: string | null;
   finalPrice: number;
   vatRate: number;
   parameters: { name: string; label: string; value: string; unit: string | null }[];
@@ -47,7 +45,7 @@ interface QuotationItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotationId: string;
-  groupDiscount: number;
+  customerId: string;
   item?: ExistingItem | null;
   onSaved: () => void;
 }
@@ -60,7 +58,7 @@ export function QuotationItemDialog({
   open,
   onOpenChange,
   quotationId,
-  groupDiscount,
+  customerId,
   item,
   onSaved,
 }: QuotationItemDialogProps) {
@@ -72,10 +70,11 @@ export function QuotationItemDialog({
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState("1");
 
-  // Discount fields (Task 04)
-  const [addlDiscountPct, setAddlDiscountPct] = useState("0");
-  const [addlDiscountAmt, setAddlDiscountAmt] = useState("0");
-  const [discountReason, setDiscountReason] = useState("");
+  // Chiết khấu Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026) — read-only,
+  // lookup từ Master Data khi thêm mới; khi sửa dùng lại snapshot cũ (không
+  // lookup lại, giống hệt cách groupDiscount cũ hoạt động).
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [note, setNote] = useState("");
 
   const [systemPrice, setSystemPrice] = useState<number | null>(null);
   const [unitPrice, setUnitPrice] = useState<number | null>(null);
@@ -109,9 +108,8 @@ export function QuotationItemDialog({
       setQuantity(String(item.quantity));
       setSystemPrice(item.systemPrice);
       setVatRate(item.vatRate ?? 0);
-      setAddlDiscountPct(String(item.additionalDiscountPercent ?? 0));
-      setAddlDiscountAmt(String(item.additionalDiscountAmount ?? 0));
-      setDiscountReason(item.discountReason ?? "");
+      setDiscountPercent(Number(item.discountPercent ?? 0));
+      setNote(item.note ?? "");
       const vals: Record<string, string> = {};
       for (const p of item.parameters) vals[p.name] = p.value;
       setParamValues(vals);
@@ -121,9 +119,8 @@ export function QuotationItemDialog({
       setProductParams([]);
       setParamValues({});
       setQuantity("1");
-      setAddlDiscountPct("0");
-      setAddlDiscountAmt("0");
-      setDiscountReason("");
+      setDiscountPercent(0);
+      setNote("");
       setSystemPrice(null);
       setVatRate(0);
     }
@@ -180,6 +177,21 @@ export function QuotationItemDialog({
     return () => clearTimeout(timer);
   }, [open, productId, paramValues, calculatePrice]);
 
+  // Lookup % chiết khấu Khách hàng × Sản phẩm — chỉ khi THÊM MỚI. Sửa dòng
+  // giữ nguyên discountPercent đã snapshot (không lookup lại).
+  useEffect(() => {
+    if (isEdit) return;
+    if (!productId || !customerId) {
+      setDiscountPercent(0);
+      return;
+    }
+    apiGet<{ discountPercent: number }>(
+      `/customers/${customerId}/product-discounts/lookup?productId=${productId}`,
+    )
+      .then((d) => setDiscountPercent(d.discountPercent ?? 0))
+      .catch(() => setDiscountPercent(0));
+  }, [productId, customerId, isEdit]);
+
   function handleProductChange(product: ProductOption | null) {
     setPickedProduct(product);
     setProductId(product?.id ?? "");
@@ -195,14 +207,10 @@ export function QuotationItemDialog({
   }
 
   // Price preview calculation
-  const pct = parseFloat(addlDiscountPct) || 0;
-  const amt = parseFloat(addlDiscountAmt) || 0;
   const qty = parseFloat(quantity) || 0;
 
-  const afterGroup =
-    systemPrice !== null ? systemPrice * (1 - groupDiscount / 100) : null;
-  const afterAddlPct = afterGroup !== null ? afterGroup * (1 - pct / 100) : null;
-  const finalPrice = afterAddlPct !== null ? afterAddlPct - amt : null;
+  const finalPrice =
+    systemPrice !== null ? systemPrice * (1 - discountPercent / 100) : null;
   const finalPriceSafe = finalPrice !== null ? Math.max(0, Math.round(finalPrice)) : null;
   const subtotal = finalPriceSafe !== null ? Math.round(finalPriceSafe * qty) : null;
   const finalNegative = finalPrice !== null && finalPrice < 0;
@@ -212,26 +220,18 @@ export function QuotationItemDialog({
   const vatAmount = subtotal !== null ? Math.round(subtotal * (vatRate / 100)) : null;
   const grandTotal = subtotal !== null && vatAmount !== null ? subtotal + vatAmount : null;
 
-  const hasAddlDiscount = pct > 0 || amt > 0;
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!productId) { toast.error("Vui lòng chọn sản phẩm."); return; }
     if (!quantity || parseFloat(quantity) <= 0) { toast.error("Số lượng phải lớn hơn 0."); return; }
-    if (hasAddlDiscount && !discountReason.trim()) {
-      toast.error("Lý do giảm giá là bắt buộc khi áp dụng chiết khấu thêm.");
-      return;
-    }
 
     const parameters = Object.entries(paramValues).map(([name, value]) => ({ name, value }));
     const body: Record<string, unknown> = {
       productId,
       quantity: parseFloat(quantity),
       parameters,
-      additionalDiscountPercent: pct,
-      additionalDiscountAmount: amt,
+      note: note.trim() || null,
     };
-    if (discountReason.trim()) body.discountReason = discountReason.trim();
 
     setSubmitting(true);
     try {
@@ -329,50 +329,27 @@ export function QuotationItemDialog({
             />
           </div>
 
-          {/* Additional Discount (Task 04) */}
+          {/* Chiết khấu Khách hàng × Sản phẩm (Sprint 04) — read-only, lookup từ Master Data */}
           <Separator />
-          <p className="text-sm font-medium">Giảm thêm <span className="text-muted-foreground font-normal">(tuỳ chọn)</span></p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="addl-pct" className="text-sm">Theo % (0–100)</Label>
-              <Input
-                id="addl-pct"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={addlDiscountPct}
-                onChange={(e) => setAddlDiscountPct(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="addl-amt" className="text-sm">Theo số tiền (₫)</Label>
-              <Input
-                id="addl-amt"
-                type="number"
-                min="0"
-                step="1000"
-                value={addlDiscountAmt}
-                onChange={(e) => setAddlDiscountAmt(e.target.value)}
-              />
+          <div className="space-y-1.5">
+            <Label className="text-sm">Chiết khấu</Label>
+            <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+              {discountPercent > 0
+                ? `${discountPercent}% (theo cấu hình khách hàng × sản phẩm)`
+                : "Chưa cấu hình chiết khấu cho sản phẩm này"}
             </div>
           </div>
 
-          {hasAddlDiscount && (
-            <div className="space-y-1.5">
-              <Label htmlFor="discount-reason" className="text-sm">
-                Lý do giảm giá *
-              </Label>
-              <Textarea
-                id="discount-reason"
-                value={discountReason}
-                onChange={(e) => setDiscountReason(e.target.value)}
-                rows={2}
-                placeholder="Ví dụ: Khách hàng thân thiết, đơn hàng lớn..."
-                required
-              />
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="item-note" className="text-sm">Ghi chú</Label>
+            <Textarea
+              id="item-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="Ghi chú thêm cho dòng sản phẩm này (tuỳ chọn)..."
+            />
+          </div>
 
           {/* Cảnh báo Validation Rule (Task 11) */}
           {priceWarnings.length > 0 && (
@@ -411,30 +388,14 @@ export function QuotationItemDialog({
                   ) : systemPrice !== null ? formatMoney(systemPrice) : "—"}
                 </span>
               </div>
-              {groupDiscount > 0 && (
+              {discountPercent > 0 && (
                 <div className="flex justify-between text-muted-foreground">
-                  <span>CK nhóm ({groupDiscount}%)</span>
+                  <span>Chiết khấu ({discountPercent}%)</span>
                   <span className="font-mono text-destructive">
                     {systemPrice !== null
-                      ? "−" + formatMoney(Math.round(systemPrice * (groupDiscount / 100)))
+                      ? "−" + formatMoney(Math.round(systemPrice * (discountPercent / 100)))
                       : "—"}
                   </span>
-                </div>
-              )}
-              {pct > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Giảm thêm ({pct}%)</span>
-                  <span className="font-mono text-destructive">
-                    {afterGroup !== null
-                      ? "−" + formatMoney(Math.round(afterGroup * (pct / 100)))
-                      : "—"}
-                  </span>
-                </div>
-              )}
-              {amt > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Giảm thêm (số tiền)</span>
-                  <span className="font-mono text-destructive">−{formatMoney(amt)}</span>
                 </div>
               )}
               <div className={`flex justify-between border-t pt-1.5 font-medium ${finalNegative ? "text-destructive" : ""}`}>

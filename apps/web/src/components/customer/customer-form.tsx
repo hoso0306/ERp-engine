@@ -57,9 +57,6 @@ export function CustomerForm() {
     const priority = form.get("priority");
     if (priority) body.priority = priority;
 
-    const discount = form.get("defaultDiscount");
-    if (discount && String(discount).trim()) body.defaultDiscount = Number(discount);
-
     const debtLimit = form.get("debtLimit");
     if (debtLimit && String(debtLimit).trim()) body.debtLimit = Number(debtLimit);
 
@@ -166,7 +163,7 @@ export function CustomerForm() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Mức độ ưu tiên</Label>
             <Select name="priority" defaultValue="MEDIUM">
@@ -179,10 +176,6 @@ export function CustomerForm() {
                 <SelectItem value="HIGH">Cao</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="defaultDiscount">Chiết khấu (%)</Label>
-            <Input id="defaultDiscount" name="defaultDiscount" type="number" min={0} max={100} defaultValue={0} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="debtTermDays">Thời hạn công nợ (ngày)</Label>

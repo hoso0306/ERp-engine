@@ -13,7 +13,6 @@ export class UpdateCustomerDto {
   saleId?: string | null;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
   status?: 'ACTIVE' | 'INACTIVE';
-  defaultDiscount?: number;
   debtLimit?: number;
   debtTermDays?: number;
   note?: string | null;

@@ -20,6 +20,7 @@ import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
+import { DiscountQuotationDto } from './dto/discount-quotation.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -110,16 +111,23 @@ export class QuotationController {
     return this.workflow.override(id, dto, req.user?.userId ?? null);
   }
 
+  @Post(':id/discount')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('quotation.update')
+  discount(
+    @Param('id') id: string,
+    @Body() dto: DiscountQuotationDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.workflow.discount(id, dto, req.user?.userId ?? null);
+  }
+
   // ── QuotationItem CRUD ──
 
   @Post(':id/items')
   @RequirePermission('quotation.update')
-  addItem(
-    @Param('id') id: string,
-    @Body() dto: CreateQuotationItemDto,
-    @Req() req: { user?: { userId?: string } },
-  ) {
-    return this.workflow.addItem(id, dto, req.user?.userId ?? null);
+  addItem(@Param('id') id: string, @Body() dto: CreateQuotationItemDto) {
+    return this.workflow.addItem(id, dto);
   }
 
   @Patch(':id/items/:itemId')
@@ -128,9 +136,8 @@ export class QuotationController {
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() dto: UpdateQuotationItemDto,
-    @Req() req: { user?: { userId?: string } },
   ) {
-    return this.workflow.updateItem(id, itemId, dto, req.user?.userId ?? null);
+    return this.workflow.updateItem(id, itemId, dto);
   }
 
   @Delete(':id/items/:itemId')

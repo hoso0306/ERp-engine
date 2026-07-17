@@ -112,7 +112,6 @@ Logic: Transaction → SELECT FOR UPDATE → lastNumber + 1 → format code.
 * Người phụ trách — `saleId` (FK → `users`)
 * Mức độ ưu tiên (Enum: LOW / MEDIUM / HIGH, mặc định MEDIUM)
 * Trạng thái (Enum: ACTIVE / INACTIVE, mặc định ACTIVE)
-* Chiết khấu mặc định (0–100%, mặc định 0)
 * Hạn mức công nợ (VNĐ, mặc định 0)
 * Thời hạn công nợ (Ngày, mặc định 30)
 
@@ -159,7 +158,6 @@ delivery_route_id  String?      FK → delivery_routes
 sale_id         String?         FK → users
 priority        Priority        Default MEDIUM
 status          CustomerStatus  Default ACTIVE
-default_discount   Decimal      Default 0 (0–100%)
 debt_limit      Decimal         Default 0 (VNĐ)
 debt_term_days  Int             Default 30 (Ngày)
 note            String?
@@ -231,6 +229,46 @@ Hiển thị:
 * Danh sách đơn hàng
 * Công nợ
 * Ghi chú
+* Chiết khấu sản phẩm (xem mục riêng bên dưới)
+
+## Chiết khấu sản phẩm
+
+> Sprint 04 (chốt 16/07/2026) — THAY THẾ HOÀN TOÀN `CustomerGroup.discountPercent`
+> ("CK nhóm") đã xoá khỏi hệ thống.
+
+Cấu hình chiết khấu riêng theo **từng cặp Khách hàng × Sản phẩm** — khách A
+mua sản phẩm X được giảm bao nhiêu %, sản phẩm Y có thể không được giảm gì.
+Chỉ dùng đơn vị %, mặc định 0% nếu chưa cấu hình.
+
+Bảng riêng `CustomerProductDiscount` — Master Data, không versioned (giống
+Pricing Rule ở cấp đơn giản, không có khái niệm DRAFT/ACTIVE/ARCHIVED).
+
+```
+id                String   PK, cuid()
+customer_id       String   FK → customers
+product_id        String   FK → products
+discount_percent  Decimal  0–100 (%)
+created_at        DateTime
+updated_at        DateTime
+
+@@unique([customer_id, product_id])
+```
+
+API nested dưới Customer:
+
+* `GET /customers/:id/product-discounts` — danh sách chiết khấu đã cấu hình
+* `POST /customers/:id/product-discounts` — thêm mới `{ productId, discountPercent }`
+* `PATCH /customers/:id/product-discounts/:discountId` — sửa % (không đổi được sản phẩm)
+* `DELETE /customers/:id/product-discounts/:discountId` — xoá
+* `GET /customers/:id/product-discounts/lookup?productId=` — trả `{ discountPercent }` (0 nếu chưa cấu hình), dùng khi Quotation module thêm dòng báo giá
+
+**Ranh giới kiến trúc:** Không gộp vào Pricing Engine — Pricing Rule chỉ dùng
+để tính giá bán (`systemPrice`), chiết khấu là chuyện của khách hàng
+(Quotation module's Discount Engine, xem `quotation.md`).
+
+Khi thêm dòng báo giá, hệ thống lookup và **snapshot** % này vào
+`QuotationItem.discountPercent` — sửa cấu hình sau đó không ảnh hưởng báo giá
+đã tạo (đúng CLAUDE.md mục 7, Snapshot & Document Design).
 
 ## Import Excel
 
@@ -255,7 +293,6 @@ Xuất danh sách khách hàng theo bộ lọc hiện tại.
 * Số điện thoại không được trùng (unique).
 * Email không bắt buộc, không unique.
 * Nếu có Email phải đúng định dạng.
-* Chiết khấu mặc định từ 0 đến 100 (%).
 * Thời hạn công nợ mặc định là 30 ngày.
 * Hạn mức công nợ mặc định bằng 0 VNĐ.
 * Không xóa khách hàng đã phát sinh đơn hàng.
@@ -273,7 +310,6 @@ Xuất danh sách khách hàng theo bộ lọc hiện tại.
 ## Kiểm tra
 
 * Email đúng định dạng.
-* Chiết khấu từ 0–100.
 * Hạn mức công nợ ≥ 0.
 * Thời hạn công nợ ≥ 0.
 

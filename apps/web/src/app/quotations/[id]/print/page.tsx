@@ -16,14 +16,14 @@ interface QuotationItem {
   productId: string;
   quantity: number;
   systemPrice: number;
-  groupDiscount: number;
-  additionalDiscountPercent: number;
-  additionalDiscountAmount: number;
-  discountReason: string | null;
+  discountPercent: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
   vatAmount: number;
+  note: string | null;
+  // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
+  warnings: string[] | null;
   // Snapshot tại thời điểm thêm/sửa dòng — bản in đọc từ đây, không đọc Product.
   productCode: string;
   productName: string;
@@ -38,6 +38,9 @@ interface Quotation {
   note: string | null;
   salesOrderId: string | null;
   createdAt: string;
+  // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026).
+  discountAmount: number;
+  discountReason: string | null;
   customer: {
     id: string;
     code: string;
@@ -47,7 +50,7 @@ interface Quotation {
     province?: string | null;
     district?: string | null;
     address?: string | null;
-    customerGroup: { id: string; name: string; discountPercent: number } | null;
+    customerGroup: { id: string; name: string } | null;
   };
   items: QuotationItem[];
 }
@@ -129,9 +132,10 @@ export default function QuotationPrintPage() {
     );
   }
 
-  const grandTotal = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
+  const totalAmount = quotation.items.reduce((s, i) => s + Number(i.subtotal), 0);
   const totalVat = quotation.items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
-  const groupDiscount = Number(quotation.customer.customerGroup?.discountPercent ?? 0);
+  const discountAmount = Number(quotation.discountAmount ?? 0);
+  const grandTotal = totalAmount + totalVat - discountAmount;
   const customerAddress = [
     quotation.customer.address,
     quotation.customer.district,
@@ -253,10 +257,10 @@ export default function QuotationPrintPage() {
                 </td>
               </tr>
             )}
-            {groupDiscount > 0 && (
+            {quotation.customer.customerGroup && (
               <tr>
                 <td style={{ border: "none", paddingLeft: 0 }} colSpan={2}>
-                  <strong>Nhóm khách hàng:</strong> {quotation.customer.customerGroup?.name} — Chiết khấu {groupDiscount}%
+                  <strong>Nhóm khách hàng:</strong> {quotation.customer.customerGroup.name}
                 </td>
               </tr>
             )}
@@ -270,25 +274,20 @@ export default function QuotationPrintPage() {
               <th style={{ width: 30 }}>STT</th>
               <th>Sản phẩm</th>
               <th>Thông số</th>
-              <th style={{ width: 100, textAlign: "right" }}>Giá hệ thống</th>
-              <th style={{ width: 70 }}>CK (%)</th>
               <th style={{ width: 100, textAlign: "right" }}>Giá bán</th>
+              <th style={{ width: 70 }}>Chiết khấu</th>
               <th style={{ width: 50, textAlign: "right" }}>SL</th>
               <th style={{ width: 110, textAlign: "right" }}>Thành tiền</th>
               <th style={{ width: 90, textAlign: "right" }}>VAT</th>
+              <th style={{ width: 130 }}>Chú thích</th>
             </tr>
           </thead>
           <tbody>
             {quotation.items.map((item, idx) => {
-              const hasPctDiscount = Number(item.additionalDiscountPercent) > 0;
-              const hasAmtDiscount = Number(item.additionalDiscountAmount) > 0;
-              const ckLabel = [
-                groupDiscount > 0 ? `Nhóm: ${groupDiscount}%` : null,
-                hasPctDiscount ? `Thêm: ${item.additionalDiscountPercent}%` : null,
-                hasAmtDiscount ? `Thêm: ${fmt(Number(item.additionalDiscountAmount))}₫` : null,
-              ]
-                .filter(Boolean)
-                .join(", ") || "—";
+              const noteParts = [
+                ...(item.warnings ?? []).map((w) => `⚠ ${w}`),
+                ...(item.note ? [item.note] : []),
+              ];
 
               return (
                 <tr key={item.id}>
@@ -300,8 +299,9 @@ export default function QuotationPrintPage() {
                   </td>
                   <td style={{ fontSize: 11 }}>{fmtParams(item.parameters) || "—"}</td>
                   <td style={{ textAlign: "right" }}>{fmt(Number(item.systemPrice))}</td>
-                  <td style={{ textAlign: "center", fontSize: 11 }}>{ckLabel}</td>
-                  <td style={{ textAlign: "right", fontWeight: "bold" }}>{fmt(Number(item.finalPrice))}</td>
+                  <td style={{ textAlign: "center", fontSize: 11 }}>
+                    {Number(item.discountPercent) > 0 ? `${item.discountPercent}%` : "—"}
+                  </td>
                   <td style={{ textAlign: "right" }}>{Number(item.quantity)}</td>
                   <td style={{ textAlign: "right", fontWeight: "bold" }}>{fmt(Number(item.subtotal))}</td>
                   <td style={{ textAlign: "right", fontSize: 11 }}>
@@ -309,19 +309,22 @@ export default function QuotationPrintPage() {
                       ? `${item.vatRate}%  ${fmt(Number(item.vatAmount))}`
                       : "—"}
                   </td>
+                  <td style={{ fontSize: 11 }}>
+                    {noteParts.length > 0 ? noteParts.join("; ") : "—"}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
-            {totalVat > 0 ? (
+            {totalVat > 0 || discountAmount > 0 ? (
               <>
                 <tr>
                   <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
                     Tổng tiền hàng
                   </td>
                   <td style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
-                    {fmt(grandTotal)} ₫
+                    {fmt(totalAmount)} ₫
                   </td>
                 </tr>
                 <tr>
@@ -332,12 +335,22 @@ export default function QuotationPrintPage() {
                     {fmt(totalVat)} ₫
                   </td>
                 </tr>
+                {discountAmount > 0 && (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                      Giảm thêm
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
+                      −{fmt(discountAmount)} ₫
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <td colSpan={8} style={{ textAlign: "right", fontWeight: "bold", border: "1px solid #333" }}>
                     TỔNG THANH TOÁN
                   </td>
                   <td style={{ textAlign: "right", fontWeight: "bold", fontSize: 15, border: "1px solid #333" }}>
-                    {fmt(grandTotal + totalVat)} ₫
+                    {fmt(grandTotal)} ₫
                   </td>
                 </tr>
               </>
@@ -354,14 +367,11 @@ export default function QuotationPrintPage() {
           </tfoot>
         </table>
 
-        {/* Discount reason notes */}
-        {quotation.items.some((i) => i.discountReason) && (
+        {/* Lý do Giảm thêm (cấp toàn báo giá) */}
+        {discountAmount > 0 && quotation.discountReason && (
           <div style={{ marginBottom: 12, fontSize: 11 }}>
-            <em>Lý do chiết khấu: </em>
-            {quotation.items
-              .filter((i) => i.discountReason)
-              .map((i) => `${i.productName} — ${i.discountReason}`)
-              .join("; ")}
+            <em>Lý do giảm thêm: </em>
+            {quotation.discountReason}
           </div>
         )}
 

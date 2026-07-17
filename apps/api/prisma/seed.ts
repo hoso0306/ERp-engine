@@ -203,7 +203,6 @@ async function main() {
         ...c,
         customerGroupId: allGroups[i % allGroups.length].id,
         deliveryRouteId: allRoutes[i % allRoutes.length].id,
-        defaultDiscount: i % 3 === 0 ? 5 : 0,
         debtLimit: i % 2 === 0 ? 50000000 : 0,
         debtTermDays: 30,
       },

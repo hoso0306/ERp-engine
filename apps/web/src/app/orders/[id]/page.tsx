@@ -49,9 +49,12 @@ interface SalesOrderItem {
   productName: string;
   quantity: number;
   systemPrice: number;
-  groupDiscount: number;
+  discountPercent: number;
   finalPrice: number;
   subtotal: number;
+  vatRate: number;
+  vatAmount: number;
+  note: string | null;
   parameters: Parameter[];
   bom: { items: OrderBOMItem[] } | null;
 }
@@ -107,6 +110,11 @@ interface SalesOrder {
   status: string;
   paymentStatus: string;
   totalAmount: number;
+  // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026) — snapshot tại Approve.
+  totalVatAmount: number;
+  discountAmount: number;
+  discountReason: string | null;
+  grandTotal: number;
   totalProductionOrders: number;
   completedProductionOrders: number;
   expectedDeliveryDate: string | null;
@@ -352,6 +360,15 @@ export default function SalesOrderDetailPage() {
             <span className="text-muted-foreground w-36 shrink-0">Tiến độ SX</span>
             <span>{order.completedProductionOrders}/{order.totalProductionOrders} phiếu</span>
           </div>
+          {order.discountAmount > 0 && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground w-36 shrink-0">Giảm thêm</span>
+              <span>
+                {Number(order.discountAmount).toLocaleString("vi-VN")} đ
+                {order.discountReason && ` — ${order.discountReason}`}
+              </span>
+            </div>
+          )}
           {order.note && (
             <div className="flex gap-2 col-span-2">
               <span className="text-muted-foreground w-36 shrink-0">Ghi chú</span>
@@ -366,7 +383,7 @@ export default function SalesOrderDetailPage() {
       {/* Items */}
       <div className="space-y-4">
         <h3 className="text-base font-semibold">Danh sách sản phẩm</h3>
-        <SalesOrderItemTable items={order.items} />
+        <SalesOrderItemTable items={order.items} discountAmount={Number(order.discountAmount ?? 0)} />
       </div>
 
       <Separator />

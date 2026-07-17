@@ -36,15 +36,14 @@ interface QuotationItem {
   productId: string;
   quantity: number;
   systemPrice: number;
-  groupDiscount: number;
-  additionalDiscountPercent: number;
-  additionalDiscountAmount: number;
-  discountReason: string | null;
-  discountByName: string | null;
+  discountPercent: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
   vatAmount: number;
+  note: string | null;
+  // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
+  warnings: string[] | null;
   // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
   productCode: string;
   productName: string;
@@ -88,12 +87,15 @@ interface Quotation {
   salesOrderId: string | null;
   createdAt: string;
   updatedAt: string;
+  // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026).
+  discountAmount: number;
+  discountReason: string | null;
   customer: {
     id: string;
     code: string;
     name: string;
     phone: string;
-    customerGroup: { id: string; name: string; discountPercent: number } | null;
+    customerGroup: { id: string; name: string } | null;
   };
   items: QuotationItem[];
   timeline: QuotationTimeline[];
@@ -162,6 +164,12 @@ export default function QuotationDetailPage() {
   const [overrideStatus, setOverrideStatus] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
+
+  // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026)
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountAmountInput, setDiscountAmountInput] = useState("0");
+  const [discountReasonInput, setDiscountReasonInput] = useState("");
+  const [discountSaving, setDiscountSaving] = useState(false);
 
   const fetchQuotation = useCallback(async () => {
     setLoading(true);
@@ -299,6 +307,29 @@ export default function QuotationDetailPage() {
     }
   }
 
+  async function handleDiscount(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(discountAmountInput) || 0;
+    if (amount > 0 && !discountReasonInput.trim()) {
+      toast.error("Vui lòng nhập lý do giảm giá.");
+      return;
+    }
+    setDiscountSaving(true);
+    try {
+      await apiPost(`/quotations/${id}/discount`, {
+        amount,
+        reason: discountReasonInput.trim() || undefined,
+      });
+      toast.success("Đã áp dụng Giảm thêm.");
+      setDiscountOpen(false);
+      fetchQuotation();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    } finally {
+      setDiscountSaving(false);
+    }
+  }
+
   async function deleteItem(itemId: string) {
     if (!confirm("Xoá sản phẩm này khỏi báo giá?")) return;
     try {
@@ -317,7 +348,6 @@ export default function QuotationDetailPage() {
   const canEditItems = editable && hasPermission("quotation.update");
   // Cảnh báo quá hạn chỉ áp dụng báo giá còn mở (Nháp/Đã gửi) — testlan1.
   const expired = isExpired(quotation.expiryDate) && editable;
-  const groupDiscount = Number(quotation.customer.customerGroup?.discountPercent ?? 0);
   const canCancel = quotation.status !== "CANCELLED";
 
   return (
@@ -486,10 +516,13 @@ export default function QuotationDetailPage() {
             <span className="text-muted-foreground w-32 shrink-0">Nhóm KH</span>
             <span>{quotation.customer.customerGroup?.name ?? "—"}</span>
           </div>
-          {groupDiscount > 0 && (
+          {quotation.discountAmount > 0 && (
             <div className="flex gap-2">
-              <span className="text-muted-foreground w-32 shrink-0">CK nhóm</span>
-              <Badge variant="secondary">{groupDiscount}%</Badge>
+              <span className="text-muted-foreground w-32 shrink-0">Giảm thêm</span>
+              <span>
+                {Number(quotation.discountAmount).toLocaleString("vi-VN")} đ
+                {quotation.discountReason && ` — ${quotation.discountReason}`}
+              </span>
             </div>
           )}
           <div className="flex gap-2 items-center">
@@ -532,17 +565,31 @@ export default function QuotationDetailPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">Danh sách sản phẩm</h3>
-          {canEditItems && (
-            <Button
-              onClick={() => {
-                setEditingItem(null);
-                setItemDialogOpen(true);
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Thêm sản phẩm
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {canEditItems && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDiscountAmountInput(String(quotation.discountAmount ?? 0));
+                  setDiscountReasonInput(quotation.discountReason ?? "");
+                  setDiscountOpen(true);
+                }}
+              >
+                Giảm thêm
+              </Button>
+            )}
+            {canEditItems && (
+              <Button
+                onClick={() => {
+                  setEditingItem(null);
+                  setItemDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm sản phẩm
+              </Button>
+            )}
+          </div>
         </div>
 
         <QuotationItemTable
@@ -553,6 +600,7 @@ export default function QuotationDetailPage() {
             setItemDialogOpen(true);
           }}
           onDelete={deleteItem}
+          discountAmount={Number(quotation.discountAmount ?? 0)}
         />
       </div>
 
@@ -682,12 +730,63 @@ export default function QuotationDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Giảm thêm Dialog (Sprint 04, chốt 16/07/2026) */}
+      <Dialog open={discountOpen} onOpenChange={setDiscountOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Giảm thêm — {quotation.code}</DialogTitle>
+          </DialogHeader>
+          <form id="discount-form" onSubmit={handleDiscount} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Giảm bằng số tiền mặt, áp trên Tổng thanh toán (đã gồm VAT).
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="discount-amount">Số tiền giảm (₫)</Label>
+              <Input
+                id="discount-amount"
+                type="number"
+                min="0"
+                step="1000"
+                value={discountAmountInput}
+                onChange={(e) => setDiscountAmountInput(e.target.value)}
+              />
+            </div>
+            {(parseFloat(discountAmountInput) || 0) > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="discount-reason">Lý do giảm giá *</Label>
+                <Textarea
+                  id="discount-reason"
+                  value={discountReasonInput}
+                  onChange={(e) => setDiscountReasonInput(e.target.value)}
+                  rows={3}
+                  placeholder="Ví dụ: Khách hàng thân thiết, đơn hàng lớn..."
+                  required
+                />
+              </div>
+            )}
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDiscountOpen(false)}>Đóng</Button>
+            <Button
+              type="submit"
+              form="discount-form"
+              disabled={
+                discountSaving ||
+                ((parseFloat(discountAmountInput) || 0) > 0 && !discountReasonInput.trim())
+              }
+            >
+              {discountSaving ? "Đang lưu..." : "Xác nhận"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Item Add/Edit Dialog */}
       <QuotationItemDialog
         open={itemDialogOpen}
         onOpenChange={setItemDialogOpen}
         quotationId={id}
-        groupDiscount={groupDiscount}
+        customerId={quotation.customer.id}
         item={editingItem}
         onSaved={fetchQuotation}
       />

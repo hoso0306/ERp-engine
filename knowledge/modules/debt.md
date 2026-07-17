@@ -196,7 +196,7 @@ Một Sales Order sinh đúng một Receivable.
 ```text
 salesOrderId
 customerId              // redundant reference — xem lý do bên dưới
-totalAmount              // snapshot từ SalesOrder.totalAmount tại thời điểm tạo
+totalAmount              // snapshot từ SalesOrder.grandTotal (KHÔNG phải totalAmount doanh thu — Sprint 04, chốt 16/07/2026)
 paidAmount
 remainingAmount
 debtLimitSnapshot        // Credit Policy Snapshot
@@ -205,6 +205,8 @@ dueDate                  // NULL cho tới khi Delivered — xem "Due Date & Ove
 createdAt
 updatedAt
 ```
+
+**`totalAmount` = `SalesOrder.grandTotal`, không phải `SalesOrder.totalAmount` (Sprint 04, chốt 16/07/2026).** `SalesOrder.totalAmount` là doanh thu sổ sách (không gồm VAT, không trừ Giảm thêm) — giữ nguyên công thức cũ, dùng cho Báo cáo doanh số. `grandTotal = totalAmount + totalVatAmount − discountAmount` mới là số tiền hoá đơn thực tế khách phải trả — đây mới đúng là số tiền cần thu công nợ. Hai giá trị này **chỉ trùng nhau tình cờ** khi VAT = 0% và không có Giảm thêm; không có code nào khác so sánh trực tiếp hai field này với nhau.
 
 **Không có field `status`.** Hiệu lực công nợ của Receivable hoàn toàn phụ thuộc vào `SalesOrder.status` — xem mục "Receivable không tự quyết định hiệu lực công nợ" bên dưới.
 

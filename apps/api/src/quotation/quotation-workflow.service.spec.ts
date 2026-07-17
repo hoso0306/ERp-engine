@@ -16,13 +16,12 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     productId: 'prod-1',
     quantity: 2,
     systemPrice: 1000000,
-    groupDiscount: 0,
-    additionalDiscountPercent: 0,
-    additionalDiscountAmount: 0,
-    discountReason: null,
-    discountBy: null,
+    discountPercent: 0,
+    note: null,
     finalPrice: 1000000,
     subtotal: 2000000,
+    vatRate: 0,
+    vatAmount: 0,
     pricingRuleVersionId: 'prv-1',
     materialRequirementVersionId: null,
     displayOrder: 0,
@@ -63,11 +62,20 @@ function makeQuotation(overrides: Record<string, unknown> = {}) {
     salesOrderId: null,
     expiryDate: null,
     note: null,
+    discountAmount: 0,
+    discountReason: null,
+    discountBy: null,
     createdBy: null,
     updatedBy: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-    customer: { id: 'cust-1', name: 'Nguyễn Văn An', phone: '0901000001' },
+    customer: {
+      id: 'cust-1',
+      name: 'Nguyễn Văn An',
+      phone: '0901000001',
+      debtLimit: 0,
+      debtTermDays: 30,
+    },
     items: [makeItem()],
     timeline: [],
     ...overrides,
@@ -350,6 +358,7 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
     quotationItemParameter: { deleteMany: jest.Mock; createMany: jest.Mock };
     quotationTimeline: { create: jest.Mock };
     customer: { findFirst: jest.Mock; findUnique: jest.Mock };
+    customerProductDiscount: { findUnique: jest.Mock };
     product: { findUnique: jest.Mock };
     runningNumber: { update: jest.Mock };
     user: { findUnique: jest.Mock };
@@ -372,6 +381,7 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
       quotationItemParameter: { deleteMany: jest.fn(), createMany: jest.fn() },
       quotationTimeline: { create: jest.fn() },
       customer: { findFirst: jest.fn(), findUnique: jest.fn() },
+      customerProductDiscount: { findUnique: jest.fn() },
       product: { findUnique: jest.fn() },
       runningNumber: {
         update: jest
@@ -471,50 +481,57 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
     );
   });
 
-  it('addItem(): có chiết khấu bổ sung → discountBy/discountByName lấy từ JWT userId', async () => {
-    prisma.quotation.findUnique.mockResolvedValue(
-      makeQuotation({ status: 'DRAFT' }),
-    );
-    prisma.product.findUnique.mockResolvedValue({
-      id: 'prod-1',
-      code: 'SP000001',
-      name: 'Cửa nhôm',
-      parameters: [],
-    });
-    prisma.customer.findUnique.mockResolvedValue({
-      id: 'cust-1',
-      customerGroup: null,
-    });
-    pricingEngine.calculate.mockResolvedValue({
-      systemPrice: 1_000_000,
-      pricingRuleVersionId: 'prv-1',
-      vatRate: 0,
-      warnings: [],
-    });
+});
 
-    await service.addItem(
-      'q-1',
-      {
-        productId: 'prod-1',
-        quantity: 1,
-        parameters: [],
-        additionalDiscountPercent: 10,
-        discountReason: 'Khách quen',
+// Sprint 04 (005-chiet-khau-khach-hang-vat-bao-gia.md) — Discount Engine mới:
+// snapshot discountPercent từ CustomerProductDiscount(customerId, productId),
+// THAY THẾ HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm") + chiết khấu
+// bổ sung cấp dòng cũ.
+describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: { findUnique: jest.Mock; update: jest.Mock };
+    quotationItem: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    quotationItemParameter: { deleteMany: jest.Mock; createMany: jest.Mock };
+    customerProductDiscount: { findUnique: jest.Mock };
+    product: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let pricingEngine: { calculate: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: { findUnique: jest.fn(), update: jest.fn() },
+      quotationItem: {
+        create: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
       },
-      'user-1',
-    );
+      quotationItemParameter: { deleteMany: jest.fn(), createMany: jest.fn() },
+      customerProductDiscount: { findUnique: jest.fn() },
+      product: { findUnique: jest.fn() },
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
+    };
+    pricingEngine = { calculate: jest.fn() };
 
-    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          discountBy: 'user-1',
-          discountByName: 'Nguyễn Văn An',
-        }),
-      }),
-    );
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: pricingEngine },
+        {
+          provide: BomEngineService,
+          useValue: { loadConfigForVersion: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
   });
 
-  it('addItem(): không có chiết khấu bổ sung → discountBy/discountByName null dù có userId', async () => {
+  it('addItem(): có cấu hình CustomerProductDiscount → snapshot discountPercent', async () => {
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ status: 'DRAFT' }),
     );
@@ -524,9 +541,8 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
       name: 'Cửa nhôm',
       parameters: [],
     });
-    prisma.customer.findUnique.mockResolvedValue({
-      id: 'cust-1',
-      customerGroup: null,
+    prisma.customerProductDiscount.findUnique.mockResolvedValue({
+      discountPercent: 10,
     });
     pricingEngine.calculate.mockResolvedValue({
       systemPrice: 1_000_000,
@@ -535,50 +551,154 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
       warnings: [],
     });
 
-    await service.addItem(
-      'q-1',
-      { productId: 'prod-1', quantity: 1, parameters: [] },
-      'user-1',
+    await service.addItem('q-1', {
+      productId: 'prod-1',
+      quantity: 1,
+      parameters: [],
+    });
+
+    expect(prisma.customerProductDiscount.findUnique).toHaveBeenCalledWith({
+      where: { customerId_productId: { customerId: 'cust-1', productId: 'prod-1' } },
+    });
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          discountPercent: 10,
+          finalPrice: 900_000, // 1.000.000 × (1 − 10%)
+        }),
+      }),
     );
+  });
+
+  it('addItem(): chưa cấu hình CustomerProductDiscount → discountPercent = 0', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'prod-1',
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+      parameters: [],
+    });
+    prisma.customerProductDiscount.findUnique.mockResolvedValue(null);
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 1_000_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.addItem('q-1', {
+      productId: 'prod-1',
+      quantity: 1,
+      parameters: [],
+    });
 
     expect(prisma.quotationItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          discountBy: null,
-          discountByName: null,
+          discountPercent: 0,
+          finalPrice: 1_000_000,
         }),
       }),
     );
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it('updateItem(): có chiết khấu bổ sung → discountBy/discountByName lấy từ JWT userId', async () => {
+  it('updateItem(): giữ nguyên discountPercent đã snapshot, không lookup lại', async () => {
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ status: 'DRAFT' }),
     );
     prisma.quotationItem.findFirst.mockResolvedValue(
-      makeItem({ additionalDiscountPercent: 0, additionalDiscountAmount: 0 }),
+      makeItem({ discountPercent: 10, systemPrice: 1_000_000 }),
     );
     prisma.product.findUnique.mockResolvedValue({
       code: 'SP000001',
       name: 'Cửa nhôm',
     });
 
-    await service.updateItem(
-      'q-1',
-      'item-1',
-      {
-        additionalDiscountPercent: 15,
-        discountReason: 'Đơn hàng lớn',
-      },
-      'user-1',
-    );
+    await service.updateItem('q-1', 'item-1', { quantity: 3 });
 
+    expect(prisma.customerProductDiscount.findUnique).not.toHaveBeenCalled();
     expect(prisma.quotationItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          finalPrice: 900_000, // vẫn 10% như snapshot cũ
+          subtotal: 2_700_000, // 900.000 × 3
+        }),
+      }),
+    );
+  });
+});
+
+// Sprint 04 (005-chiet-khau-khach-hang-vat-bao-gia.md) — Giảm thêm cấp toàn
+// báo giá, chỉ số tiền mặt, áp trên Tổng thanh toán (Tổng tiền hàng + VAT).
+describe('QuotationWorkflowService.discount()', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: { findUnique: jest.Mock; update: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: { findUnique: jest.fn(), update: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: { calculate: jest.fn() } },
+        {
+          provide: BomEngineService,
+          useValue: { loadConfigForVersion: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('rejects khi báo giá không ở DRAFT/SENT', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'APPROVED' }),
+    );
+    await expect(
+      service.discount('q-1', { amount: 100_000, reason: 'Khách quen' }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects khi amount > 0 nhưng thiếu reason', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation());
+    await expect(
+      service.discount('q-1', { amount: 100_000 }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects khi amount vượt quá Tổng thanh toán (Tổng tiền hàng + VAT)', async () => {
+    // item mặc định: subtotal 2.000.000, vatAmount 0 → Tổng thanh toán 2.000.000
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation());
+    await expect(
+      service.discount('q-1', { amount: 3_000_000, reason: 'Quá tay' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('áp dụng thành công, lưu discountAmount/discountReason/discountBy từ JWT', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation());
+    prisma.quotation.update.mockResolvedValue({ id: 'q-1' });
+
+    await service.discount(
+      'q-1',
+      { amount: 100_000, reason: 'Khách quen' },
+      'user-1',
+    );
+
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'q-1' },
+        data: expect.objectContaining({
+          discountAmount: 100_000,
+          discountReason: 'Khách quen',
           discountBy: 'user-1',
-          discountByName: 'Nguyễn Văn An',
         }),
       }),
     );

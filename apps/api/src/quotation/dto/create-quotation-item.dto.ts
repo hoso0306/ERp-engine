@@ -7,8 +7,6 @@ export class CreateQuotationItemDto {
   productId: string;
   quantity: number;
   parameters: ParameterValueDto[];
-  additionalDiscountPercent?: number;
-  additionalDiscountAmount?: number;
-  discountReason?: string;
+  note?: string;
   displayOrder?: number;
 }
