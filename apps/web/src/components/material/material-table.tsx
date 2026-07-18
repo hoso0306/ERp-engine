@@ -70,9 +70,7 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
           </TableHeader>
           <TableBody>
             {materials.map((m) => {
-              const stock = Number(m.currentStock);
               const minStock = m.minimumStock !== null ? Number(m.minimumStock) : null;
-              const belowMinimum = minStock !== null && stock < minStock;
               return (
               <TableRow
                 key={m.id}
@@ -88,11 +86,11 @@ export function MaterialTable({ materials, meta, onPageChange }: MaterialTablePr
                 <TableCell className="text-right font-mono text-sm">
                   {m.retailPrice !== null ? formatMoney(Number(m.retailPrice)) : "—"}
                 </TableCell>
-                <TableCell className={`text-right font-mono text-sm ${belowMinimum ? "text-destructive font-semibold" : ""}`}>
-                  {formatQty(stock)}
-                  {belowMinimum && (
-                    <Badge variant="destructive" className="ml-2 text-[10px]">Dưới mức</Badge>
-                  )}
+                {/* Module Kho tạm gỡ khỏi triển khai (18/07/2026 — warehouse.md
+                    "Trạng thái triển khai"): tồn kho để trống, không cảnh báo
+                    "Dưới mức" vì không còn nghiệp vụ nhập/xuất cập nhật số này. */}
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  —
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
                   {minStock !== null ? formatQty(minStock) : "—"}

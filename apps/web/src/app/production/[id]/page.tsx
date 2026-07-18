@@ -95,7 +95,7 @@ export default function ProductionOrderDetailPage() {
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
 
   async function handleStart() {
-    if (!confirm("Xác nhận bắt đầu sản xuất phiếu này? Vật tư sẽ được xuất kho theo BOM.")) return;
+    if (!confirm("Xác nhận bắt đầu sản xuất phiếu này?")) return;
     setStarting(true);
     try {
       await apiPost(`/production-orders/${id}/start`);

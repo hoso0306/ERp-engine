@@ -9,7 +9,6 @@ import { PricingEngineModule } from './pricing-engine/pricing-engine.module';
 import { QuotationModule } from './quotation/quotation.module';
 import { SalesOrderModule } from './sales-order/sales-order.module';
 import { ProductionModule } from './production/production.module';
-import { WarehouseModule } from './warehouse/warehouse.module';
 import { DebtModule } from './debt/debt.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SettingModule } from './setting/setting.module';
@@ -29,7 +28,8 @@ import { PermissionModule } from './permission/permission.module';
     QuotationModule,
     SalesOrderModule,
     ProductionModule,
-    WarehouseModule,
+    // Module Kho tạm gỡ khỏi triển khai (18/07/2026) — code giữ nguyên ở
+    // src/warehouse, xem warehouse.md mục "Trạng thái triển khai".
     DebtModule,
     DashboardModule,
     SettingModule,

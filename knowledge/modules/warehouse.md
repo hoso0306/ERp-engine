@@ -4,6 +4,41 @@
 
 ---
 
+# Trạng thái triển khai
+
+> **TẠM GỠ KHỎI TRIỂN KHAI — chốt 18/07/2026.** Doanh nghiệp chưa muốn dùng quản lý kho. Module đã code xong nhưng được **ngắt khỏi hệ thống đang chạy** (không xoá code, không xoá schema). Khi doanh nghiệp cần, việc bật lại là một task riêng (có tính phí) theo đúng checklist dưới đây.
+
+## Quyết định nghiệp vụ khi Kho tắt
+
+- **Start Production KHÔNG kiểm tra tồn kho, KHÔNG xuất kho.** `ProductionOrderService.start()` bỏ lời gọi `issueForProductionOrder()` — sản xuất không bao giờ bị chặn vì "không đủ tồn kho". Đây là điểm nghẽn duy nhất về nghiệp vụ; các module còn lại (Báo giá, Đơn hàng, Công nợ, Hàng hoàn, `plannedCost`/`plannedProfit`) không phụ thuộc Kho — giá vốn kế hoạch snapshot từ BOM + MaterialPrice, không đọc tồn kho.
+- **Không ghi nhận gì trong thời gian tắt:** không MaterialReceipt, không WarehouseTransaction, `Material.currentStock` đứng yên (vô nghĩa). Không cho phép "ghi tạm cho âm kho" — kho tắt là không ghi, đúng triết lý "Warehouse chỉ ghi nhận".
+- **Phiếu sản xuất chạy trong thời gian tắt sẽ KHÔNG xuất kho hồi tố** khi bật lại — chấp nhận có chủ đích, giống giai đoạn trước khi module Kho tồn tại.
+- UI: menu "Kho" ẩn, route `/warehouse` ẩn, trang Vật tư để trống cột "Tồn kho" và không cảnh báo "Dưới mức" (`minimumStock` vẫn cấu hình được — chỉ là chưa có gì so sánh).
+
+## Các điểm đã ngắt (khôi phục đúng các chỗ này khi bật lại)
+
+| # | Vị trí | Đã làm |
+|---|---|---|
+| 1 | `apps/api/src/app.module.ts` | Bỏ `WarehouseModule` — toàn bộ API `/warehouse/*`, `/material-receipts` trả 404 |
+| 2 | `apps/api/src/production/production-order.service.ts` (`start()`) + `production.module.ts` | Bỏ gọi `issueForProductionOrder(id, tx)` và inject `WarehouseService` |
+| 3 | `apps/api/src/dashboard/*` | Bỏ `getWarehouseDashboard()`, endpoint `GET /dashboard/warehouse`, import `WarehouseModule` |
+| 4 | `apps/web/src/config/navigation.ts` | Bỏ mục menu "Kho" |
+| 5 | `apps/web/src/app/_warehouse/` | Đổi tên từ `warehouse/` — tiền tố `_` khiến Next.js không route; đổi tên lại là chạy |
+| 6 | Trang Vật tư (`material-table.tsx`, `materials/[id]/page.tsx`) | Cột/ô "Tồn kho hiện tại" hiển thị "—", bỏ badge "Dưới mức" |
+| 7 | `knowledge/modules/report.md` | Gỡ báo cáo D1 + các chỉ số kho khỏi bảng mốc ngày |
+
+**Giữ nguyên, không đụng:** toàn bộ code `apps/api/src/warehouse/`, components `apps/web/src/components/warehouse/` (riêng `MaterialTypeahead` vẫn đang được Product module dùng — không phải dead code), schema Prisma (`MaterialReceipt`, `WarehouseTransaction`, `Material.currentStock`, `minimumStock`), seed permission `warehouse.view`, và toàn bộ tài liệu nghiệp vụ bên dưới.
+
+## Checklist bật lại
+
+1. Khôi phục 6 điểm ngắt code ở bảng trên (mục 1–6) — mỗi chỗ đều có comment trỏ về mục này.
+2. **Kiểm kê đầu kỳ (bắt buộc):** tồn kho thật trong thời gian tắt không thể tái dựng từ dữ liệu — nhập tồn thực tế bằng Material Receipt (chức năng có sẵn) trước khi cho Start Production kiểm tra tồn kho trở lại.
+3. Khôi phục D1 + chỉ số kho ở `report.md` (từ lịch sử git), gỡ ghi chú tạm gỡ ở tài liệu này.
+
+Toàn bộ nội dung từ đây trở xuống là **thiết kế nghiệp vụ vẫn có hiệu lực** khi module được bật lại — không viết lại từ đầu.
+
+---
+
 # Mục đích
 
 Quản lý toàn bộ biến động kho của doanh nghiệp.

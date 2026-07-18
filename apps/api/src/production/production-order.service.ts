@@ -12,7 +12,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
-import { WarehouseService } from '../warehouse/warehouse.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
 
@@ -35,7 +34,6 @@ export class ProductionOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly salesOrderService: SalesOrderService,
-    private readonly warehouseService: WarehouseService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -112,9 +110,8 @@ export class ProductionOrderService {
   // Task 01 (005-fe-san-xuat-kho.md) — quản đốc xưởng cần xem thông số sản
   // phẩm + BOM vật tư của chính phiếu mình, nhưng role "Sản xuất" không có
   // quyền `sales-order.view` để gọi GET /sales-orders/:id. Đọc thẳng
-  // SalesOrderItemParameter/OrderBOM theo salesOrderItemId (cùng cách
-  // WarehouseService.issueForProductionOrder() đã làm) — không kèm giá vốn vì
-  // Production không quan tâm chi phí (production.md).
+  // SalesOrderItemParameter/OrderBOM theo salesOrderItemId — không kèm giá vốn
+  // vì Production không quan tâm chi phí (production.md).
   private async attachSpecsAndBom<T extends { salesOrderItemId: string }>(
     items: T[],
   ) {
@@ -184,12 +181,11 @@ export class ProductionOrderService {
     return this.prisma.$transaction(async (tx) => {
       const startedAt = new Date();
 
-      // Task 03 (Warehouse module) — xuất kho nguyên liệu trước khi chuyển
-      // trạng thái. Nếu thiếu tồn kho, ném lỗi và toàn bộ transaction rollback
-      // — ProductionOrder giữ nguyên PENDING (xem warehouse.md "Transaction
-      // Boundary khi Start Production").
-      await this.warehouseService.issueForProductionOrder(id, tx);
-
+      // Module Kho tạm gỡ khỏi triển khai (chốt 18/07/2026 — doanh nghiệp chưa
+      // dùng Kho): KHÔNG xuất kho nguyên liệu, không kiểm tra tồn kho khi Start.
+      // Khi bật lại Kho, khôi phục lời gọi
+      // `warehouseService.issueForProductionOrder(id, tx)` tại đây và kiểm kê
+      // đầu kỳ trước — xem warehouse.md mục "Trạng thái triển khai".
       await tx.productionOrder.update({
         where: { id },
         data: {
@@ -269,22 +265,44 @@ export class ProductionOrderService {
   // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
   // ─────────────────────────────────────────────────────
 
-  async getDashboardSummary() {
-    const grouped = await this.prisma.productionOrder.groupBy({
-      by: ['status'],
-      _count: { _all: true },
-    });
-    const countByStatus = new Map(
-      grouped.map((g) => [g.status, g._count._all]),
-    );
+  // Rà soát bộ lọc thời gian Dashboard (chốt 18/07/2026,
+  // 007-bo-loc-thoi-gian-dashboard.md): "pending"/"inProduction" luôn đếm
+  // tức thời (không lọc theo khoảng ngày — đúng bản chất "đang chờ/đang làm
+  // ngay bây giờ"). "completed"/"cancelled" đếm theo khoảng ngày do FE truyền
+  // (bộ lọc đầu trang Dashboard) — completed dùng completedAt, cancelled dùng
+  // updatedAt (không có cột cancelledAt riêng, action huỷ chỉ update status,
+  // xem sales-order.service.ts). Không truyền range = toàn bộ thời gian.
+  async getDashboardSummary(range?: { from?: Date; to?: Date }) {
+    const dateFilter: Prisma.DateTimeFilter | undefined =
+      range?.from || range?.to
+        ? {
+            ...(range.from ? { gte: range.from } : {}),
+            ...(range.to ? { lte: range.to } : {}),
+          }
+        : undefined;
 
-    return {
-      pending: countByStatus.get(ProductionOrderStatus.PENDING) ?? 0,
-      inProduction: countByStatus.get(ProductionOrderStatus.IN_PRODUCTION) ?? 0,
-      completed:
-        countByStatus.get(ProductionOrderStatus.PRODUCTION_COMPLETED) ?? 0,
-      cancelled: countByStatus.get(ProductionOrderStatus.CANCELLED) ?? 0,
-    };
+    const [pending, inProduction, completed, cancelled] = await Promise.all([
+      this.prisma.productionOrder.count({
+        where: { status: ProductionOrderStatus.PENDING },
+      }),
+      this.prisma.productionOrder.count({
+        where: { status: ProductionOrderStatus.IN_PRODUCTION },
+      }),
+      this.prisma.productionOrder.count({
+        where: {
+          status: ProductionOrderStatus.PRODUCTION_COMPLETED,
+          ...(dateFilter ? { completedAt: dateFilter } : {}),
+        },
+      }),
+      this.prisma.productionOrder.count({
+        where: {
+          status: ProductionOrderStatus.CANCELLED,
+          ...(dateFilter ? { updatedAt: dateFilter } : {}),
+        },
+      }),
+    ]);
+
+    return { pending, inProduction, completed, cancelled };
   }
 
   // Trả về toàn bộ xưởng đã sắp xếp theo số lượng Phiếu sản xuất (không huỷ) giảm dần

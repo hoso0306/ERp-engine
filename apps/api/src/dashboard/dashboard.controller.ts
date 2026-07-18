@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { DashboardDebtQueryDto } from './dto/dashboard-debt-query.dto';
+import { DashboardOverviewQueryDto } from './dto/dashboard-overview-query.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
@@ -23,8 +24,13 @@ export class DashboardController {
 
   @Get('overview')
   @RequirePermission('dashboard.view')
-  async getOverview(@Req() req: AuthenticatedRequest) {
-    const overview = await this.dashboardService.getOverview();
+  async getOverview(
+    @Query() query: DashboardOverviewQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const overview = await this.dashboardService.getOverview(
+      this.parseRange(query),
+    );
     const allowed = await this.permissionKeys(req);
     return {
       sales: overview.sales,
@@ -33,11 +39,6 @@ export class DashboardController {
         allowed,
         'production.view',
       ),
-      warehouse: this.hideUnlessAllowed(
-        overview.warehouse,
-        allowed,
-        'warehouse.view',
-      ),
       debt: this.hideUnlessAllowed(overview.debt, allowed, 'debt.view'),
       returns: this.hideUnlessAllowed(overview.returns, allowed, 'return.view'),
       // Bug fix (verify sống 010-fe-cai-dat-nguoi-dung.md): alerts trong
@@ -45,6 +46,19 @@ export class DashboardController {
       // GET /dashboard/alerts (đã lọc đúng) — rò dữ liệu công nợ/kho cho user
       // chỉ có dashboard.view. Dùng chung buildGatedAlerts() với getAlerts().
       alerts: this.buildGatedAlerts(overview.alerts, allowed),
+    };
+  }
+
+  // Bộ lọc đầu trang Dashboard (chốt 18/07/2026, 007-bo-loc-thoi-gian-dashboard.md)
+  // — "to" tính hết ngày (23:59:59.999) theo giờ local để bao trọn ngày cuối
+  // khoảng đã chọn, không chỉ đến 00:00.
+  private parseRange(
+    query: DashboardOverviewQueryDto,
+  ): { from?: Date; to?: Date } | undefined {
+    if (!query.from && !query.to) return undefined;
+    return {
+      from: query.from ? new Date(`${query.from}T00:00:00`) : undefined,
+      to: query.to ? new Date(`${query.to}T23:59:59.999`) : undefined,
     };
   }
 
@@ -58,12 +72,6 @@ export class DashboardController {
   @RequirePermission('dashboard.view')
   getProduction() {
     return this.dashboardService.getProductionDashboard();
-  }
-
-  @Get('warehouse')
-  @RequirePermission('dashboard.view')
-  getWarehouse() {
-    return this.dashboardService.getWarehouseDashboard();
   }
 
   @Get('debt')
@@ -127,16 +135,6 @@ export class DashboardController {
         alerts.creditLimitExceeded,
         allowed,
         'debt.view',
-      ),
-      lowStockMaterials: this.hideUnlessAllowed(
-        alerts.lowStockMaterials,
-        allowed,
-        'warehouse.view',
-      ),
-      outOfStockMaterials: this.hideUnlessAllowed(
-        alerts.outOfStockMaterials,
-        allowed,
-        'warehouse.view',
       ),
       delayedOrders: alerts.delayedOrders,
     };

@@ -151,25 +151,18 @@ export default function MaterialDetailPage() {
         </dl>
       </div>
 
-      {/* Tồn kho (testlan1 mục 1.4) — API trả sẵn currentStock/minimumStock */}
+      {/* Module Kho tạm gỡ khỏi triển khai (18/07/2026 — warehouse.md
+          "Trạng thái triển khai"): tồn kho hiện tại để trống, không cảnh báo
+          dưới mức. Khôi phục hiển thị currentStock khi bật lại Kho. */}
       <div className="rounded-lg border p-6">
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">Tồn kho</h3>
         {(() => {
-          const stock = Number(material.currentStock);
           const minStock = material.minimumStock !== null ? Number(material.minimumStock) : null;
-          const belowMinimum = minStock !== null && stock < minStock;
           return (
             <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
               <div>
                 <dt className="text-sm text-muted-foreground">Tồn kho hiện tại</dt>
-                <dd className={`mt-1 text-lg font-semibold font-mono ${belowMinimum ? "text-destructive" : ""}`}>
-                  {formatQty(stock)} {material.unit?.name ?? ""}
-                  {belowMinimum && (
-                    <Badge variant="destructive" className="ml-2 align-middle text-[10px]">
-                      Dưới mức tối thiểu
-                    </Badge>
-                  )}
-                </dd>
+                <dd className="mt-1 text-lg font-semibold font-mono text-muted-foreground">—</dd>
               </div>
               <div>
                 <dt className="text-sm text-muted-foreground">Tồn kho tối thiểu</dt>

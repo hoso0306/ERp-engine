@@ -153,6 +153,8 @@ Dashboard không lưu Progress.
 
 ## 3. Warehouse Overview
 
+> **TẠM GỠ (18/07/2026).** Khối Kho đã gỡ khỏi Dashboard (cả overview lẫn endpoint `GET /dashboard/warehouse`) cùng đợt tạm gỡ module Kho khỏi triển khai — xem `warehouse.md` mục "Trạng thái triển khai". Thiết kế dưới đây giữ nguyên hiệu lực khi Kho được bật lại.
+
 Nguồn dữ liệu: `WarehouseService`.
 
 Hiển thị:
@@ -187,8 +189,7 @@ Hiển thị:
 - Đơn hàng quá hạn
 - Khách vượt hạn mức
 - Công nợ quá hạn
-- Sắp hết vật tư
-- Hết vật tư
+- ~~Sắp hết vật tư / Hết vật tư~~ — tạm gỡ cùng module Kho (xem `warehouse.md`)
 - Đơn sản xuất chậm
 
 Alerts không tạo Workflow. Chỉ cảnh báo — cùng nguồn dữ liệu như các mục trên, gọi qua Service của module sở hữu.
@@ -295,7 +296,6 @@ Ví dụ:
 GET /dashboard/overview
 GET /dashboard/sales
 GET /dashboard/production
-GET /dashboard/warehouse
 GET /dashboard/debt
 GET /dashboard/alerts
 ```

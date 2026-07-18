@@ -5,6 +5,19 @@
 
 ---
 
+# Nguyên tắc phân vai Dashboard vs Report
+
+**Đọc mục này trước — nó chi phối mọi quyết định còn lại của tài liệu.**
+
+**Dashboard phục vụ vận hành (Operations). Report phục vụ phân tích và ra quyết định (Analytics + Reporting).**
+
+- **Dashboard** (`dashboard.md`) chỉ hiển thị trạng thái hiện tại: KPI thời gian thực, mặc định "Hôm nay", có thêm tối đa 2-3 preset ngắn (Hôm nay / Hôm qua / 7 ngày gần đây) để không trống trơn vào đầu tuần — **không có Tuần này/Tháng này/Tất cả/chọn ngày tuỳ ý**, những preset đó thuộc Report. Ngoài ra là cảnh báo và danh sách việc cần xử lý. Dashboard **không** hiển thị phân tích theo kỳ (doanh thu tháng, tăng trưởng, top khách, top sản phẩm, so sánh kỳ trước...), không có biểu đồ xu hướng, không có export.
+- **Report** (tài liệu này) là nơi duy nhất chứa: phân tích theo khoảng thời gian tuỳ chọn (`from`–`to`), biểu đồ xu hướng, so sánh kỳ trước, bảng xếp hạng (top khách/sản phẩm/nhân viên), và export Excel/PDF.
+- Dashboard và Report **dùng chung** định nghĩa dữ liệu, mốc ngày và Business Rule ở tài liệu này — đảm bảo cùng một chỉ số luôn cho cùng một kết quả dù xem ở đâu. Report không được định nghĩa lại một chỉ số Dashboard đã có, và ngược lại.
+- Dashboard hiện tại (Sprint 04, `007-bo-loc-thoi-gian-dashboard.md`) đang có bộ lọc kỳ tuỳ chọn cho khối Sản xuất (Hoàn thành/Huỷ) và Hàng hoàn — đây là vi phạm nguyên tắc trên, ghi nhận là **nợ kỹ thuật cần dọn sau khi Report hoàn thành** (`008-module-bao-cao.md`), không sửa trong phạm vi tài liệu này.
+
+---
+
 # Mục đích
 
 Tổng hợp số liệu phục vụ quản lý và ra quyết định, theo đúng danh sách đã cam kết ở `03-danh-sach-module.md` (mục I.2).
@@ -32,9 +45,9 @@ Report là **Presentation Layer** — cùng tầng và cùng luật với Dashbo
 
 | | Dashboard | Report |
 |---|---|---|
-| Câu hỏi | "Hiện tại đang thế nào?" | "Trong kỳ X đã xảy ra gì?" |
-| Thời gian | Chủ yếu trạng thái hiện tại | Luôn theo khoảng ngày (bộ lọc) |
-| Kết quả | KPI Cards + cảnh báo | Bảng số liệu + chuỗi thời gian, export Excel |
+| Câu hỏi | "Hôm nay tôi cần xử lý gì?" | "Trong kỳ X đã xảy ra gì?" |
+| Thời gian | "Hôm nay" mặc định + tối đa 2-3 preset ngắn (Hôm qua/7 ngày gần đây) — không chọn ngày tuỳ ý | Luôn theo khoảng ngày tuỳ chọn (bộ lọc `from`–`to`) |
+| Kết quả | KPI Cards + cảnh báo + việc cần xử lý | Bảng số liệu + biểu đồ xu hướng + so sánh kỳ trước, export Excel/PDF |
 | Người dùng | Owner mở hằng ngày | Owner/Kế toán xem theo kỳ |
 
 **Cả hai bắt buộc dùng chung một bộ định nghĩa mốc ngày và nguồn dữ liệu ở tài liệu này.** Nếu Dashboard cần một con số mà tài liệu này đã định nghĩa (vd "doanh thu tháng"), Dashboard phải dùng đúng định nghĩa ở đây — không tự định nghĩa lại.
@@ -43,13 +56,15 @@ Report là **Presentation Layer** — cùng tầng và cùng luật với Dashbo
 
 # Triết lý thiết kế
 
-1. **Live query — không bảng thống kê riêng.** V1 mọi báo cáo tính trực tiếp từ dữ liệu nghiệp vụ (SalesOrder, Payment, Receivable, WarehouseTransaction, ReturnItem...) tại thời điểm xem. Không tạo bảng `report_*`, không snapshot số liệu theo kỳ, không background job. Quy mô 3 người dùng + vài trăm đơn/năm — Postgres với index đúng là quá đủ. Materialized View/bảng tổng hợp chỉ xem xét ở V2 nếu đo được chậm thật.
+1. **Live query — không bảng thống kê riêng.** V1 mọi báo cáo tính trực tiếp từ dữ liệu nghiệp vụ (SalesOrder, Payment, Receivable, ReturnItem...) tại thời điểm xem. Không tạo bảng `report_*`, không snapshot số liệu theo kỳ, không background job. Quy mô 3 người dùng + vài trăm đơn/năm — Postgres với index đúng là quá đủ. Materialized View/bảng tổng hợp chỉ xem xét ở V2 nếu đo được chậm thật.
 
-2. **Module Ownership** — giống Dashboard: Report gọi method đọc trên Service của module sở hữu (`SalesOrderService`, `DebtService`, `WarehouseService`, `ReturnService`, `PaymentService`...). Không viết `prisma.salesOrder.groupBy(...)` trong code của Report. Method chưa có thì bổ sung vào Service của module nguồn.
+2. **Module Ownership** — giống Dashboard: Report gọi method đọc trên Service của module sở hữu (`SalesOrderService`, `DebtService`, `ReturnService`, `PaymentService`...). Không viết `prisma.salesOrder.groupBy(...)` trong code của Report. Method chưa có thì bổ sung vào Service của module nguồn.
 
 3. **Không tính lại Business Logic.** Đọc các giá trị đã chốt (`totalAmount`, `plannedCost`, `plannedProfit`, `subtotal`, `remainingAmount`, `unitPriceSnapshot`...). Được phép SUM/COUNT/GROUP BY/ORDER BY — không được tính lại giá, BOM, chiết khấu, payment status.
 
 4. **Số liệu quá khứ có thể thay đổi hồi tố trong một trường hợp duy nhất: đơn bị huỷ.** Vì báo cáo là live query và mọi báo cáo đều loại `CANCELLED`, một đơn tạo tháng 6 bị huỷ vào tháng 7 sẽ **biến mất khỏi báo cáo tháng 6** khi xem lại. Đây là hành vi đúng và có chủ đích (đơn huỷ = chưa từng bán). Không "đóng sổ kỳ" ở V1 — chốt sổ kế toán không thuộc phạm vi ERP này.
+
+5. **Biểu đồ là cách trình bày lại dữ liệu API, không phải nguồn số liệu riêng.** Report nào có chuỗi thời gian trong phần "Hiển thị" (theo ngày/tháng/năm) đều có thêm 1 biểu đồ xu hướng (line/bar tuỳ độ dài kỳ) ở FE, vẽ trực tiếp từ cùng dữ liệu bảng đã trả về — không thêm endpoint riêng cho biểu đồ, không tính toán gì khác ngoài những gì bảng số liệu đã có.
 
 ---
 
@@ -65,8 +80,8 @@ Report là **Presentation Layer** — cùng tầng và cùng luật với Dashbo
 | **Tiền mặt về** | `Payment.amount` | **Actual** (tiền thật đã thu) | `Payment.paymentDate` |
 | **Công nợ còn phải thu** | `Receivable.remainingAmount` | Actual — trạng thái hiện tại | Không theo kỳ (xem ghi chú) |
 | **Giá trị hàng hoàn** | `ReturnItem.returnedQuantity × unitPriceSnapshot` | Actual | `Return.returnDate` |
-| **Nhập / Xuất kho** | `WarehouseTransaction.quantity` | Actual | `WarehouseTransaction.createdAt` |
-| **Tồn kho hiện tại** | `Material.currentStock` | Actual — trạng thái hiện tại | Không theo kỳ |
+
+> Các chỉ số Kho (Nhập/Xuất kho theo `WarehouseTransaction`, Tồn kho hiện tại theo `Material.currentStock`) đã gỡ khỏi bảng này cùng đợt tạm gỡ module Kho (18/07/2026 — xem `warehouse.md` mục "Trạng thái triển khai" và ghi chú D1 ở Nhóm D). Khi bật lại Kho, khôi phục từ lịch sử git của tài liệu này.
 
 ## Giải thích các quyết định
 
@@ -164,11 +179,7 @@ SalesOrder.status != CANCELLED
 
 ## Nhóm D — Vận hành
 
-### D1. Báo cáo kho
-
-- **Nguồn:** `WarehouseTransaction` (nhập/xuất trong kỳ, đã có index `[transactionType, direction, createdAt]`), `Material.currentStock` (tồn hiện tại).
-- **Hiển thị:** tổng nhập / tổng xuất theo vật tư trong kỳ; tồn hiện tại; danh sách dưới `minimumStock`.
-- **Giá trị tồn kho (VNĐ):** `currentStock × giá mặc định còn hiệu lực (MaterialPrice)` — đây là **ước tính theo giá hiện tại** (live), không phải giá vốn tồn kho thật (V1 không có costing FIFO/AVG — đã loại khỏi scope ở `warehouse.md`). Bắt buộc ghi nhãn "tạm tính theo giá hiện tại" trên UI/Excel.
+> **D1. Báo cáo kho — TẠM GỠ (chốt 18/07/2026).** Doanh nghiệp chưa muốn xây/dùng module Kho — đang được ẩn khỏi phần mềm ở một task riêng (xem `warehouse.md` mục "Trạng thái triển khai"). Report vì vậy **không triển khai D1**, không gọi `WarehouseService`. Khi nào Kho được xây/bật lại, khôi phục D1 theo đúng mô tả nghiệp vụ cũ (còn giữ trong lịch sử file, xem git log tài liệu này) — không tự thiết kế lại.
 
 ### D2. Báo cáo hàng hoàn
 
@@ -179,9 +190,11 @@ SalesOrder.status != CANCELLED
 
 # Thay đổi schema cần TRƯỚC khi triển khai Report
 
+> **Cập nhật 18/07/2026 (khảo sát trước khi code — `008-module-bao-cao.md`):** mục 1 và 2 dưới đây **đã được làm từ trước** (không rõ ở lần nào), giữ lại mô tả để biết lý do thiết kế. Chỉ còn thiếu index `Payment(paymentDate)` ở mục 3.
+
 Chốt tại đây để làm một lần, tránh retrofit khi dữ liệu thật đã phát sinh. Toàn bộ là **field snapshot/reference bổ sung + index** — không đổi Business Rule nào.
 
-## 1. `SalesOrderItem` — bổ sung định danh sản phẩm và nhóm sản phẩm
+## 1. `SalesOrderItem` — bổ sung định danh sản phẩm và nhóm sản phẩm ✅ đã có
 
 ```text
 SalesOrderItem (bổ sung)
@@ -195,7 +208,7 @@ SalesOrderItem (bổ sung)
 - Lý do không join ngược qua `productCode`: vi phạm Snapshot Rule, và nhóm của Product có thể đổi sau này — báo cáo lịch sử phải giữ nhóm **tại thời điểm bán**.
 - Dữ liệu SalesOrderItem cũ (nếu có trước migration): backfill bằng script join theo `productCode` một lần duy nhất lúc migrate, ghi rõ trong migration note.
 
-## 2. `SalesOrder.ownerId` (điều kiện cho C1)
+## 2. `SalesOrder.ownerId` (điều kiện cho C1) ✅ đã có
 
 ```text
 SalesOrder (bổ sung)
@@ -206,13 +219,13 @@ Thuộc hạng mục "Nên sửa trước Go-Live" của architecture review —
 
 ## 3. Index theo ngày
 
-| Bảng | Index | Phục vụ |
-|---|---|---|
-| `SalesOrder` | `@@index([createdAt])` | A1/A3/B1/B3/C1/C2 |
-| `Payment` | `@@index([paymentDate])` | A2 |
-| `Return` | `@@index([returnDate])` | D2 |
-| `MaterialReceipt` | `@@index([createdAt])` | D1 |
-| `SalesOrderItem` | `@@index([productId])`, `@@index([productTypeId])` | B2/B4 (sau khi thêm field ở mục 1) |
+| Bảng | Index | Phục vụ | Trạng thái |
+|---|---|---|---|
+| `SalesOrder` | `@@index([createdAt])` | A1/A3/B1/B3/C1/C2 | ✅ đã có |
+| `Payment` | `@@index([paymentDate])` | A2 | ❌ **còn thiếu — cần thêm** |
+| `Return` | `@@index([returnDate])` | D2 | ✅ đã có |
+| `MaterialReceipt` | `@@index([createdAt])` | ~~D1~~ (tạm gỡ) | ✅ đã có sẵn, không cần làm gì thêm |
+| `SalesOrderItem` | `@@index([productId])`, `@@index([productTypeId])` | B2/B4 | ✅ đã có |
 
 Không thêm index dự phòng cho nhu cầu chưa có — chỉ đúng danh sách trên.
 
@@ -233,22 +246,23 @@ GET /reports/growth                  # B3 (query: groupBy=month|year)
 GET /reports/growth-by-product-type  # B4
 GET /reports/revenue-by-employee     # C1
 GET /reports/revenue-by-customer     # C2
-GET /reports/warehouse               # D1
-GET /reports/returns                 # D2
+GET /reports/returns                 # D2 (D1 Báo cáo kho tạm gỡ, xem Nhóm D)
 ```
 
 Query params chung: `from`, `to` (yyyy-mm-dd, inclusive, timezone công ty). Không có POST/PUT/PATCH/DELETE.
 
-## Excel Export
+## Excel & PDF Export
 
-Mỗi endpoint có bản export tương ứng:
+Mỗi endpoint có bản export tương ứng, chọn định dạng qua query `format`:
 
 ```http
-GET /reports/{name}/export
+GET /reports/{name}/export?format=xlsx   # mặc định nếu không truyền
+GET /reports/{name}/export?format=pdf
 ```
 
-- Sinh file qua `ExcelService` (wrapper đã quy định ở `04-cong-nghe-su-dung.md` — Report không gọi thư viện Excel trực tiếp).
-- Nội dung file = đúng dữ liệu API trả về với cùng bộ lọc, kèm dòng tiêu đề ghi kỳ báo cáo + thời điểm xuất. Không thêm chỉ số chỉ có trong Excel — Excel là bản in của API, không phải nguồn số liệu thứ hai.
+- **Excel:** sinh qua `ExcelService` (đã có sẵn — `apps/api/src/shared/excel/excel.service.ts`, đang dùng cho Customer/Product import-export) — Report không gọi thư viện Excel trực tiếp.
+- **PDF:** sinh qua `PdfService` (wrapper cùng vị trí đã quy định ở `04-cong-nghe-su-dung.md` — Report không gọi thư viện PDF trực tiếp). `PdfService` **chưa tồn tại**, phải viết mới cùng đợt triển khai Report này — xem "Module Dependencies".
+- Nội dung cả 2 định dạng = đúng dữ liệu API trả về với cùng bộ lọc, kèm dòng tiêu đề ghi kỳ báo cáo + thời điểm xuất. Không thêm chỉ số chỉ có trong Excel/PDF — cả hai là bản in của API, không phải nguồn số liệu thứ hai.
 
 ---
 
@@ -271,8 +285,9 @@ report.view
 - Đóng sổ kỳ (period close) — số liệu quá khứ thay đổi khi đơn huỷ là hành vi chấp nhận.
 - Lợi nhuận thực tế (actual cost) — chờ V2 `actualRevenue/actualCost/actualProfit` (`order.md`).
 - Doanh thu thuần sau hàng hoàn — chờ nghiệp vụ Manual Adjustment (Debt V2).
-- Giá vốn tồn kho FIFO/AVG — D1 chỉ tạm tính theo giá hiện tại.
+- Báo cáo kho (D1) và mọi chỉ số tồn kho — module Kho tạm gỡ khỏi triển khai (xem `warehouse.md`).
 - Báo cáo tuỳ biến (custom report builder), lập lịch gửi báo cáo qua email.
+- Mục tiêu doanh thu theo kỳ và tỷ lệ hoàn thành mục tiêu (A1) — chờ khi hệ thống có Setting "Mục tiêu doanh thu" (chưa tồn tại). Không thêm vào "Hiển thị" của A1 khi chưa có dữ liệu mục tiêu thật.
 
 ---
 
@@ -286,7 +301,7 @@ report.view
 - GROUP BY ngày/tháng/năm theo `Settings.Company.timezone`; khoảng lọc inclusive theo ngày.
 - Report chỉ đọc qua Service của module sở hữu (Module Ownership) — không query trực tiếp bảng của module khác, không tính lại Business Logic.
 - B4 và C1 chỉ được triển khai sau khi hoàn thành thay đổi schema tương ứng (mục "Thay đổi schema cần trước") — không ship bản tạm bằng join ngược Master Data hay group theo chuỗi tên.
-- Excel export là bản in của API — cùng bộ lọc, cùng con số.
+- Excel/PDF export và biểu đồ đều là bản trình bày lại của API — cùng bộ lọc, cùng con số, không tính toán thêm.
 
 ---
 
@@ -294,17 +309,20 @@ report.view
 
 ## Phụ thuộc
 
-- `SalesOrderService`, `PaymentService`/`DebtService`, `WarehouseService`, `ReturnService`, `CustomerService` — chỉ gọi method đọc (Module Ownership, cùng pattern Dashboard).
-- `ExcelService` (export), `SettingService` (`timezone`, `defaultDashboardPeriod`).
+- `SalesOrderService`, `PaymentService`/`DebtService`, `ReturnService`, `CustomerService` — chỉ gọi method đọc (Module Ownership, cùng pattern Dashboard). Không gọi `WarehouseService` — D1 tạm gỡ (xem Nhóm D).
+- `ExcelService` (export Excel — đã có sẵn tại `apps/api/src/shared/excel/`).
+- `PdfService` (export PDF — **chưa tồn tại, cần viết mới**, wrapper mỏng quanh 1 thư viện PDF, đặt cùng vị trí quy ước với `ExcelService`, ví dụ `apps/api/src/shared/pdf/`).
+- `SettingService` (`timezone`, `defaultDashboardPeriod`).
 - Permission (`report.view`).
+- Frontend: cần thêm 1 thư viện vẽ biểu đồ (`apps/web` hiện chưa có) — chọn lúc code, đây là chi tiết kỹ thuật không thuộc phạm vi tài liệu nghiệp vụ này.
 
 ## Module bị ảnh hưởng (thay đổi cần thống nhất trước khi code)
 
 - **Sales Order module:** thêm snapshot `productId`/`productTypeId`/`productTypeName` vào `SalesOrderItem` (set tại Approve); thêm `ownerId`; thêm index `createdAt`.
 - **Debt module:** thêm index `Payment(paymentDate)`; bổ sung method đọc theo kỳ nếu chưa có.
 - **Return module:** thêm index `Return(returnDate)`.
-- **Warehouse module:** thêm index `MaterialReceipt(createdAt)`; method tính giá trị tồn tạm tính (currentStock × giá mặc định) đặt ở `WarehouseService`.
 - **Permission module:** seed `report.view`.
+- ~~**Warehouse module**~~ — không còn cần đụng tới, D1 tạm gỡ (module Kho đang được ẩn khỏi phần mềm ở task riêng, xem `warehouse.md`).
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã liệt kê. Nếu cần thay đổi thêm phải dừng và xác nhận với người dùng.
 

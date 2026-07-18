@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, TrendingDown, PackageX, PackageMinus, Clock } from "lucide-react";
+import { AlertTriangle, TrendingDown, Clock } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { EmptyState } from "@/components/shared";
 
@@ -9,12 +9,6 @@ interface DebtAlert {
   totalRemaining: number;
 }
 
-interface MaterialAlert {
-  id: string;
-  code: string;
-  name: string;
-}
-
 interface DelayedOrder {
   id: string;
   code: string;
@@ -22,11 +16,12 @@ interface DelayedOrder {
   expectedDeliveryDate: string | null;
 }
 
+// Cảnh báo tồn kho (sắp hết/hết hàng) gỡ khỏi Dashboard cùng đợt gỡ khối Kho
+// (chốt 18/07/2026, 007-bo-loc-thoi-gian-dashboard.md) — chưa triển khai báo
+// cáo Kho. Còn lại luôn toàn bộ thời gian, không áp dụng bộ lọc đầu trang.
 export interface AlertsData {
   overdueDebt: DebtAlert[] | null;
   creditLimitExceeded: DebtAlert[] | null;
-  lowStockMaterials: MaterialAlert[] | null;
-  outOfStockMaterials: MaterialAlert[] | null;
   delayedOrders: DelayedOrder[];
 }
 
@@ -58,18 +53,6 @@ export function AlertsPanel({ alerts }: { alerts: AlertsData }) {
       icon: <TrendingDown className="h-4 w-4 text-destructive" />,
       message: `${d.customerName} vượt hạn mức tín dụng (còn nợ ${formatMoney(d.totalRemaining)})`,
       href: canViewCustomer ? `/customers/${d.customerId}` : null,
-    })),
-    ...(alerts.outOfStockMaterials ?? []).map((m) => ({
-      key: `out-${m.id}`,
-      icon: <PackageX className="h-4 w-4 text-destructive" />,
-      message: `${m.code} — ${m.name} đã hết hàng`,
-      href: `/materials/${m.id}`,
-    })),
-    ...(alerts.lowStockMaterials ?? []).map((m) => ({
-      key: `low-${m.id}`,
-      icon: <PackageMinus className="h-4 w-4 text-amber-500" />,
-      message: `${m.code} — ${m.name} sắp hết hàng`,
-      href: `/materials/${m.id}`,
     })),
     ...alerts.delayedOrders.map((o) => ({
       key: `delayed-${o.id}`,

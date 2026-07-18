@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SalesOrderModule } from '../sales-order/sales-order.module';
 import { ProductionModule } from '../production/production.module';
-import { WarehouseModule } from '../warehouse/warehouse.module';
 import { DebtModule } from '../debt/debt.module';
 import { ReturnModule } from '../return/return.module';
 import { PermissionModule } from '../permission/permission.module';
@@ -12,7 +11,6 @@ import { DashboardController } from './dashboard.controller';
   imports: [
     SalesOrderModule,
     ProductionModule,
-    WarehouseModule,
     DebtModule,
     ReturnModule,
     PermissionModule,

@@ -427,20 +427,43 @@ export class ReturnService {
   // ─────────────────────────────────────────────────────
   // Dashboard Integration (Task 07) — Dashboard chỉ gọi qua Service này,
   // không tự viết Prisma query.
+  // Rà soát bộ lọc thời gian Dashboard (chốt 18/07/2026, 007-bo-loc-thoi-gian-dashboard.md):
+  // "...tháng này" hard-code trước đây đổi thành lọc theo khoảng ngày do FE
+  // truyền (bộ lọc đầu trang Dashboard) — không truyền range = toàn bộ thời gian.
   // ─────────────────────────────────────────────────────
 
-  async getDashboardSummary(monthStart: Date = this.startOfMonth()) {
-    const [monthReturns, monthItems, valueAgg, availableCount, availableAgg] =
+  private returnDateRangeFilter(
+    from?: Date,
+    to?: Date,
+  ): Prisma.DateTimeFilter | undefined {
+    if (!from && !to) return undefined;
+    const filter: Prisma.DateTimeFilter = {};
+    if (from) filter.gte = from;
+    if (to) filter.lte = to;
+    return filter;
+  }
+
+  async getDashboardSummary(range?: { from?: Date; to?: Date }) {
+    const returnDateFilter = this.returnDateRangeFilter(
+      range?.from,
+      range?.to,
+    );
+    const returnWhere: Prisma.ReturnWhereInput = returnDateFilter
+      ? { returnDate: returnDateFilter }
+      : {};
+    const itemWhere: Prisma.ReturnItemWhereInput = returnDateFilter
+      ? { return: { returnDate: returnDateFilter } }
+      : {};
+
+    const [rangeReturns, rangeItems, valueAgg, availableCount, availableAgg] =
       await Promise.all([
-        this.prisma.return.count({
-          where: { returnDate: { gte: monthStart } },
-        }),
+        this.prisma.return.count({ where: returnWhere }),
         this.prisma.returnItem.findMany({
-          where: { return: { returnDate: { gte: monthStart } } },
+          where: itemWhere,
           select: { returnedQuantity: true },
         }),
         this.prisma.returnItem.findMany({
-          where: { return: { returnDate: { gte: monthStart } } },
+          where: itemWhere,
           select: { returnedQuantity: true, unitPriceSnapshot: true },
         }),
         this.prisma.recoveryInventory.count({
@@ -452,7 +475,7 @@ export class ReturnService {
         }),
       ]);
 
-    const totalProductsReturned = monthItems.reduce(
+    const totalProductsReturned = rangeItems.reduce(
       (s, i) => s + Number(i.returnedQuantity),
       0,
     );
@@ -462,9 +485,10 @@ export class ReturnService {
     );
 
     return {
-      returnsThisMonth: monthReturns,
-      totalProductsReturnedThisMonth: totalProductsReturned,
-      returnValueThisMonth: returnValue,
+      returnsInRange: rangeReturns,
+      totalProductsReturnedInRange: totalProductsReturned,
+      returnValueInRange: returnValue,
+      // Số dư/tồn kho thu hồi hiện tại — không thuộc khoảng ngày, luôn tức thời.
       availableRecoveryCount: availableCount,
       availableRecoveryQuantity: Number(availableAgg._sum.quantity ?? 0),
     };
@@ -490,9 +514,14 @@ export class ReturnService {
     return { over30Days: over30, over90Days: over90 };
   }
 
-  async getTopReturnReasons() {
+  async getTopReturnReasons(range?: { from?: Date; to?: Date }) {
+    const returnDateFilter = this.returnDateRangeFilter(
+      range?.from,
+      range?.to,
+    );
     const grouped = await this.prisma.returnItem.groupBy({
       by: ['reason'],
+      where: returnDateFilter ? { return: { returnDate: returnDateFilter } } : {},
       _sum: { returnedQuantity: true },
       _count: { _all: true },
     });
@@ -510,9 +539,14 @@ export class ReturnService {
       .sort((a, b) => b.count - a.count);
   }
 
-  async getReturnsByCustomer(limit = 10) {
+  async getReturnsByCustomer(range?: { from?: Date; to?: Date }, limit = 10) {
+    const returnDateFilter = this.returnDateRangeFilter(
+      range?.from,
+      range?.to,
+    );
     const grouped = await this.prisma.return.groupBy({
       by: ['customerId', 'customerName'],
+      where: returnDateFilter ? { returnDate: returnDateFilter } : {},
       _count: { _all: true },
       orderBy: { _count: { customerId: 'desc' } },
       take: limit,
@@ -523,10 +557,5 @@ export class ReturnService {
       customerName: g.customerName,
       returnCount: g._count._all,
     }));
-  }
-
-  private startOfMonth(): Date {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
   }
 }

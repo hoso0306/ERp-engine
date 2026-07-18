@@ -28,14 +28,33 @@ export interface ProductionOverview {
   };
 }
 
-export function ProductionOverviewPanel({ production }: { production: ProductionOverview }) {
+function formatDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+// Rà soát bộ lọc thời gian Dashboard (chốt 18/07/2026,
+// 007-bo-loc-thoi-gian-dashboard.md) — dùng chung cách hiển thị khoảng ngày
+// với ReturnOverviewPanel.
+function rangeLabel(dateFrom?: string, dateTo?: string): string {
+  if (!dateFrom && !dateTo) return "toàn bộ thời gian";
+  if (dateFrom && dateTo && dateFrom === dateTo) return formatDMY(dateFrom);
+  if (dateFrom && dateTo) return `${formatDMY(dateFrom)} - ${formatDMY(dateTo)}`;
+  if (dateFrom) return `từ ${formatDMY(dateFrom)}`;
+  return `đến ${formatDMY(dateTo!)}`;
+}
+
+interface ProductionOverviewPanelProps {
+  production: ProductionOverview;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function ProductionOverviewPanel({ production, dateFrom, dateTo }: ProductionOverviewPanelProps) {
   const { hasPermission } = useAuth();
   const canViewOrder = hasPermission("sales-order.view");
-  const busiest = production.busyCenters[0];
-  const leastBusy =
-    production.busyCenters.length > 1
-      ? production.busyCenters[production.busyCenters.length - 1]
-      : undefined;
+  const label = rangeLabel(dateFrom, dateTo);
+  const sortedCenters = [...production.busyCenters].sort((a, b) => b.orderCount - a.orderCount);
 
   return (
     <section className="space-y-4">
@@ -47,29 +66,39 @@ export function ProductionOverviewPanel({ production }: { production: Production
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Chờ sản xuất" value={String(production.summary.pending)} />
-        <StatTile label="Đang sản xuất" value={String(production.summary.inProduction)} />
-        <StatTile label="Đã hoàn thành" value={String(production.summary.completed)} />
-        <StatTile label="Đã huỷ" value={String(production.summary.cancelled)} />
-        <StatTile label="Tiến độ tổng" value={`${production.progress.overallProgressPercent}%`} />
+        <StatTile label="Chờ sản xuất" value={String(production.summary.pending)} sub="hiện tại" />
+        <StatTile label="Đang sản xuất" value={String(production.summary.inProduction)} sub="hiện tại" />
+        <StatTile label="Đã hoàn thành" value={String(production.summary.completed)} sub={label} />
+        <StatTile label="Đã huỷ" value={String(production.summary.cancelled)} sub={label} />
+        <StatTile label="Tiến độ tổng" value={`${production.progress.overallProgressPercent}%`} sub="hiện tại" />
       </div>
 
-      {(busiest || leastBusy) && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {busiest && (
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Xưởng bận nhất</p>
-              <p className="mt-1 text-base font-medium">{busiest.productionCenterName}</p>
-              <p className="text-xs text-muted-foreground">{busiest.orderCount} phiếu sản xuất</p>
-            </div>
-          )}
-          {leastBusy && (
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Xưởng ít việc nhất</p>
-              <p className="mt-1 text-base font-medium">{leastBusy.productionCenterName}</p>
-              <p className="text-xs text-muted-foreground">{leastBusy.orderCount} phiếu sản xuất</p>
-            </div>
-          )}
+      {sortedCenters.length > 0 && (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Xưởng sản xuất (hiện tại)</TableHead>
+                <TableHead className="text-right">Số phiếu đang xử lý</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedCenters.map((c, idx) => (
+                <TableRow key={c.productionCenterId}>
+                  <TableCell className="text-sm">
+                    {c.productionCenterName}
+                    {idx === 0 && sortedCenters.length > 1 && (
+                      <span className="ml-2 text-xs text-muted-foreground">(bận nhất)</span>
+                    )}
+                    {idx === sortedCenters.length - 1 && sortedCenters.length > 1 && (
+                      <span className="ml-2 text-xs text-muted-foreground">(ít việc nhất)</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-mono">{c.orderCount}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

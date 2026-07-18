@@ -7,9 +7,9 @@ import { StatTile } from "./stat-tile";
 
 export interface ReturnOverview {
   summary: {
-    returnsThisMonth: number;
-    totalProductsReturnedThisMonth: number;
-    returnValueThisMonth: number;
+    returnsInRange: number;
+    totalProductsReturnedInRange: number;
+    returnValueInRange: number;
     availableRecoveryCount: number;
     availableRecoveryQuantity: number;
   };
@@ -34,9 +34,32 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("vi-VN").format(amount) + " ₫";
 }
 
-export function ReturnOverviewPanel({ returns }: { returns: ReturnOverview }) {
+function formatDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+// Rà soát bộ lọc thời gian Dashboard (chốt 18/07/2026,
+// 007-bo-loc-thoi-gian-dashboard.md): nhãn khoảng ngày mô tả đúng dữ liệu
+// backend đã lọc — thay cho "...tháng này" hard-code trước đây.
+function rangeLabel(dateFrom?: string, dateTo?: string): string {
+  if (!dateFrom && !dateTo) return "Toàn bộ thời gian";
+  if (dateFrom && dateTo && dateFrom === dateTo) return `Ngày ${formatDMY(dateFrom)}`;
+  if (dateFrom && dateTo) return `${formatDMY(dateFrom)} - ${formatDMY(dateTo)}`;
+  if (dateFrom) return `Từ ${formatDMY(dateFrom)}`;
+  return `Đến ${formatDMY(dateTo!)}`;
+}
+
+interface ReturnOverviewPanelProps {
+  returns: ReturnOverview;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function ReturnOverviewPanel({ returns, dateFrom, dateTo }: ReturnOverviewPanelProps) {
   const { hasPermission } = useAuth();
   const canViewCustomer = hasPermission("customer.view");
+  const label = rangeLabel(dateFrom, dateTo);
 
   return (
     <section className="space-y-4">
@@ -48,21 +71,26 @@ export function ReturnOverviewPanel({ returns }: { returns: ReturnOverview }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Phiếu hoàn tháng này" value={String(returns.summary.returnsThisMonth)} />
+        <StatTile label="Phiếu hoàn" value={String(returns.summary.returnsInRange)} sub={label} />
         <StatTile
-          label="SL sản phẩm hoàn tháng này"
-          value={new Intl.NumberFormat("vi-VN").format(returns.summary.totalProductsReturnedThisMonth)}
+          label="SL sản phẩm hoàn"
+          value={new Intl.NumberFormat("vi-VN").format(returns.summary.totalProductsReturnedInRange)}
+          sub={label}
         />
-        <StatTile label="Giá trị hoàn tháng này" value={formatMoney(returns.summary.returnValueThisMonth)} />
+        <StatTile
+          label="Giá trị hoàn"
+          value={formatMoney(returns.summary.returnValueInRange)}
+          sub={label}
+        />
         <StatTile
           label="Kho thu hồi còn khả dụng"
           value={String(returns.summary.availableRecoveryCount)}
-          sub={`${new Intl.NumberFormat("vi-VN").format(returns.summary.availableRecoveryQuantity)} sản phẩm`}
+          sub={`${new Intl.NumberFormat("vi-VN").format(returns.summary.availableRecoveryQuantity)} sản phẩm — hiện tại`}
         />
         <StatTile
           label="Tồn kho thu hồi lâu"
           value={`${returns.aging.over30Days} / ${returns.aging.over90Days}`}
-          sub="quá 30 ngày / quá 90 ngày"
+          sub="quá 30 ngày / quá 90 ngày — hiện tại"
           tone={returns.aging.over90Days > 0 ? "danger" : "default"}
         />
       </div>
@@ -72,7 +100,7 @@ export function ReturnOverviewPanel({ returns }: { returns: ReturnOverview }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Lý do trả hàng</TableHead>
+                <TableHead>Lý do trả hàng ({label})</TableHead>
                 <TableHead className="text-right">Số phiếu</TableHead>
                 <TableHead className="text-right">SL trả</TableHead>
                 <TableHead className="text-right">Tỷ lệ</TableHead>
@@ -96,7 +124,7 @@ export function ReturnOverviewPanel({ returns }: { returns: ReturnOverview }) {
 
       {returns.byCustomer.length > 0 && (
         <div className="rounded-lg border p-4">
-          <p className="text-sm font-medium mb-3">Khách trả hàng nhiều nhất</p>
+          <p className="text-sm font-medium mb-3">Khách trả hàng nhiều nhất ({label})</p>
           <ol className="space-y-2">
             {returns.byCustomer.map((c, idx) => (
               <li key={c.customerId} className="flex items-center justify-between text-sm">

@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DashboardService } from './dashboard.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
 import { ProductionOrderService } from '../production/production-order.service';
-import { WarehouseService } from '../warehouse/warehouse.service';
 import { DebtService } from '../debt/debt.service';
 import { ReturnService } from '../return/return.service';
 
@@ -10,7 +9,6 @@ describe('DashboardService', () => {
   let service: DashboardService;
   let salesOrderService: Record<string, jest.Mock>;
   let productionOrderService: Record<string, jest.Mock>;
-  let warehouseService: Record<string, jest.Mock>;
   let debtService: Record<string, jest.Mock>;
   let returnService: Record<string, jest.Mock>;
 
@@ -26,14 +24,6 @@ describe('DashboardService', () => {
       getProgressSummary: jest
         .fn()
         .mockResolvedValue({ overallProgressPercent: 50 }),
-    };
-    warehouseService = {
-      getLowStockMaterials: jest.fn().mockResolvedValue([
-        { code: 'NL001', outOfStock: false },
-        { code: 'NL002', outOfStock: true },
-      ]),
-      getTopConsumedMaterials: jest.fn().mockResolvedValue([]),
-      getInventorySummary: jest.fn().mockResolvedValue({ totalMaterials: 5 }),
     };
     debtService = {
       getDashboardSummary: jest.fn().mockResolvedValue({ totalRemaining: 200 }),
@@ -56,7 +46,6 @@ describe('DashboardService', () => {
         DashboardService,
         { provide: SalesOrderService, useValue: salesOrderService },
         { provide: ProductionOrderService, useValue: productionOrderService },
-        { provide: WarehouseService, useValue: warehouseService },
         { provide: DebtService, useValue: debtService },
         { provide: ReturnService, useValue: returnService },
       ],
@@ -65,60 +54,50 @@ describe('DashboardService', () => {
     service = module.get<DashboardService>(DashboardService);
   });
 
-  it('getWarehouseDashboard() reuses the already-fetched lowStockMaterials instead of querying twice', async () => {
-    await service.getWarehouseDashboard();
-
-    expect(warehouseService.getLowStockMaterials).toHaveBeenCalledTimes(1);
-    expect(warehouseService.getInventorySummary).toHaveBeenCalledWith([
-      { code: 'NL001', outOfStock: false },
-      { code: 'NL002', outOfStock: true },
-    ]);
-  });
-
-  it('getWarehouseDashboard() splits low-stock vs out-of-stock from one query', async () => {
-    const result = await service.getWarehouseDashboard();
-    expect(result.lowStockMaterials).toEqual([
-      { code: 'NL001', outOfStock: false },
-    ]);
-    expect(result.outOfStockMaterials).toEqual([
-      { code: 'NL002', outOfStock: true },
-    ]);
-  });
-
   it('getDebtDashboard() calls DebtService with the requested upcomingDueDays window', async () => {
     await service.getDebtDashboard(14);
     expect(debtService.getUpcomingDueReceivables).toHaveBeenCalledWith(14);
   });
 
-  it('getAlerts() aggregates from Debt/Warehouse/SalesOrder services only — no Prisma access', async () => {
+  // Cảnh báo tồn kho gỡ khỏi Dashboard cùng đợt gỡ khối Kho (chốt 18/07/2026,
+  // 007-bo-loc-thoi-gian-dashboard.md; module Kho sau đó tạm gỡ hẳn khỏi
+  // triển khai — xem warehouse.md "Trạng thái triển khai").
+  it('getAlerts() aggregates from Debt/SalesOrder services only', async () => {
     const result = await service.getAlerts();
     expect(debtService.getOverdueCustomers).toHaveBeenCalled();
     expect(debtService.getCreditLimitExceededCustomers).toHaveBeenCalled();
-    expect(warehouseService.getLowStockMaterials).toHaveBeenCalled();
     expect(salesOrderService.getDelayedOrders).toHaveBeenCalled();
-    expect(result).toEqual(
-      expect.objectContaining({
-        overdueDebt: [],
-        creditLimitExceeded: [],
-        lowStockMaterials: [{ code: 'NL001', outOfStock: false }],
-        outOfStockMaterials: [{ code: 'NL002', outOfStock: true }],
-        delayedOrders: [],
-      }),
-    );
+    expect(result).toEqual({
+      overdueDebt: [],
+      creditLimitExceeded: [],
+      delayedOrders: [],
+    });
   });
 
-  it('getOverview() composes all five sections by calling each Service exactly once per section', async () => {
+  it('getOverview() composes sales/production/debt/returns/alerts — no warehouse', async () => {
     const overview = await service.getOverview();
 
     expect(overview).toHaveProperty('sales');
     expect(overview).toHaveProperty('production');
-    expect(overview).toHaveProperty('warehouse');
     expect(overview).toHaveProperty('debt');
+    expect(overview).toHaveProperty('returns');
     expect(overview).toHaveProperty('alerts');
+    expect(overview).not.toHaveProperty('warehouse');
 
     expect(salesOrderService.getDashboardSummary).toHaveBeenCalled();
     expect(productionOrderService.getDashboardSummary).toHaveBeenCalled();
-    expect(warehouseService.getInventorySummary).toHaveBeenCalled();
     expect(debtService.getDashboardSummary).toHaveBeenCalled();
+  });
+
+  it('getOverview() forwards the range filter to Production and Return dashboards', async () => {
+    const range = { from: new Date('2026-07-18'), to: new Date('2026-07-18') };
+    await service.getOverview(range);
+
+    expect(productionOrderService.getDashboardSummary).toHaveBeenCalledWith(
+      range,
+    );
+    expect(returnService.getDashboardSummary).toHaveBeenCalledWith(range);
+    expect(returnService.getTopReturnReasons).toHaveBeenCalledWith(range);
+    expect(returnService.getReturnsByCustomer).toHaveBeenCalledWith(range);
   });
 });
