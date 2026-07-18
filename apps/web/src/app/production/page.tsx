@@ -8,6 +8,8 @@ import {
   type ProductionOrderTab,
 } from "@/components/production/production-filter";
 import { ProductionTable } from "@/components/production/production-table";
+import { Button } from "@/components/ui/button";
+import { FileDown } from "lucide-react";
 import { apiGet } from "@/lib/api";
 
 interface ProductionOrderRow {
@@ -43,6 +45,8 @@ export default function ProductionPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // In hàng loạt (009-in-phieu-san-xuat.md Việc 6).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -78,6 +82,27 @@ export default function ProductionPage() {
   useEffect(() => {
     setPage(1);
   }, [search, tab, productionCenterId]);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(ids: string[]) {
+    setSelectedIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...ids]);
+    });
+  }
 
   // BE chưa hỗ trợ filter theo ngày (ProductionOrderQueryDto không có field
   // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
@@ -120,13 +145,32 @@ export default function ProductionPage() {
         onCompletedToChange={setCompletedTo}
       />
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-md border bg-muted/40 px-4 py-2">
+          <span className="text-sm">Đã chọn {selectedIds.size} phiếu</span>
+          <a href={`/production/print?ids=${Array.from(selectedIds).join(",")}`} target="_blank" rel="noreferrer">
+            <Button size="sm">
+              <FileDown className="mr-2 h-4 w-4" />
+              In đã chọn ({selectedIds.size})
+            </Button>
+          </a>
+        </div>
+      )}
+
       {loading && <Loading />}
       {error && <ErrorState description={error} onRetry={fetchOrders} />}
       {!loading && !error && filteredOrders.length === 0 && (
         <EmptyState title="Không có phiếu sản xuất" description="Không có phiếu nào khớp bộ lọc." />
       )}
       {!loading && !error && filteredOrders.length > 0 && (
-        <ProductionTable orders={filteredOrders} meta={meta} onPageChange={setPage} />
+        <ProductionTable
+          orders={filteredOrders}
+          meta={meta}
+          onPageChange={setPage}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+        />
       )}
     </div>
   );

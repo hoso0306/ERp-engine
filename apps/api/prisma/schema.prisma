@@ -110,6 +110,9 @@ enum SalesOrderTimelineAction {
   DELIVERED
   PAYMENT_STATUS_CHANGED
   MANUAL_OVERRIDE
+  // Sửa địa chỉ giao hàng của đơn (Sprint 04, 009-in-phieu-san-xuat.md) —
+  // không phải Manual Override (không đổi Status, không bắt buộc lý do).
+  DELIVERY_ADDRESS_UPDATED
   CANCELLED
 }
 
@@ -125,6 +128,9 @@ enum ProductionOrderTimelineAction {
   STARTED
   COMPLETED
   CANCELLED
+  // In phiếu A5 (Sprint 04, 009-in-phieu-san-xuat.md) — không đổi Status,
+  // chỉ ghi vết đã in lúc nào, ai in.
+  PRINTED
 }
 
 enum WarehouseDirection {
@@ -928,6 +934,20 @@ model SalesOrder {
   customerId    String           @map("customer_id")
   customerName  String           @map("customer_name")
   customerPhone String           @map("customer_phone")
+
+  // Địa chỉ giao hàng (Sprint 04, 009-in-phieu-san-xuat.md) — auto copy từ
+  // Customer tại Approve, KHÔNG đọc lại Customer sau đó. Khác nhóm field
+  // tài chính/BOM/thông số bị khoá ở "Immutable Document" (order.md): đây là
+  // dữ liệu vận hành/logistics, cho sửa qua action updateDeliveryAddress()
+  // (không bắt buộc lý do, sửa được ở mọi Status) vì một Customer có thể giao
+  // nhiều địa chỉ khác nhau cho từng đơn (nhiều công trình).
+  deliveryName     String  @map("delivery_name")
+  deliveryPhone    String  @map("delivery_phone")
+  deliveryAddress  String? @map("delivery_address")
+  deliveryProvince String? @map("delivery_province")
+  deliveryDistrict String? @map("delivery_district")
+  deliveryWard     String? @map("delivery_ward")
+
   status        SalesOrderStatus @default(IN_PRODUCTION)
   totalAmount   Decimal          @map("total_amount") @db.Decimal(15, 0)
   plannedCost   Decimal          @map("planned_cost") @db.Decimal(15, 0)

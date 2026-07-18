@@ -1094,6 +1094,16 @@ export class QuotationWorkflowService {
           customerId: quotation.customerId,
           customerName: quotation.customer.name,
           customerPhone: quotation.customer.phone,
+          // Địa chỉ giao hàng (009-in-phieu-san-xuat.md) — auto copy từ
+          // Customer tại Approve, sau đó là nguồn dữ liệu địa chỉ giao hàng
+          // duy nhất cho đơn (sửa được qua updateDeliveryAddress(), không đọc
+          // lại Customer).
+          deliveryName: quotation.customer.name,
+          deliveryPhone: quotation.customer.phone,
+          deliveryAddress: quotation.customer.address,
+          deliveryProvince: quotation.customer.province,
+          deliveryDistrict: quotation.customer.district,
+          deliveryWard: quotation.customer.ward,
           status: SalesOrderStatus.IN_PRODUCTION,
           totalAmount,
           plannedCost,

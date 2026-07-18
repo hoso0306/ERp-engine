@@ -14,7 +14,7 @@
 - **Dashboard** (`dashboard.md`) chỉ hiển thị trạng thái hiện tại: KPI thời gian thực, mặc định "Hôm nay", có thêm tối đa 2-3 preset ngắn (Hôm nay / Hôm qua / 7 ngày gần đây) để không trống trơn vào đầu tuần — **không có Tuần này/Tháng này/Tất cả/chọn ngày tuỳ ý**, những preset đó thuộc Report. Ngoài ra là cảnh báo và danh sách việc cần xử lý. Dashboard **không** hiển thị phân tích theo kỳ (doanh thu tháng, tăng trưởng, top khách, top sản phẩm, so sánh kỳ trước...), không có biểu đồ xu hướng, không có export.
 - **Report** (tài liệu này) là nơi duy nhất chứa: phân tích theo khoảng thời gian tuỳ chọn (`from`–`to`), biểu đồ xu hướng, so sánh kỳ trước, bảng xếp hạng (top khách/sản phẩm/nhân viên), và export Excel/PDF.
 - Dashboard và Report **dùng chung** định nghĩa dữ liệu, mốc ngày và Business Rule ở tài liệu này — đảm bảo cùng một chỉ số luôn cho cùng một kết quả dù xem ở đâu. Report không được định nghĩa lại một chỉ số Dashboard đã có, và ngược lại.
-- Dashboard hiện tại (Sprint 04, `007-bo-loc-thoi-gian-dashboard.md`) đang có bộ lọc kỳ tuỳ chọn cho khối Sản xuất (Hoàn thành/Huỷ) và Hàng hoàn — đây là vi phạm nguyên tắc trên, ghi nhận là **nợ kỹ thuật cần dọn sau khi Report hoàn thành** (`008-module-bao-cao.md`), không sửa trong phạm vi tài liệu này.
+- ~~Dashboard hiện tại (Sprint 04, `007-bo-loc-thoi-gian-dashboard.md`) đang có bộ lọc kỳ tuỳ chọn cho khối Sản xuất (Hoàn thành/Huỷ) và Hàng hoàn — vi phạm nguyên tắc trên~~ — **đã dọn (18/07/2026)**: thay `DateRangeFilter` (Hôm nay/Tuần này/Tháng này/Tất cả/tuỳ chọn) bằng `DashboardRangeFilter` riêng cho Dashboard, chỉ còn Hôm nay/Hôm qua/7 ngày gần đây. Phân tích theo kỳ tuỳ chọn (tuần/tháng/năm/tuỳ chọn) nay chỉ có ở Report.
 
 ---
 

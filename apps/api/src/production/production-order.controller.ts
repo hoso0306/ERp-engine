@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Query,
+  Body,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -11,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ProductionOrderService } from './production-order.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
+import { PrintProductionOrdersDto } from './dto/print-production-orders.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -35,6 +37,18 @@ export class ProductionOrderController {
   @RequirePermission('production.view')
   findOne(@Param('id') id: string) {
     return this.productionOrderService.findOne(id);
+  }
+
+  // ── In phiếu A5 (Task 009) — không đổi Status, chỉ ghi vết PRINTED ──
+
+  @Post('print')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('production.view')
+  print(
+    @Body() dto: PrintProductionOrdersDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.productionOrderService.print(dto.ids, req.user?.userId ?? null);
   }
 
   // ── Workflow actions (Task 04) ──

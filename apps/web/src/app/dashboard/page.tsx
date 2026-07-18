@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { PageHeader, Loading, ErrorState, DateRangeFilter, todayISO } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, todayISO } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { apiGet } from "@/lib/api";
+import { DashboardRangeFilter } from "@/components/dashboard/dashboard-range-filter";
 import { SalesOverviewPanel, type SalesOverview } from "@/components/dashboard/sales-overview-panel";
 import { ProductionOverviewPanel, type ProductionOverview } from "@/components/dashboard/production-overview-panel";
 import { DebtOverviewPanel, type DebtOverview } from "@/components/dashboard/debt-overview-panel";
@@ -59,11 +60,13 @@ export default function DashboardPage() {
         description="Tổng quan tình hình kinh doanh, sản xuất và công nợ"
         actions={
           <div className="flex items-center gap-2">
-            <DateRangeFilter
+            <DashboardRangeFilter
               dateFrom={dateFrom}
-              onDateFromChange={setDateFrom}
               dateTo={dateTo}
-              onDateToChange={setDateTo}
+              onChange={(range) => {
+                setDateFrom(range.from);
+                setDateTo(range.to);
+              }}
             />
             <Button variant="outline" size="sm" onClick={fetchOverview} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

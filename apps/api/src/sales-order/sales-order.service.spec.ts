@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SalesOrderService } from './sales-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
@@ -11,6 +11,12 @@ function makeSalesOrder(overrides: Record<string, unknown> = {}) {
     status: 'PRODUCTION_COMPLETED',
     receivable: null,
     productionOrders: [],
+    deliveryName: 'Nguyễn Văn Cũ',
+    deliveryPhone: '0900000000',
+    deliveryAddress: 'Địa chỉ cũ',
+    deliveryProvince: 'Hà Nội',
+    deliveryDistrict: 'Cầu Giấy',
+    deliveryWard: null,
     ...overrides,
   };
 }
@@ -180,6 +186,97 @@ describe('SalesOrderService — actor name snapshot', () => {
       await expect(
         service.cancel('so-1', { reason: 'x' }, 'user-1'),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // Sprint 04 (009-in-phieu-san-xuat.md) — không phải Manual Override: không
+  // đổi Status, không bắt buộc lý do, sửa được ở mọi Status.
+  describe('updateDeliveryAddress()', () => {
+    const dto = {
+      deliveryName: 'Nguyễn Văn Mới',
+      deliveryPhone: '0911111111',
+      deliveryAddress: 'Công trình Ecopark',
+      deliveryProvince: 'Hưng Yên',
+      deliveryDistrict: 'Văn Giang',
+      deliveryWard: null,
+    };
+
+    it('ghi Timeline DELIVERY_ADDRESS_UPDATED với payload old/new + createdBy', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+
+      await service.updateDeliveryAddress('so-1', dto, 'user-1');
+
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
+        where: { id: 'so-1' },
+        data: {
+          deliveryName: 'Nguyễn Văn Mới',
+          deliveryPhone: '0911111111',
+          deliveryAddress: 'Công trình Ecopark',
+          deliveryProvince: 'Hưng Yên',
+          deliveryDistrict: 'Văn Giang',
+          deliveryWard: null,
+        },
+      });
+      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'DELIVERY_ADDRESS_UPDATED',
+            createdBy: 'user-1',
+            createdByName: 'Nguyễn Văn An',
+            payload: {
+              old: {
+                deliveryName: 'Nguyễn Văn Cũ',
+                deliveryPhone: '0900000000',
+                deliveryAddress: 'Địa chỉ cũ',
+                deliveryProvince: 'Hà Nội',
+                deliveryDistrict: 'Cầu Giấy',
+                deliveryWard: null,
+              },
+              new: {
+                deliveryName: 'Nguyễn Văn Mới',
+                deliveryPhone: '0911111111',
+                deliveryAddress: 'Công trình Ecopark',
+                deliveryProvince: 'Hưng Yên',
+                deliveryDistrict: 'Văn Giang',
+                deliveryWard: null,
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('không đổi Status — sửa được kể cả khi đã DELIVERED/CANCELLED', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({ status: 'CANCELLED' }),
+      );
+
+      await expect(
+        service.updateDeliveryAddress('so-1', dto, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.not.objectContaining({ status: expect.anything() }) }),
+      );
+    });
+
+    it('bắt buộc deliveryName', async () => {
+      await expect(
+        service.updateDeliveryAddress('so-1', { ...dto, deliveryName: '  ' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('bắt buộc deliveryPhone', async () => {
+      await expect(
+        service.updateDeliveryAddress('so-1', { ...dto, deliveryPhone: '' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('không bắt buộc lý do (khác Manual Override)', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+      // dto không có field `reason` — service không được đòi hỏi nó.
+      await expect(
+        service.updateDeliveryAddress('so-1', dto, 'user-1'),
+      ).resolves.toBeDefined();
     });
   });
 });

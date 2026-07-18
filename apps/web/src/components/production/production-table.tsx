@@ -5,6 +5,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 
@@ -28,10 +29,25 @@ interface ProductionTableProps {
   orders: ProductionOrderRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // In hàng loạt (009-in-phieu-san-xuat.md Việc 6) — chọn nhiều dòng để in
+  // gộp nhiều phiếu A5. Optional để không phá vỡ chỗ khác đang dùng bảng này
+  // mà không cần tính năng chọn.
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: (ids: string[]) => void;
 }
 
-export function ProductionTable({ orders, meta, onPageChange }: ProductionTableProps) {
+export function ProductionTable({
+  orders,
+  meta,
+  onPageChange,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: ProductionTableProps) {
   const router = useRouter();
+  const selectable = !!selectedIds && !!onToggleSelect && !!onToggleSelectAll;
+  const allSelected = selectable && orders.length > 0 && orders.every((po) => selectedIds!.has(po.id));
 
   return (
     <div>
@@ -39,6 +55,14 @@ export function ProductionTable({ orders, meta, onPageChange }: ProductionTableP
         <Table>
           <TableHeader>
             <TableRow>
+              {selectable && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={() => onToggleSelectAll!(orders.map((po) => po.id))}
+                  />
+                </TableHead>
+              )}
               <TableHead className="w-32">Mã phiếu</TableHead>
               <TableHead>Đơn hàng</TableHead>
               <TableHead>Xưởng</TableHead>
@@ -53,6 +77,14 @@ export function ProductionTable({ orders, meta, onPageChange }: ProductionTableP
                 className="cursor-pointer"
                 onClick={() => router.push(`/production/${po.id}`)}
               >
+                {selectable && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds!.has(po.id)}
+                      onCheckedChange={() => onToggleSelect!(po.id)}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="font-mono text-xs font-medium">{po.code}</TableCell>
                 <TableCell>
                   <div className="font-medium font-mono text-xs">{po.salesOrder.code}</div>

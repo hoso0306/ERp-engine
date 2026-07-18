@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   Prisma,
@@ -25,6 +26,15 @@ const PRODUCTION_ORDER_INCLUDE = {
       customerName: true,
       customerPhone: true,
       status: true,
+      // In phiếu A5 (009-in-phieu-san-xuat.md) — đọc địa chỉ giao hàng đã
+      // snapshot/có thể sửa trên SalesOrder, KHÔNG đọc lại Customer.
+      deliveryName: true,
+      deliveryPhone: true,
+      deliveryAddress: true,
+      deliveryProvince: true,
+      deliveryDistrict: true,
+      deliveryWard: true,
+      expectedDeliveryDate: true,
     },
   },
 } satisfies Prisma.ProductionOrderInclude;
@@ -118,7 +128,7 @@ export class ProductionOrderService {
     const salesOrderItemIds = items.map((item) => item.salesOrderItemId);
     if (salesOrderItemIds.length === 0) return items;
 
-    const [parameters, boms] = await Promise.all([
+    const [parameters, boms, notes] = await Promise.all([
       this.prisma.salesOrderItemParameter.findMany({
         where: { salesOrderItemId: { in: salesOrderItemIds } },
         orderBy: { displayOrder: 'asc' },
@@ -144,6 +154,12 @@ export class ProductionOrderService {
           },
         },
       }),
+      // Ghi chú dòng (In phiếu A5, 009-in-phieu-san-xuat.md) — snapshot sẵn
+      // trên SalesOrderItem, chỉ đọc để hiển thị, không tính toán lại.
+      this.prisma.salesOrderItem.findMany({
+        where: { id: { in: salesOrderItemIds } },
+        select: { id: true, note: true },
+      }),
     ]);
 
     const parametersByItem = new Map<string, typeof parameters>();
@@ -154,11 +170,13 @@ export class ProductionOrderService {
     }
 
     const bomByItem = new Map(boms.map((b) => [b.salesOrderItemId, b.items]));
+    const noteByItem = new Map(notes.map((n) => [n.id, n.note]));
 
     return items.map((item) => ({
       ...item,
       parameters: parametersByItem.get(item.salesOrderItemId) ?? [],
       bomMaterials: bomByItem.get(item.salesOrderItemId) ?? [],
+      note: noteByItem.get(item.salesOrderItemId) ?? null,
     }));
   }
 
@@ -259,6 +277,50 @@ export class ProductionOrderService {
         include: PRODUCTION_ORDER_INCLUDE,
       });
     });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // In phiếu A5 (009-in-phieu-san-xuat.md) — không phải Action đổi Status,
+  // chỉ ghi vết đã in (PRINTED) + trả dữ liệu đầy đủ để FE render. Dùng
+  // chung cho in 1 phiếu (ids.length === 1) lẫn in hàng loạt.
+  // ─────────────────────────────────────────────────────
+
+  async print(ids: string[], userId?: string | null) {
+    if (!ids || ids.length === 0) {
+      throw new BadRequestException(
+        'Cần chọn ít nhất một phiếu sản xuất để in.',
+      );
+    }
+
+    const existing = await this.prisma.productionOrder.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+    if (existing.length !== ids.length) {
+      throw new NotFoundException(
+        'Một hoặc nhiều phiếu sản xuất không tồn tại.',
+      );
+    }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
+
+    await this.prisma.$transaction(
+      ids.map((id) =>
+        this.prisma.productionOrderTimeline.create({
+          data: {
+            productionOrderId: id,
+            action: ProductionOrderTimelineAction.PRINTED,
+            actorType: ProductionOrderTimelineActorType.USER,
+            payload: {},
+            createdBy: userId ?? null,
+            createdByName,
+          },
+        }),
+      ),
+    );
+
+    // Giữ đúng thứ tự ids đã chọn để FE render trang A5 theo đúng thứ tự.
+    return Promise.all(ids.map((id) => this.findOne(id)));
   }
 
   // ─────────────────────────────────────────────────────

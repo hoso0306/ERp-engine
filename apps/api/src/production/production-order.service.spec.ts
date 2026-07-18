@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ProductionOrderService } from './production-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
@@ -35,6 +39,7 @@ describe('ProductionOrderService', () => {
     productionOrder: {
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
+      findMany: jest.Mock;
       update: jest.Mock;
     };
     productionOrderTimeline: { create: jest.Mock };
@@ -48,15 +53,21 @@ describe('ProductionOrderService', () => {
       productionOrder: {
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findMany: jest.fn(),
         update: jest.fn(),
       },
       productionOrderTimeline: {
         create: jest.fn(),
       },
       user: { findUnique: jest.fn() },
-      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
-        fn(prisma),
-      ),
+      // print() (009-in-phieu-san-xuat.md) truyền một mảng Promise thay vì
+      // callback — hỗ trợ cả 2 dạng $transaction() mà Prisma cho phép.
+      $transaction: jest.fn((arg: unknown) => {
+        if (typeof arg === 'function') {
+          return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        }
+        return Promise.all(arg as Promise<unknown>[]);
+      }),
     };
     salesOrderService = { syncProductionProgress: jest.fn() };
 
@@ -242,6 +253,48 @@ describe('ProductionOrderService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // In phiếu A5 (009-in-phieu-san-xuat.md) — không phải Action đổi Status,
+  // chỉ ghi vết PRINTED.
+  describe('print()', () => {
+    it('rejects khi ids rỗng', async () => {
+      await expect(service.print([])).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects khi có id không tồn tại', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([{ id: 'po-1' }]);
+      await expect(service.print(['po-1', 'po-missing'])).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('ghi 1 dòng Timeline PRINTED cho mỗi phiếu, không đổi status', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { id: 'po-1' },
+        { id: 'po-2' },
+      ]);
+      prisma.productionOrder.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(makeProductionOrder({ id: where.id })),
+      );
+
+      const result = await service.print(['po-1', 'po-2'], 'user-1');
+
+      expect(result.map((po) => po.id)).toEqual(['po-1', 'po-2']);
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledTimes(2);
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            productionOrderId: 'po-1',
+            action: 'PRINTED',
+            actorType: 'USER',
+            createdBy: 'user-1',
+          }),
+        }),
+      );
+      expect(prisma.productionOrder.update).not.toHaveBeenCalled();
     });
   });
 });

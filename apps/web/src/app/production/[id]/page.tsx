@@ -6,7 +6,7 @@ import Link from "next/link";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, PlayCircle, CheckCircle, Clock } from "lucide-react";
+import { ArrowLeft, PlayCircle, CheckCircle, Clock, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 import { ProductionItemTable } from "@/components/production/production-item-table";
@@ -67,6 +67,7 @@ const TIMELINE_LABEL: Record<string, string> = {
   STARTED: "Bắt đầu sản xuất",
   COMPLETED: "Hoàn thành sản xuất",
   CANCELLED: "Huỷ phiếu (theo Đơn hàng)",
+  PRINTED: "Đã in phiếu",
 };
 
 export default function ProductionOrderDetailPage() {
@@ -140,6 +141,12 @@ export default function ProductionOrderDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
+            <a href={`/production/print?ids=${order.id}`} target="_blank" rel="noreferrer">
+              <Button variant="outline">
+                <FileDown className="mr-2 h-4 w-4" />
+                In phiếu
+              </Button>
+            </a>
             {canStart && (
               <Button onClick={handleStart} disabled={starting}>
                 <PlayCircle className="mr-2 h-4 w-4" />

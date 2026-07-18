@@ -1,7 +1,7 @@
 # Milestone (Sprint 04) - Địa chỉ giao hàng trên Đơn hàng + In Phiếu Sản Xuất kiêm Phiếu Giao Hàng (A5)
 
 > **Tên file:** `workbench/sprint-04/009-in-phieu-san-xuat.md`
-> **Trạng thái:** 📝 KẾ HOẠCH — CHỜ XÁC NHẬN (chưa code)
+> **Trạng thái:** ✅ ĐÃ CODE — chờ verify qua trình duyệt thật (chưa có credential Owner) + chờ lệnh tiếp theo
 
 ---
 
@@ -66,51 +66,51 @@ Kế toán/quản đốc in được Phiếu sản xuất khổ A5 ngay từ ERP
 
 ## Việc 1 — Backend: địa chỉ giao hàng trên Sales Order
 
-- [ ] Migration: thêm `deliveryName`, `deliveryPhone`, `deliveryAddress`, `deliveryProvince`, `deliveryDistrict`, `deliveryWard` (String, nullable trừ name/phone) vào `SalesOrder`; thêm `DELIVERY_ADDRESS_UPDATED` vào enum `SalesOrderTimelineAction`.
-- [ ] Nơi tạo `SalesOrder` từ Quotation Approved: auto-copy 6 field trên từ `Customer` tại thời điểm đó (cùng chỗ đang copy `customerName`/`customerPhone`).
-- [ ] DTO `UpdateDeliveryAddressDto` (validate `deliveryName`/`deliveryPhone` bắt buộc, còn lại optional).
-- [ ] `sales-order.service.ts`: method `updateDeliveryAddress(id, dto, userId)` — update field, ghi `SalesOrderTimeline` (`DELIVERY_ADDRESS_UPDATED`, actorType `USER`, payload `{ old: {...}, new: {...} }`), không kiểm tra status.
-- [ ] `sales-order.controller.ts`: `POST /sales-orders/:id/update-delivery-address`, permission `sales-order.view`.
-- [ ] Cập nhật `knowledge/modules/order.md`: thêm field vào "Dữ liệu quản lý", thêm action vào "Workflow Engine", nói rõ ngoại lệ trong "Immutable Document".
+- [x] Migration: thêm `deliveryName`, `deliveryPhone`, `deliveryAddress`, `deliveryProvince`, `deliveryDistrict`, `deliveryWard` (String, nullable trừ name/phone) vào `SalesOrder`; thêm `DELIVERY_ADDRESS_UPDATED` vào enum `SalesOrderTimelineAction`.
+- [x] Nơi tạo `SalesOrder` từ Quotation Approved: auto-copy 6 field trên từ `Customer` tại thời điểm đó (cùng chỗ đang copy `customerName`/`customerPhone`).
+- [x] DTO `UpdateDeliveryAddressDto` (validate `deliveryName`/`deliveryPhone` bắt buộc, còn lại optional).
+- [x] `sales-order.service.ts`: method `updateDeliveryAddress(id, dto, userId)` — update field, ghi `SalesOrderTimeline` (`DELIVERY_ADDRESS_UPDATED`, actorType `USER`, payload `{ old: {...}, new: {...} }`), không kiểm tra status.
+- [x] `sales-order.controller.ts`: `POST /sales-orders/:id/update-delivery-address`, permission `sales-order.view`.
+- [x] Cập nhật `knowledge/modules/order.md`: thêm field vào "Dữ liệu quản lý", thêm action vào "Workflow Engine", nói rõ ngoại lệ trong "Immutable Document".
 
 ## Việc 2 — Frontend: hiển thị + sửa địa chỉ giao hàng
 
-- [ ] `/orders/[id]/page.tsx`: khối "Địa chỉ giao hàng" (tên/SĐT/địa chỉ) + nút "Sửa".
-- [ ] Dialog sửa 6 field, gọi `POST .../update-delivery-address`, refetch sau khi lưu.
-- [ ] Nhãn Timeline `DELIVERY_ADDRESS_UPDATED`: "Cập nhật địa chỉ giao hàng" (hiện giá trị cũ → mới từ payload).
+- [x] `/orders/[id]/page.tsx`: khối "Địa chỉ giao hàng" (tên/SĐT/địa chỉ) + nút "Sửa".
+- [x] Dialog sửa 6 field, gọi `POST .../update-delivery-address`, refetch sau khi lưu.
+- [x] Nhãn Timeline `DELIVERY_ADDRESS_UPDATED`: "Cập nhật địa chỉ giao hàng" (hiện giá trị cũ → mới từ payload).
 
 ## Việc 3 — Backend: nền dữ liệu + Timeline PRINTED cho Phiếu sản xuất
 
-- [ ] Migration: thêm giá trị `PRINTED` vào enum `ProductionOrderTimelineAction`.
-- [ ] `production-order.service.ts`: mở rộng `PRODUCTION_ORDER_INCLUDE.salesOrder.select` thêm `deliveryName`, `deliveryPhone`, `deliveryAddress`, `deliveryProvince`, `deliveryDistrict`, `deliveryWard`, `expectedDeliveryDate`.
+- [x] Migration: thêm giá trị `PRINTED` vào enum `ProductionOrderTimelineAction`.
+- [x] `production-order.service.ts`: mở rộng `PRODUCTION_ORDER_INCLUDE.salesOrder.select` thêm `deliveryName`, `deliveryPhone`, `deliveryAddress`, `deliveryProvince`, `deliveryDistrict`, `deliveryWard`, `expectedDeliveryDate`.
 
 ## Việc 4 — Backend: endpoint in
 
-- [ ] `POST /production-orders/print`, DTO `{ ids: string[] }`, permission `production.view`.
-- [ ] Với từng `id`: validate tồn tại, ghi 1 dòng `ProductionOrderTimeline` (`PRINTED`, actorType `USER`, payload rỗng).
-- [ ] Trả về mảng dữ liệu đầy đủ từng PO (items + parameters + `salesOrder.delivery*`) để FE render nhiều trang A5 từ đúng 1 lần gọi API.
-- [ ] Cập nhật `TIMELINE_LABEL` phía FE (`/production/[id]/page.tsx`) thêm `PRINTED: "Đã in phiếu"`.
+- [x] `POST /production-orders/print`, DTO `{ ids: string[] }`, permission `production.view`.
+- [x] Với từng `id`: validate tồn tại, ghi 1 dòng `ProductionOrderTimeline` (`PRINTED`, actorType `USER`, payload rỗng).
+- [x] Trả về mảng dữ liệu đầy đủ từng PO (items + parameters + `salesOrder.delivery*`) để FE render nhiều trang A5 từ đúng 1 lần gọi API.
+- [x] Cập nhật `TIMELINE_LABEL` phía FE (`/production/[id]/page.tsx`) thêm `PRINTED: "Đã in phiếu"`.
 
 ## Việc 5 — Frontend: trang in A5
 
-- [ ] Trang mới `/production/print/page.tsx`, đọc `ids` từ query string (`?ids=a,b,c`).
-- [ ] Gọi `POST /production-orders/print` khi bấm nút "In / Tải PDF" (ghi Timeline trước, rồi `window.print()`) — không tự ghi Timeline khi chỉ mở trang xem trước.
-- [ ] Mỗi PO 1 khối nội dung riêng, ngắt trang bằng `page-break-after: always`; `@page { size: A5; margin: ... }`.
-- [ ] Nội dung mỗi trang: mã PO / mã SO / xưởng / ngày in — khách hàng (`deliveryName`, `deliveryPhone`, `deliveryAddress`/`deliveryDistrict`/`deliveryProvince`, ngày giao dự kiến) — bảng sản phẩm (tên, mã, thông số kỹ thuật, số lượng, ghi chú dòng từ `SalesOrderItem.note`) — 3 ô ký: Xưởng giao / Tài xế nhận / Khách hàng nhận.
-- [ ] Không hiện giá bán/giá vốn.
+- [x] Trang mới `/production/print/page.tsx`, đọc `ids` từ query string (`?ids=a,b,c`).
+- [x] Gọi `POST /production-orders/print` khi bấm nút "In / Tải PDF" (ghi Timeline trước, rồi `window.print()`) — không tự ghi Timeline khi chỉ mở trang xem trước.
+- [x] Mỗi PO 1 khối nội dung riêng, ngắt trang bằng `page-break-after: always`; `@page { size: A5; margin: ... }`.
+- [x] Nội dung mỗi trang: mã PO / mã SO / xưởng / ngày in — khách hàng (`deliveryName`, `deliveryPhone`, `deliveryAddress`/`deliveryDistrict`/`deliveryProvince`, ngày giao dự kiến) — bảng sản phẩm (tên, mã, thông số kỹ thuật, số lượng, ghi chú dòng từ `SalesOrderItem.note`) — 3 ô ký: Xưởng giao / Tài xế nhận / Khách hàng nhận.
+- [x] Không hiện giá bán/giá vốn.
 
 ## Việc 6 — Frontend: nút in đơn + in hàng loạt
 
-- [ ] Trang chi tiết PO (`/production/[id]/page.tsx`): thêm nút "In phiếu" → mở tab mới `/production/print?ids=<id>`.
-- [ ] `ProductionTable`: thêm cột checkbox, state chọn dòng (giữ ở component cha `/production/page.tsx`).
-- [ ] Thanh hành động khi có dòng được chọn: nút "In đã chọn (n)" → mở `/production/print?ids=<...>`.
+- [x] Trang chi tiết PO (`/production/[id]/page.tsx`): thêm nút "In phiếu" → mở tab mới `/production/print?ids=<id>`.
+- [x] `ProductionTable`: thêm cột checkbox, state chọn dòng (giữ ở component cha `/production/page.tsx`).
+- [x] Thanh hành động khi có dòng được chọn: nút "In đã chọn (n)" → mở `/production/print?ids=<...>`.
 
 ## Việc 7 — Test + Verify
 
-- [ ] Unit test `sales-order.service.spec.ts`: `updateDeliveryAddress` ghi đúng Timeline (old/new), không đổi status, sửa được ở mọi status.
-- [ ] Unit test `production-order.service.spec.ts`: endpoint `print` ghi đúng Timeline, không đổi `status`.
-- [ ] `tsc --noEmit` + `nest build` + `next build` sạch.
-- [ ] Verify sống: duyệt báo giá → kiểm tra `SalesOrder` có đủ `delivery*` đúng bằng `Customer` tại thời điểm đó; sửa địa chỉ giao hàng trên đơn → Timeline ghi đúng cũ/mới; in 1 phiếu từ trang chi tiết; in nhiều phiếu từ danh sách "Chờ SX" (đơn hàng có ≥2 xưởng); kiểm tra Timeline PO ghi đúng `PRINTED` sau mỗi lần in; bản in A5 hiển thị đúng địa chỉ giao đã sửa (không phải địa chỉ mặc định của Customer nếu 2 cái khác nhau), đúng thông số/số lượng, không lộ giá.
+- [x] Unit test `sales-order.service.spec.ts`: `updateDeliveryAddress` ghi đúng Timeline (old/new), không đổi status, sửa được ở mọi status.
+- [x] Unit test `production-order.service.spec.ts`: endpoint `print` ghi đúng Timeline, không đổi `status`.
+- [x] `tsc --noEmit` + `nest build` + `next build` sạch.
+- [x] Verify sống (script gọi thẳng `SalesOrderService`/`ProductionOrderService` thật qua `NestFactory.createApplicationContext`, DB dev thật — không phải test mock): backfill migration đúng (2 `SalesOrder` cũ có `deliveryName`/`deliveryPhone` = `customerName`/`customerPhone`, phần địa chỉ chi tiết NULL); `updateDeliveryAddress()` ghi đúng field mới + Timeline `old`/`new` chính xác; `print()` ghi đúng 1 dòng Timeline `PRINTED` (đếm 0→1), **không đổi** `ProductionOrder.status`; dữ liệu trả về đúng `salesOrder.delivery*` đã sửa + `parameters`/`note` của từng item. `tsc --noEmit` + `nest build` + `next build` (cả 2 app) sạch, route `/production/print` build thành công. **Chưa verify qua trình duyệt có đăng nhập thật** (không có sẵn credential Owner) — chỉ smoke-check các route mới trả 307 (redirect login, không 500).
 
 ---
 

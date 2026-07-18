@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle, FileDown,
+  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle, FileDown, MapPin, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SalesOrderStatusBadge, SALES_ORDER_STATUS_LABEL } from "@/components/sales-order/sales-order-status-badge";
@@ -108,6 +108,12 @@ interface SalesOrder {
   customerName: string;
   customerPhone: string;
   ownerName: string | null;
+  deliveryName: string;
+  deliveryPhone: string;
+  deliveryAddress: string | null;
+  deliveryProvince: string | null;
+  deliveryDistrict: string | null;
+  deliveryWard: string | null;
   status: string;
   paymentStatus: string;
   totalAmount: number;
@@ -135,8 +141,21 @@ const TIMELINE_LABEL: Record<string, string> = {
   DELIVERED: "Khách đã nhận",
   PAYMENT_STATUS_CHANGED: "Cập nhật thanh toán",
   MANUAL_OVERRIDE: "Điều chỉnh thủ công",
+  DELIVERY_ADDRESS_UPDATED: "Cập nhật địa chỉ giao hàng",
   CANCELLED: "Huỷ đơn hàng",
 };
+
+// Ghép các phần địa chỉ hiển thị 1 dòng — bỏ qua phần rỗng.
+function formatDeliveryAddress(o: {
+  deliveryAddress: string | null;
+  deliveryWard: string | null;
+  deliveryDistrict: string | null;
+  deliveryProvince: string | null;
+}) {
+  return [o.deliveryAddress, o.deliveryWard, o.deliveryDistrict, o.deliveryProvince]
+    .filter(Boolean)
+    .join(", ");
+}
 
 // Action nào mang fromStatus/toStatus theo PaymentStatus thay vì SalesOrderStatus.
 const PAYMENT_STATUS_ACTIONS = new Set(["PAYMENT_STATUS_CHANGED"]);
@@ -166,6 +185,15 @@ export default function SalesOrderDetailPage() {
   const [overrideStatus, setOverrideStatus] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
+
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryName, setDeliveryName] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryProvince, setDeliveryProvince] = useState("");
+  const [deliveryDistrict, setDeliveryDistrict] = useState("");
+  const [deliveryWard, setDeliveryWard] = useState("");
+  const [deliverySaving, setDeliverySaving] = useState(false);
 
   const fetchOrder = useCallback(async () => {
     setLoading(true);
@@ -252,6 +280,43 @@ export default function SalesOrderDetailPage() {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setOverrideSaving(false);
+    }
+  }
+
+  function openDeliveryDialog() {
+    if (!order) return;
+    setDeliveryName(order.deliveryName);
+    setDeliveryPhone(order.deliveryPhone);
+    setDeliveryAddress(order.deliveryAddress ?? "");
+    setDeliveryProvince(order.deliveryProvince ?? "");
+    setDeliveryDistrict(order.deliveryDistrict ?? "");
+    setDeliveryWard(order.deliveryWard ?? "");
+    setDeliveryOpen(true);
+  }
+
+  async function handleUpdateDeliveryAddress(e: React.FormEvent) {
+    e.preventDefault();
+    if (!deliveryName.trim() || !deliveryPhone.trim()) {
+      toast.error("Vui lòng nhập tên và số điện thoại nhận hàng.");
+      return;
+    }
+    setDeliverySaving(true);
+    try {
+      await apiPost(`/sales-orders/${id}/update-delivery-address`, {
+        deliveryName: deliveryName.trim(),
+        deliveryPhone: deliveryPhone.trim(),
+        deliveryAddress: deliveryAddress.trim() || null,
+        deliveryProvince: deliveryProvince.trim() || null,
+        deliveryDistrict: deliveryDistrict.trim() || null,
+        deliveryWard: deliveryWard.trim() || null,
+      });
+      toast.success("Đã cập nhật địa chỉ giao hàng.");
+      setDeliveryOpen(false);
+      fetchOrder();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    } finally {
+      setDeliverySaving(false);
     }
   }
 
@@ -386,6 +451,37 @@ export default function SalesOrderDetailPage() {
               <span>{order.note}</span>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Địa chỉ giao hàng — sửa được ở mọi trạng thái (khác Customer.address
+          mặc định), xem knowledge/modules/order.md mục "Địa chỉ giao hàng". */}
+      <div className="rounded-lg border p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <MapPin className="h-4 w-4" />
+            Địa chỉ giao hàng
+          </h3>
+          {hasPermission("sales-order.view") && (
+            <Button variant="outline" size="sm" onClick={openDeliveryDialog}>
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Sửa
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Người nhận</span>
+            <span className="font-medium">{order.deliveryName}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Số điện thoại</span>
+            <span>{order.deliveryPhone}</span>
+          </div>
+          <div className="flex gap-2 col-span-2">
+            <span className="text-muted-foreground w-36 shrink-0">Địa chỉ</span>
+            <span>{formatDeliveryAddress(order) || "—"}</span>
+          </div>
         </div>
       </div>
 
@@ -602,6 +698,91 @@ export default function SalesOrderDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delivery Address Dialog */}
+      <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sửa địa chỉ giao hàng — {order.code}</DialogTitle>
+          </DialogHeader>
+          <form id="delivery-form" onSubmit={handleUpdateDeliveryAddress} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Chỉ áp dụng cho đơn hàng này — không ảnh hưởng địa chỉ mặc định của khách hàng.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="delivery-name">Người nhận *</Label>
+                <input
+                  id="delivery-name"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={deliveryName}
+                  onChange={(e) => setDeliveryName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delivery-phone">Số điện thoại *</Label>
+                <input
+                  id="delivery-phone"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={deliveryPhone}
+                  onChange={(e) => setDeliveryPhone(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="delivery-address">Địa chỉ</Label>
+              <Textarea
+                id="delivery-address"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                rows={2}
+                placeholder="Số nhà, đường, công trình..."
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="delivery-ward">Phường/Xã</Label>
+                <input
+                  id="delivery-ward"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={deliveryWard}
+                  onChange={(e) => setDeliveryWard(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delivery-district">Quận/Huyện</Label>
+                <input
+                  id="delivery-district"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={deliveryDistrict}
+                  onChange={(e) => setDeliveryDistrict(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delivery-province">Tỉnh/Thành</Label>
+                <input
+                  id="delivery-province"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={deliveryProvince}
+                  onChange={(e) => setDeliveryProvince(e.target.value)}
+                />
+              </div>
+            </div>
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeliveryOpen(false)}>Đóng</Button>
+            <Button
+              type="submit"
+              form="delivery-form"
+              disabled={deliverySaving || !deliveryName.trim() || !deliveryPhone.trim()}
+            >
+              {deliverySaving ? "Đang lưu..." : "Lưu địa chỉ"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Timeline */}
       {order.timeline && order.timeline.length > 0 && (
         <>
@@ -658,6 +839,28 @@ export default function SalesOrderDetailPage() {
                         {!!payload.refundNote && (
                           <div className="italic">{String(payload.refundNote)}</div>
                         )}
+                        {entry.action === "DELIVERY_ADDRESS_UPDATED" &&
+                          !!payload.old && !!payload.new && (() => {
+                            const oldV = payload.old as Record<string, unknown>;
+                            const newV = payload.new as Record<string, unknown>;
+                            return (
+                              <div>
+                                Địa chỉ: <span className="text-foreground">{formatDeliveryAddress({
+                                  deliveryAddress: (oldV.deliveryAddress as string) ?? null,
+                                  deliveryWard: (oldV.deliveryWard as string) ?? null,
+                                  deliveryDistrict: (oldV.deliveryDistrict as string) ?? null,
+                                  deliveryProvince: (oldV.deliveryProvince as string) ?? null,
+                                }) || "—"}</span>
+                                {" → "}
+                                <span className="text-foreground">{formatDeliveryAddress({
+                                  deliveryAddress: (newV.deliveryAddress as string) ?? null,
+                                  deliveryWard: (newV.deliveryWard as string) ?? null,
+                                  deliveryDistrict: (newV.deliveryDistrict as string) ?? null,
+                                  deliveryProvince: (newV.deliveryProvince as string) ?? null,
+                                }) || "—"}</span>
+                              </div>
+                            );
+                          })()}
                       </div>
                     )}
                   </li>

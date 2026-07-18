@@ -14,6 +14,7 @@ import { SalesOrderService } from './sales-order.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
+import { UpdateDeliveryAddressDto } from './dto/update-delivery-address.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -52,6 +53,23 @@ export class SalesOrderController {
   @RequirePermission('sales-order.deliver')
   deliver(@Param('id') id: string, @Req() req: { user?: { userId?: string } }) {
     return this.salesOrderService.deliver(id, req.user?.userId ?? null);
+  }
+
+  // ── Địa chỉ giao hàng (Task 009) — không phải Manual Override ──
+
+  @Post(':id/update-delivery-address')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.view')
+  updateDeliveryAddress(
+    @Param('id') id: string,
+    @Body() dto: UpdateDeliveryAddressDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.salesOrderService.updateDeliveryAddress(
+      id,
+      dto,
+      req.user?.userId ?? null,
+    );
   }
 
   // ── Manual Override & Cancel (Task 05) ──

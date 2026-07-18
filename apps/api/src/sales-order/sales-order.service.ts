@@ -19,6 +19,7 @@ import { SettingService } from '../setting/setting.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
+import { UpdateDeliveryAddressDto } from './dto/update-delivery-address.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import {
   bucketDate,
@@ -216,6 +217,69 @@ export class SalesOrderService {
             fromStatus: salesOrder.status,
             toStatus: SalesOrderStatus.DELIVERED,
           },
+          createdBy: userId ?? null,
+          createdByName,
+        },
+      });
+
+      return tx.salesOrder.findUniqueOrThrow({
+        where: { id },
+        include: SALES_ORDER_INCLUDE,
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Địa chỉ giao hàng (009-in-phieu-san-xuat.md) — không phải Manual
+  // Override: không đổi Status, không bắt buộc lý do, sửa được ở mọi Status.
+  // Ghi Timeline (cũ → mới) để không sửa dữ liệu âm thầm.
+  // ─────────────────────────────────────────────────────
+
+  async updateDeliveryAddress(
+    id: string,
+    dto: UpdateDeliveryAddressDto,
+    userId?: string | null,
+  ) {
+    if (!dto.deliveryName?.trim()) {
+      throw new BadRequestException('Tên người nhận hàng là bắt buộc.');
+    }
+    if (!dto.deliveryPhone?.trim()) {
+      throw new BadRequestException('Số điện thoại nhận hàng là bắt buộc.');
+    }
+
+    const salesOrder = await this.findOne(id);
+
+    const oldValue = {
+      deliveryName: salesOrder.deliveryName,
+      deliveryPhone: salesOrder.deliveryPhone,
+      deliveryAddress: salesOrder.deliveryAddress,
+      deliveryProvince: salesOrder.deliveryProvince,
+      deliveryDistrict: salesOrder.deliveryDistrict,
+      deliveryWard: salesOrder.deliveryWard,
+    };
+    const newValue = {
+      deliveryName: dto.deliveryName.trim(),
+      deliveryPhone: dto.deliveryPhone.trim(),
+      deliveryAddress: dto.deliveryAddress?.trim() || null,
+      deliveryProvince: dto.deliveryProvince?.trim() || null,
+      deliveryDistrict: dto.deliveryDistrict?.trim() || null,
+      deliveryWard: dto.deliveryWard?.trim() || null,
+    };
+
+    const createdByName = await resolveActorName(this.prisma, userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.salesOrder.update({
+        where: { id },
+        data: newValue,
+      });
+
+      await tx.salesOrderTimeline.create({
+        data: {
+          salesOrderId: id,
+          action: SalesOrderTimelineAction.DELIVERY_ADDRESS_UPDATED,
+          actorType: SalesOrderTimelineActorType.USER,
+          payload: { old: oldValue, new: newValue },
           createdBy: userId ?? null,
           createdByName,
         },

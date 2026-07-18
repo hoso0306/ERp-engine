@@ -2,6 +2,8 @@
 
 > **Tên file:** `workbench/sprint-04/007-bo-loc-thoi-gian-dashboard.md`
 > **Trạng thái:** ✅ HOÀN THÀNH (18/07/2026)
+>
+> **Cập nhật 18/07/2026 (sau khi Report hoàn thành):** bộ lọc "Hôm nay/Tuần này/Tháng này/Tất cả/tuỳ chọn" mô tả ở file này đã được **thay bằng `DashboardRangeFilter`** — chỉ còn 3 preset ngắn (Hôm nay/Hôm qua/7 ngày gần đây), đúng nợ kỹ thuật đã ghi nhận ở `report.md` "Nguyên tắc phân vai Dashboard vs Report" và `008-module-bao-cao.md`. Nội dung bên dưới giữ nguyên để biết bối cảnh quyết định tại thời điểm đó, không còn phản ánh đúng UI hiện tại.
 
 ---
 
