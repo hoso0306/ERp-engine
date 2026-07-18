@@ -239,12 +239,22 @@ export class DebtService {
       where.customerId = { in: Array.from(exceededMap.keys()) };
     }
 
+    // Sắp xếp (rà soát bộ lọc Công nợ, chốt 18/07/2026): mặc định createdAt
+    // desc — 'remaining_desc' (số nợ giảm dần) và 'due_asc' (sắp đến hạn
+    // trước; Postgres tự đưa dueDate NULL — đơn chưa giao — xuống cuối).
+    const orderBy: Prisma.ReceivableOrderByWithRelationInput =
+      query.sortBy === 'remaining_desc'
+        ? { remainingAmount: 'desc' }
+        : query.sortBy === 'due_asc'
+          ? { dueDate: 'asc' }
+          : { createdAt: 'desc' };
+
     const [data, total] = await Promise.all([
       this.prisma.receivable.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: RECEIVABLE_LIST_INCLUDE,
       }),
       this.prisma.receivable.count({ where }),

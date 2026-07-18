@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, DateRangeFilter } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +27,7 @@ interface ReturnRow {
   customerName: string;
   returnDate: string;
   status: string;
+  totalValue: number;
   _count: { items: number };
 }
 
@@ -39,6 +40,8 @@ export default function ReturnsPage() {
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,9 @@ export default function ReturnsPage() {
   const [recoveryMeta, setRecoveryMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [recoverySearch, setRecoverySearch] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState("all");
+  const [recoveryDateFrom, setRecoveryDateFrom] = useState("");
+  const [recoveryDateTo, setRecoveryDateTo] = useState("");
+  const [recoverySortBy, setRecoverySortBy] = useState("default");
   const [recoveryPage, setRecoveryPage] = useState(1);
   const [recoveryLoading, setRecoveryLoading] = useState(true);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
@@ -85,6 +91,18 @@ export default function ReturnsPage() {
     setPage(1);
   }, [search, status]);
 
+  // BE chưa hỗ trợ filter theo ngày hoàn (ReturnQueryDto không có field này) —
+  // lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
+  const filteredReturns = useMemo(() => {
+    if (!dateFrom && !dateTo) return returns;
+    return returns.filter((r) => {
+      const d = new Date(r.returnDate);
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo && d > new Date(dateTo)) return false;
+      return true;
+    });
+  }, [returns, dateFrom, dateTo]);
+
   const fetchRecovery = useCallback(async () => {
     setRecoveryLoading(true);
     setRecoveryError(null);
@@ -92,6 +110,7 @@ export default function ReturnsPage() {
       const params = new URLSearchParams();
       if (recoverySearch) params.set("search", recoverySearch);
       if (recoveryStatus !== "all") params.set("status", recoveryStatus);
+      if (recoverySortBy !== "default") params.set("sortBy", recoverySortBy);
       params.set("page", String(recoveryPage));
       params.set("limit", "10");
 
@@ -103,7 +122,7 @@ export default function ReturnsPage() {
     } finally {
       setRecoveryLoading(false);
     }
-  }, [recoverySearch, recoveryStatus, recoveryPage]);
+  }, [recoverySearch, recoveryStatus, recoverySortBy, recoveryPage]);
 
   useEffect(() => {
     if (tab !== "recovery") return;
@@ -113,7 +132,19 @@ export default function ReturnsPage() {
 
   useEffect(() => {
     setRecoveryPage(1);
-  }, [recoverySearch, recoveryStatus]);
+  }, [recoverySearch, recoveryStatus, recoverySortBy]);
+
+  // BE chưa hỗ trợ filter theo ngày (RecoveryInventoryQueryDto không có field
+  // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
+  const filteredRecoveryItems = useMemo(() => {
+    if (!recoveryDateFrom && !recoveryDateTo) return recoveryItems;
+    return recoveryItems.filter((r) => {
+      const d = new Date(r.createdAt);
+      if (recoveryDateFrom && d < new Date(recoveryDateFrom)) return false;
+      if (recoveryDateTo && d > new Date(recoveryDateTo)) return false;
+      return true;
+    });
+  }, [recoveryItems, recoveryDateFrom, recoveryDateTo]);
 
   async function handleDispose() {
     if (!disposeTarget) return;
@@ -170,16 +201,23 @@ export default function ReturnsPage() {
                 <SelectItem value="COMPLETED">Hoàn tất</SelectItem>
               </SelectContent>
             </Select>
+            <DateRangeFilter
+              label="Ngày hoàn"
+              dateFrom={dateFrom}
+              onDateFromChange={setDateFrom}
+              dateTo={dateTo}
+              onDateToChange={setDateTo}
+            />
           </div>
 
           {loading && <Loading />}
           {error && <ErrorState description={error} onRetry={fetchReturns} />}
-          {!loading && !error && returns.length === 0 && (
+          {!loading && !error && filteredReturns.length === 0 && (
             <EmptyState title="Không có phiếu hoàn" description="Không có phiếu hoàn nào khớp bộ lọc." />
           )}
-          {!loading && !error && returns.length > 0 && (
+          {!loading && !error && filteredReturns.length > 0 && (
             <ReturnTable
-              returns={returns}
+              returns={filteredReturns}
               meta={meta}
               onPageChange={setPage}
               canViewOrder={hasPermission("sales-order.view")}
@@ -209,16 +247,33 @@ export default function ReturnsPage() {
                 <SelectItem value="DISPOSED">Đã thanh lý</SelectItem>
               </SelectContent>
             </Select>
+            <DateRangeFilter
+              label="Ngày tạo"
+              dateFrom={recoveryDateFrom}
+              onDateFromChange={setRecoveryDateFrom}
+              dateTo={recoveryDateTo}
+              onDateToChange={setRecoveryDateTo}
+            />
+            <Select value={recoverySortBy} onValueChange={(v) => setRecoverySortBy(v ?? "default")}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Sắp xếp" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Mặc định (mới nhất)</SelectItem>
+                <SelectItem value="created_asc">Ngày tạo tăng dần</SelectItem>
+                <SelectItem value="created_desc">Ngày tạo giảm dần</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {recoveryLoading && <Loading />}
           {recoveryError && <ErrorState description={recoveryError} onRetry={fetchRecovery} />}
-          {!recoveryLoading && !recoveryError && recoveryItems.length === 0 && (
+          {!recoveryLoading && !recoveryError && filteredRecoveryItems.length === 0 && (
             <EmptyState title="Không có hàng thu hồi" description="Không có hàng thu hồi nào khớp bộ lọc." />
           )}
-          {!recoveryLoading && !recoveryError && recoveryItems.length > 0 && (
+          {!recoveryLoading && !recoveryError && filteredRecoveryItems.length > 0 && (
             <RecoveryInventoryTable
-              items={recoveryItems}
+              items={filteredRecoveryItems}
               meta={recoveryMeta}
               onPageChange={setRecoveryPage}
               canMarkUsed={hasPermission("return.mark-used")}

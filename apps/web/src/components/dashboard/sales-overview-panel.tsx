@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -30,9 +31,28 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("vi-VN").format(amount) + " ₫";
 }
 
-export function SalesOverviewPanel({ sales }: { sales: SalesOverview }) {
+interface SalesOverviewPanelProps {
+  sales: SalesOverview;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function SalesOverviewPanel({ sales, dateFrom, dateTo }: SalesOverviewPanelProps) {
   const { hasPermission } = useAuth();
   const canViewOrder = hasPermission("sales-order.view");
+
+  // KPI tổng quan (summary) luôn phản ánh hiện trạng thật, không lọc theo
+  // thời gian — chỉ danh sách "Đơn hàng gần đây" được lọc theo khoảng ngày tạo
+  // đã chọn (thiết kế chốt: bộ lọc Dashboard chỉ ảnh hưởng danh sách con).
+  const filteredRecentOrders = useMemo(() => {
+    if (!dateFrom && !dateTo) return sales.recentOrders;
+    return sales.recentOrders.filter((o) => {
+      const d = new Date(o.createdAt);
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo && d > new Date(dateTo)) return false;
+      return true;
+    });
+  }, [sales.recentOrders, dateFrom, dateTo]);
 
   return (
     <section className="space-y-4">
@@ -54,7 +74,7 @@ export function SalesOverviewPanel({ sales }: { sales: SalesOverview }) {
         <StatTile label="Đã giao" value={String(sales.summary.delivered)} />
       </div>
 
-      {sales.recentOrders.length > 0 && (
+      {filteredRecentOrders.length > 0 && (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -68,7 +88,7 @@ export function SalesOverviewPanel({ sales }: { sales: SalesOverview }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales.recentOrders.map((o) => (
+              {filteredRecentOrders.map((o) => (
                 <TableRow key={o.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     {canViewOrder ? (

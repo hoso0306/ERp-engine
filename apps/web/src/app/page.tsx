@@ -4,9 +4,11 @@ import Link from "next/link";
 import { navigation } from "@/config/navigation";
 import { useAuth } from "@/context/auth-context";
 import { EmptyState } from "@/components/shared";
+import { useBranding } from "@/lib/use-branding";
 
 export default function HomePage() {
   const { hasPermission } = useAuth();
+  const branding = useBranding();
 
   const groups = navigation
     .map((group) => ({
@@ -27,7 +29,29 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-8">
+    // relative + isolate: tạo stacking context riêng cho watermark bên dưới
+    // (zIndex:-1 chỉ so với nội dung TRONG div này, không phụ thuộc layout
+    // shell ngoài — xem cách làm ở print/page.tsx báo giá).
+    <div className="relative isolate space-y-8">
+      {branding?.logo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={branding.logo}
+          alt=""
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 600,
+            height: 600,
+            objectFit: "contain",
+            opacity: 0.08,
+            zIndex: -1,
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {groups.map((group) => (
         <div key={group.label} className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground">{group.label}</h2>

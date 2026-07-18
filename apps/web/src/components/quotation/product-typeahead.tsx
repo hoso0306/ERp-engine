@@ -17,14 +17,20 @@ interface ProductTypeaheadProps {
   disabled?: boolean;
 }
 
+const PAGE_SIZE = 20;
+
 // Gợi ý sản phẩm realtime, tìm theo mã/tên — cùng pattern MaterialTypeahead
 // (warehouse module). Chỉ gợi ý sản phẩm đang bán (status=ACTIVE).
+// Cuộn gần đáy danh sách tự tải thêm trang tiếp theo (infinite scroll).
 export function ProductTypeahead({ value, onChange, disabled }: ProductTypeaheadProps) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<ProductOption[]>([]);
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,18 +51,51 @@ export function ProductTypeahead({ value, onChange, disabled }: ProductTypeahead
         const params = new URLSearchParams();
         if (query.trim()) params.set("search", query.trim());
         params.set("status", "ACTIVE");
-        params.set("limit", "10");
-        const json = await apiGet<{ data: ProductOption[] }>(`/products?${params}`);
+        params.set("limit", String(PAGE_SIZE));
+        params.set("page", "1");
+        const json = await apiGet<{ data: ProductOption[]; meta?: { totalPages: number } }>(
+          `/products?${params}`,
+        );
         setOptions(json.data ?? []);
+        setPage(1);
+        setTotalPages(json.meta?.totalPages ?? 1);
         setHighlighted(0);
       } catch {
         setOptions([]);
+        setTotalPages(1);
       } finally {
         setLoading(false);
       }
     }, 300);
     return () => clearTimeout(timer);
   }, [query, open]);
+
+  async function loadMore() {
+    if (loading || loadingMore || page >= totalPages) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("search", query.trim());
+      params.set("status", "ACTIVE");
+      params.set("limit", String(PAGE_SIZE));
+      params.set("page", String(nextPage));
+      const json = await apiGet<{ data: ProductOption[] }>(`/products?${params}`);
+      setOptions((prev) => [...prev, ...(json.data ?? [])]);
+      setPage(nextPage);
+    } catch {
+      // giữ nguyên danh sách hiện có nếu tải thêm lỗi
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function onListScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+      loadMore();
+    }
+  }
 
   function pick(product: ProductOption) {
     onChange(product);
@@ -125,7 +164,10 @@ export function ProductTypeahead({ value, onChange, disabled }: ProductTypeahead
         aria-expanded={open}
       />
       {open && (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-popover shadow-md">
+        <div
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md"
+          onScroll={onListScroll}
+        >
           {loading && (
             <div className="px-3 py-2 text-sm text-muted-foreground">Đang tìm...</div>
           )}
@@ -149,6 +191,11 @@ export function ProductTypeahead({ value, onChange, disabled }: ProductTypeahead
                 <span className="font-medium truncate">{p.name}</span>
               </button>
             ))}
+          {!loading && loadingMore && (
+            <div className="px-3 py-2 text-center text-xs text-muted-foreground">
+              Đang tải thêm...
+            </div>
+          )}
         </div>
       )}
     </div>

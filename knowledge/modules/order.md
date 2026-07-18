@@ -214,8 +214,10 @@ Tính và lưu ngay khi Sales Order được tạo từ Approve.
 ```text
 totalAmount   = tổng subtotal của tất cả SalesOrderItem (đã gồm quantity)
 plannedCost   = tổng plannedCost của tất cả SalesOrderItem (đã gồm quantity)
-plannedProfit = totalAmount - plannedCost
+plannedProfit = totalAmount - plannedCost - discountAmount
 ```
+
+**`plannedProfit` phải trừ `discountAmount`** (Giảm thêm cấp toàn báo giá, snapshot từ `Quotation.discountAmount` tại Approve — Review Nghiệp vụ Tài chính, chốt 18/07/2026). `grandTotal` (dùng cho Receivable) đã trừ `discountAmount` từ Sprint 04; `plannedProfit` bị bỏ sót ở lần đó vì thuộc một dòng code khác trong cùng hàm `approve()` — sửa lại cho nhất quán: tiền đã giảm cho khách không thể vẫn tính là lợi nhuận công ty giữ được.
 
 Dashboard đọc trực tiếp 3 field này — không SUM lại từ items.
 

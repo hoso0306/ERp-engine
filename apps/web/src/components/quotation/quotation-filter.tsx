@@ -1,8 +1,8 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DateRangeFilter } from "@/components/shared";
 import { Search } from "lucide-react";
 
 // Tabs trạng thái (thiết kế chốt 08/07/2026): mặc định "Chờ xử lý" (DRAFT+SENT,
@@ -60,30 +60,13 @@ export function QuotationFilter({
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="date-from" className="text-sm text-muted-foreground whitespace-nowrap">
-            Từ ngày
-          </Label>
-          <Input
-            id="date-from"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => onDateFromChange(e.target.value)}
-            className="w-40"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="date-to" className="text-sm text-muted-foreground whitespace-nowrap">
-            Đến ngày
-          </Label>
-          <Input
-            id="date-to"
-            type="date"
-            value={dateTo}
-            onChange={(e) => onDateToChange(e.target.value)}
-            className="w-40"
-          />
-        </div>
+        <DateRangeFilter
+          label="Ngày tạo"
+          dateFrom={dateFrom}
+          onDateFromChange={onDateFromChange}
+          dateTo={dateTo}
+          onDateToChange={onDateToChange}
+        />
       </div>
     </div>
   );

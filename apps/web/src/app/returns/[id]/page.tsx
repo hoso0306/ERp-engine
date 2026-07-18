@@ -52,7 +52,12 @@ interface ReturnDetail {
   completedByName: string | null;
   status: string;
   note: string | null;
+  totalValue: number;
   items: ReturnItem[];
+}
+
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
 }
 
 export default function ReturnDetailPage() {
@@ -145,6 +150,13 @@ export default function ReturnDetailPage() {
             <span className="text-muted-foreground w-36 shrink-0">Ngày trả</span>
             <span>{new Date(ret.returnDate).toLocaleDateString("vi-VN")}</span>
           </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Giá trị phiếu hoàn</span>
+            <span className="font-mono font-medium">
+              {formatMoney(Number(ret.totalValue))}
+              <span className="ml-1 font-sans text-xs text-muted-foreground">(đã gồm VAT)</span>
+            </span>
+          </div>
           {ret.receivedBy && (
             <div className="flex gap-2">
               <span className="text-muted-foreground w-36 shrink-0">Người nhận</span>
@@ -171,7 +183,7 @@ export default function ReturnDetailPage() {
       {/* Items */}
       <div className="space-y-4">
         <h3 className="text-base font-semibold">Danh sách sản phẩm trả</h3>
-        <ReturnItemTable items={ret.items} />
+        <ReturnItemTable items={ret.items} totalValue={Number(ret.totalValue)} />
       </div>
     </div>
   );

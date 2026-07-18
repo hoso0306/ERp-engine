@@ -4,7 +4,7 @@ import { useSetBreadcrumbExtra } from "@/context/breadcrumb-context";
 
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
   // Nhãn riêng cho breadcrumb khi khác với title hiển thị trên trang (vd
   // trang Công nợ có title dài "Công nợ — DH00123", breadcrumb chỉ cần mã).

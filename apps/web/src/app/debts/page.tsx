@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
 import {
   ReceivableFilter,
   type ReceivableTab,
+  type ReceivableSort,
 } from "@/components/debt/receivable-filter";
 import { ReceivableTable } from "@/components/debt/receivable-table";
 import { DebtDashboardPanel } from "@/components/debt/debt-dashboard-panel";
@@ -31,6 +32,9 @@ export default function DebtsPage() {
   const [tab, setTab] = useState<ReceivableTab>("all");
   const [risk, setRisk] = useState("all");
   const [paymentStatus, setPaymentStatus] = useState("all");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
+  const [sortBy, setSortBy] = useState<ReceivableSort>("default");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +49,7 @@ export default function DebtsPage() {
       if (tab === "credit_exceeded") params.set("creditExceeded", "true");
       if (risk !== "all") params.set("risk", risk);
       if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
+      if (sortBy !== "default") params.set("sortBy", sortBy);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -56,7 +61,7 @@ export default function DebtsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, risk, paymentStatus, page]);
+  }, [search, tab, risk, paymentStatus, sortBy, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchReceivables, search ? 300 : 0);
@@ -65,11 +70,36 @@ export default function DebtsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, risk, paymentStatus]);
+  }, [search, tab, risk, paymentStatus, sortBy]);
+
+  // BE chưa hỗ trợ filter theo hạn thanh toán (ReceivableQueryDto không có
+  // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern với
+  // Ngày giao ở Đơn hàng.
+  const filteredReceivables = useMemo(() => {
+    if (!dueFrom && !dueTo) return receivables;
+    return receivables.filter((r) => {
+      if (!r.dueDate) return false;
+      const d = new Date(r.dueDate);
+      if (dueFrom && d < new Date(dueFrom)) return false;
+      if (dueTo && d > new Date(dueTo)) return false;
+      return true;
+    });
+  }, [receivables, dueFrom, dueTo]);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Công nợ" description="Theo dõi công nợ phải thu và ghi nhận thanh toán" />
+      <PageHeader
+        title="Công nợ"
+        description={
+          <>
+            Theo dõi công nợ phải thu và ghi nhận thanh toán
+            <br />
+            <span className="text-amber-600 dark:text-amber-500">
+              Chú ý: Công nợ không bao gồm các đơn &quot;chưa giao hàng&quot;.
+            </span>
+          </>
+        }
+      />
 
       <DebtDashboardPanel />
 
@@ -82,15 +112,28 @@ export default function DebtsPage() {
         onRiskChange={setRisk}
         paymentStatus={paymentStatus}
         onPaymentStatusChange={setPaymentStatus}
+        dueFrom={dueFrom}
+        onDueFromChange={setDueFrom}
+        dueTo={dueTo}
+        onDueToChange={setDueTo}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
       />
 
       {loading && <Loading />}
       {error && <ErrorState description={error} onRetry={fetchReceivables} />}
-      {!loading && !error && receivables.length === 0 && (
-        <EmptyState title="Không có công nợ" description="Không có công nợ nào khớp bộ lọc." />
+      {!loading && !error && filteredReceivables.length === 0 && (
+        <EmptyState
+          title="Không có công nợ"
+          description={
+            dueFrom || dueTo
+              ? "Không có công nợ nào khớp khoảng hạn thanh toán đã chọn."
+              : "Không có công nợ nào khớp bộ lọc."
+          }
+        />
       )}
-      {!loading && !error && receivables.length > 0 && (
-        <ReceivableTable receivables={receivables} meta={meta} onPageChange={setPage} />
+      {!loading && !error && filteredReceivables.length > 0 && (
+        <ReceivableTable receivables={filteredReceivables} meta={meta} onPageChange={setPage} />
       )}
     </div>
   );

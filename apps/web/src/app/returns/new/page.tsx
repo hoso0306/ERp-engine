@@ -233,6 +233,7 @@ function CreateReturnForm() {
                             checked={sel.checked}
                             disabled={disabled}
                             onCheckedChange={(v) => updateSelection(item.id, { checked: !!v })}
+                            className="size-5"
                           />
                         </TableCell>
                         <TableCell>

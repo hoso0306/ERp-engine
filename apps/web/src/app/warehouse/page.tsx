@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { PageHeader, Loading, ErrorState, EmptyState, DateRangeFilter } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -63,6 +63,8 @@ export default function WarehousePage() {
   const [receipts, setReceipts] = useState<MaterialReceiptRow[]>([]);
   const [receiptMeta, setReceiptMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [receiptSearch, setReceiptSearch] = useState("");
+  const [receiptDateFrom, setReceiptDateFrom] = useState("");
+  const [receiptDateTo, setReceiptDateTo] = useState("");
   const [receiptPage, setReceiptPage] = useState(1);
   const [receiptLoading, setReceiptLoading] = useState(true);
   const [receiptError, setReceiptError] = useState<string | null>(null);
@@ -72,6 +74,8 @@ export default function WarehousePage() {
   const [transactionMeta, setTransactionMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [transactionMaterial, setTransactionMaterial] = useState<MaterialOption | null>(null);
   const [transactionType, setTransactionType] = useState("all");
+  const [transactionDateFrom, setTransactionDateFrom] = useState("");
+  const [transactionDateTo, setTransactionDateTo] = useState("");
   const [transactionPage, setTransactionPage] = useState(1);
   const [transactionLoading, setTransactionLoading] = useState(true);
   const [transactionError, setTransactionError] = useState<string | null>(null);
@@ -138,6 +142,18 @@ export default function WarehousePage() {
     setReceiptPage(1);
   }, [receiptSearch]);
 
+  // BE chưa hỗ trợ filter theo ngày (MaterialReceiptQueryDto không có field
+  // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
+  const filteredReceipts = useMemo(() => {
+    if (!receiptDateFrom && !receiptDateTo) return receipts;
+    return receipts.filter((r) => {
+      const d = new Date(r.createdAt);
+      if (receiptDateFrom && d < new Date(receiptDateFrom)) return false;
+      if (receiptDateTo && d > new Date(receiptDateTo)) return false;
+      return true;
+    });
+  }, [receipts, receiptDateFrom, receiptDateTo]);
+
   const fetchTransactions = useCallback(async () => {
     setTransactionLoading(true);
     setTransactionError(null);
@@ -165,6 +181,18 @@ export default function WarehousePage() {
   useEffect(() => {
     setTransactionPage(1);
   }, [transactionMaterial, transactionType]);
+
+  // BE chưa hỗ trợ filter theo ngày (WarehouseTransactionQueryDto không có
+  // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
+  const filteredTransactions = useMemo(() => {
+    if (!transactionDateFrom && !transactionDateTo) return transactions;
+    return transactions.filter((t) => {
+      const d = new Date(t.createdAt);
+      if (transactionDateFrom && d < new Date(transactionDateFrom)) return false;
+      if (transactionDateTo && d > new Date(transactionDateTo)) return false;
+      return true;
+    });
+  }, [transactions, transactionDateFrom, transactionDateTo]);
 
   return (
     <div className="space-y-6">
@@ -209,6 +237,13 @@ export default function WarehousePage() {
                 className="pl-9"
               />
             </div>
+            <DateRangeFilter
+              label="Ngày tạo"
+              dateFrom={receiptDateFrom}
+              onDateFromChange={setReceiptDateFrom}
+              dateTo={receiptDateTo}
+              onDateToChange={setReceiptDateTo}
+            />
             {hasPermission("warehouse.receipt") && (
               <Button onClick={() => setReceiptDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -219,11 +254,18 @@ export default function WarehousePage() {
 
           {receiptLoading && <Loading />}
           {receiptError && <ErrorState description={receiptError} onRetry={fetchReceipts} />}
-          {!receiptLoading && !receiptError && receipts.length === 0 && (
-            <EmptyState title="Chưa có phiếu nhập" description="Tạo phiếu nhập đầu tiên để bắt đầu." />
+          {!receiptLoading && !receiptError && filteredReceipts.length === 0 && (
+            <EmptyState
+              title="Chưa có phiếu nhập"
+              description={
+                receiptDateFrom || receiptDateTo
+                  ? "Không có phiếu nhập nào khớp khoảng ngày đã chọn."
+                  : "Tạo phiếu nhập đầu tiên để bắt đầu."
+              }
+            />
           )}
-          {!receiptLoading && !receiptError && receipts.length > 0 && (
-            <MaterialReceiptTable receipts={receipts} meta={receiptMeta} onPageChange={setReceiptPage} />
+          {!receiptLoading && !receiptError && filteredReceipts.length > 0 && (
+            <MaterialReceiptTable receipts={filteredReceipts} meta={receiptMeta} onPageChange={setReceiptPage} />
           )}
         </TabsContent>
 
@@ -242,15 +284,22 @@ export default function WarehousePage() {
                 <SelectItem value="MATERIAL_ISSUE">Xuất sản xuất</SelectItem>
               </SelectContent>
             </Select>
+            <DateRangeFilter
+              label="Ngày tạo"
+              dateFrom={transactionDateFrom}
+              onDateFromChange={setTransactionDateFrom}
+              dateTo={transactionDateTo}
+              onDateToChange={setTransactionDateTo}
+            />
           </div>
 
           {transactionLoading && <Loading />}
           {transactionError && <ErrorState description={transactionError} onRetry={fetchTransactions} />}
-          {!transactionLoading && !transactionError && transactions.length === 0 && (
+          {!transactionLoading && !transactionError && filteredTransactions.length === 0 && (
             <EmptyState title="Không có giao dịch" description="Không có giao dịch kho nào khớp bộ lọc." />
           )}
-          {!transactionLoading && !transactionError && transactions.length > 0 && (
-            <TransactionTable transactions={transactions} meta={transactionMeta} onPageChange={setTransactionPage} />
+          {!transactionLoading && !transactionError && filteredTransactions.length > 0 && (
+            <TransactionTable transactions={filteredTransactions} meta={transactionMeta} onPageChange={setTransactionPage} />
           )}
         </TabsContent>
       </Tabs>

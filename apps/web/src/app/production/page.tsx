@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { PageHeader, Loading, ErrorState, EmptyState, todayISO } from "@/components/shared";
 import {
   ProductionFilter,
   TAB_STATUS_PARAM,
@@ -17,6 +17,8 @@ interface ProductionOrderRow {
   status: string;
   salesOrder: { id: string; code: string; customerName: string };
   _count: { items: number };
+  createdAt: string;
+  completedAt: string | null;
 }
 
 interface ProductionCenter {
@@ -30,9 +32,14 @@ export default function ProductionPage() {
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
   const [search, setSearch] = useState("");
-  // Mặc định "Chờ SX" — nhóm phiếu cần thao tác nhiều nhất.
-  const [tab, setTab] = useState<ProductionOrderTab>("pending");
+  // Mặc định "Tất cả" + Ngày tạo "Hôm nay" (rà soát bộ lọc, chốt 18/07/2026) —
+  // cùng thiết kế với Đơn hàng.
+  const [tab, setTab] = useState<ProductionOrderTab>("all");
   const [productionCenterId, setProductionCenterId] = useState("all");
+  const [dateFrom, setDateFrom] = useState(todayISO());
+  const [dateTo, setDateTo] = useState(todayISO());
+  const [completedFrom, setCompletedFrom] = useState("");
+  const [completedTo, setCompletedTo] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +79,25 @@ export default function ProductionPage() {
     setPage(1);
   }, [search, tab, productionCenterId]);
 
+  // BE chưa hỗ trợ filter theo ngày (ProductionOrderQueryDto không có field
+  // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      if (dateFrom || dateTo) {
+        const d = new Date(o.createdAt);
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo && d > new Date(dateTo)) return false;
+      }
+      if (completedFrom || completedTo) {
+        if (!o.completedAt) return false;
+        const d = new Date(o.completedAt);
+        if (completedFrom && d < new Date(completedFrom)) return false;
+        if (completedTo && d > new Date(completedTo)) return false;
+      }
+      return true;
+    });
+  }, [orders, dateFrom, dateTo, completedFrom, completedTo]);
+
   return (
     <div className="space-y-6">
       <PageHeader title="Sản xuất" description="Theo dõi và thao tác Phiếu sản xuất của các xưởng" />
@@ -84,15 +110,23 @@ export default function ProductionPage() {
         productionCenters={productionCenters}
         productionCenterId={productionCenterId}
         onProductionCenterChange={(v) => setProductionCenterId(v ?? "all")}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
+        completedFrom={completedFrom}
+        onCompletedFromChange={setCompletedFrom}
+        completedTo={completedTo}
+        onCompletedToChange={setCompletedTo}
       />
 
       {loading && <Loading />}
       {error && <ErrorState description={error} onRetry={fetchOrders} />}
-      {!loading && !error && orders.length === 0 && (
+      {!loading && !error && filteredOrders.length === 0 && (
         <EmptyState title="Không có phiếu sản xuất" description="Không có phiếu nào khớp bộ lọc." />
       )}
-      {!loading && !error && orders.length > 0 && (
-        <ProductionTable orders={orders} meta={meta} onPageChange={setPage} />
+      {!loading && !error && filteredOrders.length > 0 && (
+        <ProductionTable orders={filteredOrders} meta={meta} onPageChange={setPage} />
       )}
     </div>
   );

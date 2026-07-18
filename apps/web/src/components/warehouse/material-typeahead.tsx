@@ -17,14 +17,20 @@ interface MaterialTypeaheadProps {
   onChange: (material: MaterialOption | null) => void;
 }
 
+const PAGE_SIZE = 20;
+
 // Gợi ý vật tư realtime — cùng pattern CustomerTypeahead (quotation module),
 // chỉ gợi ý vật tư đang hoạt động (isActive=true).
+// Cuộn gần đáy danh sách tự tải thêm trang tiếp theo (infinite scroll).
 export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<MaterialOption[]>([]);
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,19 +50,52 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set("search", query.trim());
-        params.set("limit", "10");
+        params.set("limit", String(PAGE_SIZE));
+        params.set("page", "1");
         params.set("isActive", "true");
-        const json = await apiGet<{ data: MaterialOption[] }>(`/materials?${params}`);
+        const json = await apiGet<{ data: MaterialOption[]; meta?: { totalPages: number } }>(
+          `/materials?${params}`,
+        );
         setOptions(json.data ?? []);
+        setPage(1);
+        setTotalPages(json.meta?.totalPages ?? 1);
         setHighlighted(0);
       } catch {
         setOptions([]);
+        setTotalPages(1);
       } finally {
         setLoading(false);
       }
     }, 300);
     return () => clearTimeout(timer);
   }, [query, open]);
+
+  async function loadMore() {
+    if (loading || loadingMore || page >= totalPages) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("search", query.trim());
+      params.set("limit", String(PAGE_SIZE));
+      params.set("page", String(nextPage));
+      params.set("isActive", "true");
+      const json = await apiGet<{ data: MaterialOption[] }>(`/materials?${params}`);
+      setOptions((prev) => [...prev, ...(json.data ?? [])]);
+      setPage(nextPage);
+    } catch {
+      // giữ nguyên danh sách hiện có nếu tải thêm lỗi
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function onListScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+      loadMore();
+    }
+  }
 
   function pick(material: MaterialOption) {
     onChange(material);
@@ -127,7 +166,10 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
         aria-expanded={open}
       />
       {open && (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-popover shadow-md">
+        <div
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md"
+          onScroll={onListScroll}
+        >
           {loading && (
             <div className="px-3 py-2 text-sm text-muted-foreground">Đang tìm...</div>
           )}
@@ -158,6 +200,11 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
                 )}
               </button>
             ))}
+          {!loading && loadingMore && (
+            <div className="px-3 py-2 text-center text-xs text-muted-foreground">
+              Đang tải thêm...
+            </div>
+          )}
         </div>
       )}
     </div>

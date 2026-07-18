@@ -1069,7 +1069,12 @@ export class QuotationWorkflowService {
         (s, c) => s + c.itemPlannedCost,
         0,
       );
-      const plannedProfit = totalAmount - plannedCost;
+      // Trừ thêm discountAmount (Giảm thêm cấp toàn báo giá, chốt 18/07/2026 —
+      // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
+      // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
+      // phồng đúng bằng số tiền Giảm thêm.
+      const plannedProfit =
+        totalAmount - plannedCost - Number(quotation.discountAmount);
       const totalProductionOrders = new Set(
         quotation.items.map((i) => i.product.productionCenterId),
       ).size;

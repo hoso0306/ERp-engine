@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ERP Engine",
+  title: "Rèm Thăng Long",
   description: "ERP Quản lý Xưởng Rèm Thăng Long",
 };
 

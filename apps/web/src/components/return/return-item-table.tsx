@@ -36,18 +36,20 @@ interface ReturnItemRow {
 
 interface ReturnItemTableProps {
   items: ReturnItemRow[];
+  // Giá trị phiếu hoàn đã gồm VAT — lấy thẳng từ Return.totalValue (API),
+  // không tự tính lại ở đây (Review Nghiệp vụ Tài chính, chốt 18/07/2026,
+  // Finding #2: tự tính trước đây bỏ sót VAT, lệch với số ở đầu trang chi tiết).
+  totalValue: number;
 }
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
 }
 
-export function ReturnItemTable({ items }: ReturnItemTableProps) {
+export function ReturnItemTable({ items, totalValue }: ReturnItemTableProps) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground py-6 text-center">Chưa có sản phẩm nào.</p>;
   }
-
-  const grandTotal = items.reduce((s, i) => s + Number(i.returnedQuantity) * Number(i.unitPriceSnapshot), 0);
 
   return (
     <div className="rounded-md border">
@@ -118,10 +120,10 @@ export function ReturnItemTable({ items }: ReturnItemTableProps) {
           })}
           <TableRow className="bg-muted/50">
             <TableCell colSpan={4} className="text-right text-sm font-medium">
-              Tổng giá trị hàng trả
+              Tổng giá trị hàng trả (đã gồm VAT)
             </TableCell>
             <TableCell className="text-right font-mono font-bold">
-              {formatMoney(grandTotal)}
+              {formatMoney(totalValue)}
             </TableCell>
             <TableCell colSpan={2} />
           </TableRow>

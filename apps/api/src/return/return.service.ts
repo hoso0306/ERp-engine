@@ -206,6 +206,20 @@ export class ReturnService {
       }
     }
 
+    // Giá trị phiếu hoàn (đã gồm VAT) — snapshot 1 lần tại đây, xem comment
+    // Return.totalValue trong schema. Chỉ tham khảo, không tự động trừ Công nợ.
+    let totalValue = 0;
+    for (const item of dto.items) {
+      const soItem = salesOrderItemMap.get(item.salesOrderItemId)!;
+      const lineSubtotal = Math.round(
+        Number(soItem.finalPrice) * item.returnedQuantity,
+      );
+      const lineVat = Math.round(
+        (lineSubtotal * Number(soItem.vatRate)) / 100,
+      );
+      totalValue += lineSubtotal + lineVat;
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.runningNumber.update({
         where: { type: 'RETURN' },
@@ -223,6 +237,7 @@ export class ReturnService {
           returnDate: dto.returnDate ? new Date(dto.returnDate) : new Date(),
           receivedBy: dto.receivedBy?.trim() || null,
           note: dto.note?.trim() || null,
+          totalValue,
         },
       });
 
@@ -247,6 +262,7 @@ export class ReturnService {
             orderedQuantity: soItem.quantity,
             returnedQuantity: item.returnedQuantity,
             unitPriceSnapshot: soItem.finalPrice,
+            vatRate: soItem.vatRate,
             reason: item.reason as ReturnReason,
             note: item.note?.trim() || null,
           },
@@ -307,12 +323,19 @@ export class ReturnService {
       where.status = query.status as RecoveryInventoryStatus;
     }
 
+    // Sắp xếp (rà soát bộ lọc Hàng hoàn, chốt 18/07/2026): mặc định createdAt
+    // desc — cho phép đổi chiều để tìm hàng tồn kho thu hồi lâu ngày
+    // (createdAt asc, xem "Hàng tồn lâu" ở Dashboard).
+    const orderBy: Prisma.RecoveryInventoryOrderByWithRelationInput =
+      query.sortBy === 'created_asc' ? { createdAt: 'asc' } : { createdAt: 'desc' };
+    // 'created_desc' và giá trị mặc định đều dùng chung nhánh else (cùng kết quả).
+
     const [data, total] = await Promise.all([
       this.prisma.recoveryInventory.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       this.prisma.recoveryInventory.count({ where }),
     ]);

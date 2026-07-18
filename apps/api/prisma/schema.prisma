@@ -844,7 +844,7 @@ model QuotationItem {
   pricingRuleVersionId         String? @map("pricing_rule_version_id")
   materialRequirementVersionId String? @map("material_requirement_version_id")
 
-  systemPrice     Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
+  systemPrice     Decimal  @default(0) @map("system_price") @db.Decimal(15, 0)
   // Đơn giá/m² tra từ Price Matrix tại thời điểm tính giá (PricingEngineService)
   // — null khi sản phẩm không dùng Matrix (Expression fallback). Chỉ để hiển
   // thị trên bản in ("Giá bán"), không dùng để tính lại systemPrice/subtotal.
@@ -852,9 +852,9 @@ model QuotationItem {
   // Snapshot % từ CustomerProductDiscount(customerId, productId) tại thời điểm
   // thêm/sửa dòng (Sprint 04, chốt 16/07/2026) — THAY THẾ groupDiscount
   // ("CK nhóm") + additionalDiscountPercent/Amount/discountReason/discountBy cũ.
-  discountPercent Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  finalPrice      Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
-  subtotal        Decimal @default(0) @db.Decimal(15, 0)
+  discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  finalPrice      Decimal  @default(0) @map("final_price") @db.Decimal(15, 0)
+  subtotal        Decimal  @default(0) @db.Decimal(15, 0)
 
   // VAT (%) — snapshot từ PricingRuleVersion.vatRate tại thời điểm tính giá.
   // vatAmount tính SAU Discount Engine: round(subtotal × vatRate / 100).
@@ -994,17 +994,17 @@ model SalesOrderItem {
   productionCenterId   String @map("production_center_id")
   productionCenterName String @map("production_center_name")
 
-  pricingRuleVersionId String? @map("pricing_rule_version_id")
-  systemPrice          Decimal @map("system_price") @db.Decimal(15, 0)
+  pricingRuleVersionId String?  @map("pricing_rule_version_id")
+  systemPrice          Decimal  @map("system_price") @db.Decimal(15, 0)
   // Snapshot từ QuotationItem.unitPrice tại Approve — đơn giá/m² tra từ Price
   // Matrix, null khi sản phẩm không dùng Matrix. Chỉ để hiển thị bản in.
   unitPrice            Decimal? @map("unit_price") @db.Decimal(15, 0)
   // Snapshot từ QuotationItem.discountPercent tại Approve (Sprint 04, chốt
   // 16/07/2026) — THAY THẾ groupDiscount + additionalDiscountPercent/Amount cũ.
-  discountPercent      Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  finalPrice           Decimal @map("final_price") @db.Decimal(15, 0)
-  quantity             Decimal @db.Decimal(15, 4)
-  subtotal             Decimal @db.Decimal(15, 0)
+  discountPercent      Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  finalPrice           Decimal  @map("final_price") @db.Decimal(15, 0)
+  quantity             Decimal  @db.Decimal(15, 4)
+  subtotal             Decimal  @db.Decimal(15, 0)
 
   // VAT snapshot từ QuotationItem tại Approve.
   vatRate   Decimal @default(0) @map("vat_rate") @db.Decimal(5, 2)
@@ -1325,28 +1325,28 @@ model Payment {
 // Singleton — chỉ đúng một bản ghi, seed sẵn ở migration/seed. Không có
 // Create/Delete API (xem setting.md mục "Company Settings").
 model Company {
-  id             String   @id @default(cuid())
-  companyName    String   @map("company_name")
-  logo           String?
+  id                String   @id @default(cuid())
+  companyName       String   @map("company_name")
+  logo              String?
   // Ảnh con dấu công ty (base64) — chèn đè lên ô ký "Đại diện công ty" khi in
   // Báo giá/Xác nhận đơn hàng.
-  stamp          String?
-  address        String?
-  phone          String?
-  email          String?
-  website        String?
-  taxCode        String?  @map("tax_code")
+  stamp             String?
+  address           String?
+  phone             String?
+  email             String?
+  website           String?
+  taxCode           String?  @map("tax_code")
   // Thông tin ngân hàng hiển thị ở Block "Thông tin thanh toán" trên bản in
   // Báo giá/Xác nhận đơn hàng.
-  bankName          String? @map("bank_name")
-  bankAccountNumber String? @map("bank_account_number")
-  bankAccountHolder String? @map("bank_account_holder")
+  bankName          String?  @map("bank_name")
+  bankAccountNumber String?  @map("bank_account_number")
+  bankAccountHolder String?  @map("bank_account_holder")
   // Chỉ là nhãn hiển thị, không phải công tắc đa tiền tệ — xem setting.md.
-  currency       String   @default("VND")
-  currencySymbol String   @default("₫") @map("currency_symbol")
-  timezone       String   @default("Asia/Ho_Chi_Minh")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  currency          String   @default("VND")
+  currencySymbol    String   @default("₫") @map("currency_symbol")
+  timezone          String   @default("Asia/Ho_Chi_Minh")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("companies")
 }
@@ -1396,8 +1396,17 @@ model Return {
   returnDate      DateTime     @map("return_date")
   receivedBy      String?      @map("received_by")
   note            String?
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // Giá trị phiếu hoàn — CHỈ THAM KHẢO, đã gồm VAT (Sprint 04 rà soát bộ lọc,
+  // chốt 18/07/2026). Snapshot 1 lần tại create(), tính từ tổng từng dòng:
+  // round(ReturnItem.unitPriceSnapshot × returnedQuantity) + VAT tương ứng
+  // (ReturnItem.vatRate). Return KHÔNG tự động dùng số này để trừ Công nợ —
+  // kế toán tự đọc số này rồi qua module Công nợ tạo Điều chỉnh thủ công nếu
+  // quyết định giảm nợ cho khách (xem return.md mục Ghi chú).
+  totalValue Decimal @default(0) @map("total_value") @db.Decimal(15, 0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   salesOrder      SalesOrder   @relation(fields: [salesOrderId], references: [id])
   items           ReturnItem[]
@@ -1425,6 +1434,8 @@ model ReturnItem {
   returnedQuantity  Decimal      @map("returned_quantity") @db.Decimal(15, 4)
   // Snapshot từ SalesOrderItem.finalPrice — không đọc lại sau khi tạo.
   unitPriceSnapshot Decimal      @map("unit_price_snapshot") @db.Decimal(15, 0)
+  // Snapshot từ SalesOrderItem.vatRate (%) — dùng để tính Return.totalValue.
+  vatRate           Decimal      @default(0) @map("vat_rate") @db.Decimal(5, 2)
   reason            ReturnReason
   note              String?
 

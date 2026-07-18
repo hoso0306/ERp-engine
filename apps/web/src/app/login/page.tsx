@@ -48,7 +48,7 @@ function LoginForm() {
               E
             </div>
           )}
-          <h1 className="text-lg font-semibold">Đăng nhập ERP Engine</h1>
+          <h1 className="text-lg font-semibold">Đăng nhập Rèm Thăng Long</h1>
           <p className="text-sm text-muted-foreground">
             Nhập email và mật khẩu để tiếp tục.
           </p>

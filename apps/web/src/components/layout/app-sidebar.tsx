@@ -36,7 +36,7 @@ export function AppSidebar() {
               E
             </div>
           )}
-          <span className="truncate text-sm font-semibold">ERP Engine</span>
+          <span className="truncate text-sm font-semibold">Rèm Thăng Long</span>
         </div>
       </SidebarHeader>
 

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -42,12 +43,32 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("vi-VN").format(amount) + " ₫";
 }
 
-export function DebtOverviewPanel({ debt }: { debt: DebtOverview }) {
+interface DebtOverviewPanelProps {
+  debt: DebtOverview;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function DebtOverviewPanel({ debt, dateFrom, dateTo }: DebtOverviewPanelProps) {
   const { hasPermission } = useAuth();
   const canViewDebt = hasPermission("debt.view");
   const canViewCustomer = hasPermission("customer.view");
 
   const creditExceededTotal = debt.creditExceeded.reduce((s, c) => s + c.totalRemaining, 0);
+
+  // KPI tổng quan (summary) luôn phản ánh hiện trạng thật, không lọc theo
+  // thời gian — chỉ danh sách "Sắp đến hạn" được lọc theo khoảng hạn thanh
+  // toán đã chọn (thiết kế chốt: bộ lọc Dashboard chỉ ảnh hưởng danh sách con).
+  const filteredUpcomingDue = useMemo(() => {
+    if (!dateFrom && !dateTo) return debt.upcomingDue;
+    return debt.upcomingDue.filter((r) => {
+      if (!r.dueDate) return false;
+      const d = new Date(r.dueDate);
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo && d > new Date(dateTo)) return false;
+      return true;
+    });
+  }, [debt.upcomingDue, dateFrom, dateTo]);
 
   return (
     <section className="space-y-4">
@@ -76,7 +97,7 @@ export function DebtOverviewPanel({ debt }: { debt: DebtOverview }) {
         />
       </div>
 
-      {debt.upcomingDue.length > 0 && (
+      {filteredUpcomingDue.length > 0 && (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -88,7 +109,7 @@ export function DebtOverviewPanel({ debt }: { debt: DebtOverview }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {debt.upcomingDue.map((r) => (
+              {filteredUpcomingDue.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     {canViewDebt ? (

@@ -16,7 +16,12 @@ interface ReturnRow {
   customerName: string;
   returnDate: string;
   status: string;
+  totalValue: number;
   _count: { items: number };
+}
+
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
 }
 
 interface Meta {
@@ -47,6 +52,10 @@ export function ReturnTable({ returns, meta, onPageChange, canViewOrder }: Retur
               <TableHead>Khách hàng</TableHead>
               <TableHead className="text-center">Số dòng SP</TableHead>
               <TableHead>Ngày trả</TableHead>
+              <TableHead className="text-right">
+                Giá trị phiếu hoàn
+                <div className="text-xs font-normal text-muted-foreground">(đã gồm VAT)</div>
+              </TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
@@ -75,6 +84,9 @@ export function ReturnTable({ returns, meta, onPageChange, canViewOrder }: Retur
                 <TableCell className="text-center text-sm">{r._count.items}</TableCell>
                 <TableCell className="text-sm">
                   {new Date(r.returnDate).toLocaleDateString("vi-VN")}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm font-medium">
+                  {formatMoney(Number(r.totalValue))}
                 </TableCell>
                 <TableCell className="text-center">
                   <ReturnStatusBadge status={r.status} />

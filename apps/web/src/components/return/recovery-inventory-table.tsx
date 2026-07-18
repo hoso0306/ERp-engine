@@ -25,6 +25,7 @@ export interface RecoveryInventoryRow {
   status: string;
   createdFromReturnCode: string;
   imageUrl: string | null;
+  createdAt: string;
 }
 
 interface Meta {
@@ -65,6 +66,7 @@ export function RecoveryInventoryTable({
             <TableRow>
               <TableHead className="w-28">Mã</TableHead>
               <TableHead>Sản phẩm</TableHead>
+              <TableHead>Thông số</TableHead>
               <TableHead className="text-right">Số lượng</TableHead>
               <TableHead>Vị trí</TableHead>
               <TableHead>Nguồn</TableHead>
@@ -82,11 +84,6 @@ export function RecoveryInventoryTable({
                   <TableCell>
                     <div className="font-medium text-sm">{item.productName}</div>
                     <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
-                    {parameters.length > 0 && (
-                      <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">
-                        {parameters.map((p) => `${p.label}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join(", ")}
-                      </div>
-                    )}
                     {item.imageUrl && (
                       <a
                         href={item.imageUrl}
@@ -98,6 +95,18 @@ export function RecoveryInventoryTable({
                         Xem ảnh
                       </a>
                     )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground w-48">
+                    <div className="space-y-0.5">
+                      {parameters.length > 0
+                        ? parameters.map((p) => (
+                            <div key={p.name} className="truncate max-w-[180px]">
+                              <span className="text-muted-foreground/70">{p.label}:</span>{" "}
+                              {p.value}{p.unit ? ` ${p.unit}` : ""}
+                            </div>
+                          ))
+                        : "—"}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right text-sm">{Number(item.quantity)}</TableCell>
                   <TableCell className="text-sm">{item.location ?? "—"}</TableCell>

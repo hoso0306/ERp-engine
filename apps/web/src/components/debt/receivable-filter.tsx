@@ -5,9 +5,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { DateRangeFilter } from "@/components/shared";
 import { Search } from "lucide-react";
 
 export type ReceivableTab = "all" | "overdue" | "credit_exceeded";
+export type ReceivableSort = "default" | "remaining_desc" | "due_asc";
 
 interface ReceivableFilterProps {
   search: string;
@@ -18,6 +20,12 @@ interface ReceivableFilterProps {
   onRiskChange: (v: string) => void;
   paymentStatus: string;
   onPaymentStatusChange: (v: string) => void;
+  dueFrom: string;
+  onDueFromChange: (v: string) => void;
+  dueTo: string;
+  onDueToChange: (v: string) => void;
+  sortBy: ReceivableSort;
+  onSortByChange: (v: ReceivableSort) => void;
 }
 
 export function ReceivableFilter({
@@ -29,6 +37,12 @@ export function ReceivableFilter({
   onRiskChange,
   paymentStatus,
   onPaymentStatusChange,
+  dueFrom,
+  onDueFromChange,
+  dueTo,
+  onDueToChange,
+  sortBy,
+  onSortByChange,
 }: ReceivableFilterProps) {
   return (
     <div className="space-y-3">
@@ -70,6 +84,23 @@ export function ReceivableFilter({
             <SelectItem value="UNPAID">Chưa thanh toán</SelectItem>
             <SelectItem value="PARTIALLY_PAID">Thanh toán một phần</SelectItem>
             <SelectItem value="PAID">Đã thanh toán</SelectItem>
+          </SelectContent>
+        </Select>
+        <DateRangeFilter
+          label="Hạn thanh toán"
+          dateFrom={dueFrom}
+          onDateFromChange={onDueFromChange}
+          dateTo={dueTo}
+          onDateToChange={onDueToChange}
+        />
+        <Select value={sortBy} onValueChange={(v) => onSortByChange((v as ReceivableSort) ?? "default")}>
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder="Sắp xếp" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Mặc định (mới nhất)</SelectItem>
+            <SelectItem value="remaining_desc">Số nợ giảm dần</SelectItem>
+            <SelectItem value="due_asc">Hạn thanh toán tăng dần</SelectItem>
           </SelectContent>
         </Select>
       </div>

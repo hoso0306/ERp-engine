@@ -338,6 +338,49 @@ describe('QuotationWorkflowService.approve()', () => {
       }),
     );
   });
+
+  // Review Nghiệp vụ Tài chính (chốt 18/07/2026, Finding #1): grandTotal
+  // (dùng cho Receivable) đã trừ discountAmount đúng, nhưng plannedProfit bị
+  // bỏ sót trước đây — test này khoá lại công thức đã sửa.
+  it('trừ discountAmount (Giảm thêm cấp toàn báo giá) khỏi plannedProfit khi Approve', async () => {
+    const item = makeItem(); // subtotal 2.000.000, materialRequirementVersionId null → plannedCost 0
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [item], discountAmount: 300_000 }),
+    );
+
+    const tx = {
+      runningNumber: {
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'DH', lastNumber: 1, paddingLength: 6 }),
+      },
+      salesOrder: { create: jest.fn().mockResolvedValue({ id: 'so-1' }) },
+      receivable: { create: jest.fn() },
+      salesOrderItem: { create: jest.fn().mockResolvedValue({ id: 'soi-1' }) },
+      orderBOM: { create: jest.fn() },
+      productionOrder: { create: jest.fn().mockResolvedValue({ id: 'po-1' }) },
+      productionOrderTimeline: { create: jest.fn() },
+      quotation: { update: jest.fn().mockResolvedValue({ id: 'q-1' }) },
+      quotationTimeline: { create: jest.fn() },
+      salesOrderTimeline: { create: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Lê Văn Duyệt', email: 'duyet@acme.vn' }),
+      },
+    };
+    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
+      fn(tx),
+    );
+
+    await service.approve('q-1', 'approver-1');
+
+    const soData = tx.salesOrder.create.mock.calls[0][0].data;
+    expect(soData.totalAmount).toBe(2_000_000);
+    expect(soData.plannedCost).toBe(0);
+    // plannedProfit = totalAmount − plannedCost − discountAmount
+    expect(soData.plannedProfit).toBe(2_000_000 - 0 - 300_000);
+  });
 });
 
 // Sprint 04 (005-nguoi-thuc-hien-lich-su-hoat-dong.md) — createdByName/
