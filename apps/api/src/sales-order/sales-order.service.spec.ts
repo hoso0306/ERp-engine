@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { SalesOrderService } from './sales-order.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 
 function makeSalesOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -56,6 +57,16 @@ describe('SalesOrderService — actor name snapshot', () => {
       providers: [
         SalesOrderService,
         { provide: PrismaService, useValue: prisma },
+        // Report methods (014-bao-cao.md Task 00) cần timezone — các test ở
+        // đây không đụng tới, mock tối thiểu.
+        {
+          provide: SettingService,
+          useValue: {
+            getCompany: jest
+              .fn()
+              .mockResolvedValue({ timezone: 'Asia/Ho_Chi_Minh' }),
+          },
+        },
       ],
     }).compile();
 

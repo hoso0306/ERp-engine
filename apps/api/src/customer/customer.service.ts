@@ -731,4 +731,33 @@ export class CustomerService {
     });
     return { discountPercent: discount ? Number(discount.discountPercent) : 0 };
   }
+
+  // ─────────────────────────────────────────────────────
+  // Report (Module Báo cáo, 014-bao-cao.md Task 00) — phần "khách mới trong
+  // kỳ" của C2, mốc ngày Customer.createdAt.
+  // ─────────────────────────────────────────────────────
+
+  async getNewCustomersInRange(from: Date, to: Date) {
+    const where: Prisma.CustomerWhereInput = {
+      deletedAt: null,
+      createdAt: { gte: from, lte: to },
+    };
+
+    const [count, customers] = await Promise.all([
+      this.prisma.customer.count({ where }),
+      this.prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          phone: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    return { count, customers };
+  }
 }

@@ -5,6 +5,7 @@ import {
   Boxes,
   FileText,
   ShoppingCart,
+  Warehouse,
   Factory,
   CreditCard,
   RotateCcw,
@@ -62,8 +63,10 @@ export const navigation: NavGroup[] = [
       { title: "Sản phẩm", href: "/products", icon: Package },
       { title: "Vật tư", href: "/materials", icon: Boxes },
       { title: "Sản xuất", href: "/production", icon: Factory, requiredPermission: "production.view" },
-      // "Kho" gỡ khỏi menu — module Kho tạm gỡ khỏi triển khai (18/07/2026,
-      // xem knowledge/modules/warehouse.md mục "Trạng thái triển khai").
+      // Module Kho tạm gỡ khỏi triển khai (18/07/2026, xem warehouse.md mục
+      // "Trạng thái triển khai") — hiển thị badge "Đang phát triển", không cho
+      // bấm (route /warehouse cũng đã ẩn ở app/_warehouse).
+      { title: "Kho", href: "/warehouse", icon: Warehouse, disabled: true, requiredPermission: "warehouse.view" },
     ],
   },
   {
@@ -77,7 +80,7 @@ export const navigation: NavGroup[] = [
   {
     label: "Hệ thống",
     items: [
-      { title: "Báo cáo", href: "/reports", icon: BarChart3, disabled: true },
+      { title: "Báo cáo", href: "/reports", icon: BarChart3, requiredPermission: "report.view" },
       { title: "Cài đặt", href: "/settings", icon: Settings, requiredPermission: "settings.view" },
       { title: "Người dùng", href: "/settings/users", icon: UserCog, requiredPermission: "user.view" },
       { title: "Vai trò", href: "/settings/roles", icon: ShieldCheck, requiredPermission: "role.view" },

@@ -15,10 +15,17 @@ import {
   ProductionOrderTimelineActorType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingService } from '../setting/setting.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import {
+  bucketDate,
+  buildSeries,
+  previousRange,
+  type ReportGroupBy,
+} from '../shared/report-range';
 
 const STARTED_PRODUCTION_STATUSES: ProductionOrderStatus[] = [
   ProductionOrderStatus.IN_PRODUCTION,
@@ -46,7 +53,12 @@ const SALES_ORDER_INCLUDE = {
 
 @Injectable()
 export class SalesOrderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Report methods cần Settings.Company.timezone để cắt kỳ (report.md mục
+    // "Nguyên tắc mốc ngày") — cùng pattern DebtService đã inject SettingService.
+    private readonly settingService: SettingService,
+  ) {}
 
   // ─────────────────────────────────────────────────────
   // Read API (Task 03) — no Create / Update / Delete
@@ -525,5 +537,405 @@ export class SalesOrderService {
       },
       orderBy: { expectedDeliveryDate: 'asc' },
     });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Report (Module Báo cáo, 014-bao-cao.md Task 00) — chỉ đọc theo kỳ, không
+  // Business Logic mới. Mốc ngày: SalesOrder.createdAt (report.md "Nguyên tắc
+  // mốc ngày"). Mọi method loại SalesOrder.status = CANCELLED.
+  // ─────────────────────────────────────────────────────
+
+  // Helper loại trừ CANCELLED + lọc kỳ — dùng chung cho toàn bộ report method
+  // (đặt tại SalesOrderService theo đúng Task 00, không đặt ở Report).
+  private reportRangeWhere(from: Date, to: Date): Prisma.SalesOrderWhereInput {
+    return {
+      status: { not: SalesOrderStatus.CANCELLED },
+      createdAt: { gte: from, lte: to },
+    };
+  }
+
+  private async getCompanyTimezone(): Promise<string> {
+    try {
+      const company = await this.settingService.getCompany();
+      return company.timezone;
+    } catch {
+      return 'Asia/Ho_Chi_Minh';
+    }
+  }
+
+  // A1 + B3 — tổng doanh thu kỳ này, so sánh kỳ trước, chuỗi theo groupBy.
+  async getRevenueReport(from: Date, to: Date, groupBy: ReportGroupBy = 'day') {
+    const timezone = await this.getCompanyTimezone();
+    const prev = previousRange(from, to);
+
+    const [rows, previousAgg] = await Promise.all([
+      this.prisma.salesOrder.findMany({
+        where: this.reportRangeWhere(from, to),
+        select: { createdAt: true, totalAmount: true },
+      }),
+      this.prisma.salesOrder.aggregate({
+        where: this.reportRangeWhere(prev.from, prev.to),
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const totalRevenue = rows.reduce((s, r) => s + Number(r.totalAmount), 0);
+    const previousRevenue = Number(previousAgg._sum.totalAmount ?? 0);
+
+    return {
+      totalRevenue,
+      orderCount: rows.length,
+      previousPeriod: {
+        from: prev.from,
+        to: prev.to,
+        totalRevenue: previousRevenue,
+        orderCount: previousAgg._count._all,
+      },
+      // Derived, tính runtime — null khi kỳ trước không có doanh thu.
+      growthPercent:
+        previousRevenue > 0
+          ? ((totalRevenue - previousRevenue) / previousRevenue) * 100
+          : null,
+      series: buildSeries(
+        rows.map((r) => ({
+          date: r.createdAt,
+          values: { revenue: Number(r.totalAmount), orderCount: 1 },
+        })),
+        from,
+        to,
+        timezone,
+        groupBy,
+        ['revenue', 'orderCount'],
+      ),
+    };
+  }
+
+  // A3 + B3 — lợi nhuận KẾ HOẠCH (plannedProfit đã chốt tại Approve, không
+  // tính lại Pricing/BOM). Tỷ suất là Derived, tính runtime, không lưu.
+  async getProfitReport(from: Date, to: Date, groupBy: ReportGroupBy = 'day') {
+    const timezone = await this.getCompanyTimezone();
+    const prev = previousRange(from, to);
+
+    const [rows, previousAgg] = await Promise.all([
+      this.prisma.salesOrder.findMany({
+        where: this.reportRangeWhere(from, to),
+        select: {
+          createdAt: true,
+          totalAmount: true,
+          plannedCost: true,
+          plannedProfit: true,
+        },
+      }),
+      this.prisma.salesOrder.aggregate({
+        where: this.reportRangeWhere(prev.from, prev.to),
+        _sum: { plannedProfit: true },
+      }),
+    ]);
+
+    const totalRevenue = rows.reduce((s, r) => s + Number(r.totalAmount), 0);
+    const totalPlannedCost = rows.reduce((s, r) => s + Number(r.plannedCost), 0);
+    const totalPlannedProfit = rows.reduce(
+      (s, r) => s + Number(r.plannedProfit),
+      0,
+    );
+    const previousPlannedProfit = Number(previousAgg._sum.plannedProfit ?? 0);
+
+    return {
+      // Nhãn hiển thị bắt buộc "Lợi nhuận kế hoạch" (report.md) — field đặt
+      // tên planned* để FE không thể hiểu nhầm là lãi thực tế.
+      totalRevenue,
+      totalPlannedCost,
+      totalPlannedProfit,
+      plannedProfitMarginPercent:
+        totalRevenue > 0 ? (totalPlannedProfit / totalRevenue) * 100 : null,
+      previousPeriod: {
+        from: prev.from,
+        to: prev.to,
+        totalPlannedProfit: previousPlannedProfit,
+      },
+      growthPercent:
+        previousPlannedProfit > 0
+          ? ((totalPlannedProfit - previousPlannedProfit) /
+              previousPlannedProfit) *
+            100
+          : null,
+      series: buildSeries(
+        rows.map((r) => ({
+          date: r.createdAt,
+          values: {
+            revenue: Number(r.totalAmount),
+            plannedCost: Number(r.plannedCost),
+            plannedProfit: Number(r.plannedProfit),
+          },
+        })),
+        from,
+        to,
+        timezone,
+        groupBy,
+        ['revenue', 'plannedCost', 'plannedProfit'],
+      ),
+    };
+  }
+
+  // B1 — số đơn theo status/paymentStatus, giá trị trung bình, đúng hạn/trễ hạn.
+  async getOrdersReport(from: Date, to: Date) {
+    const where = this.reportRangeWhere(from, to);
+
+    const [totals, byStatus, byPaymentStatus, deliveryRows] = await Promise.all(
+      [
+        this.prisma.salesOrder.aggregate({
+          where,
+          _sum: { totalAmount: true },
+          _avg: { totalAmount: true },
+          _count: { _all: true },
+        }),
+        this.prisma.salesOrder.groupBy({
+          by: ['status'],
+          where,
+          _count: { _all: true },
+        }),
+        this.prisma.salesOrder.groupBy({
+          by: ['paymentStatus'],
+          where,
+          _count: { _all: true },
+        }),
+        // Đúng hạn/trễ hạn: chỉ tính đơn đã có đủ 2 ngày (Derived, runtime —
+        // report.md B1), không lưu.
+        this.prisma.salesOrder.findMany({
+          where: {
+            ...where,
+            expectedDeliveryDate: { not: null },
+            actualDeliveryDate: { not: null },
+          },
+          select: { expectedDeliveryDate: true, actualDeliveryDate: true },
+        }),
+      ],
+    );
+
+    const onTime = deliveryRows.filter(
+      (r) => r.actualDeliveryDate! <= r.expectedDeliveryDate!,
+    ).length;
+
+    return {
+      totalOrders: totals._count._all,
+      totalValue: Number(totals._sum.totalAmount ?? 0),
+      averageOrderValue: Number(totals._avg.totalAmount ?? 0),
+      byStatus: byStatus.map((s) => ({
+        status: s.status,
+        count: s._count._all,
+      })),
+      byPaymentStatus: byPaymentStatus.map((s) => ({
+        paymentStatus: s.paymentStatus,
+        count: s._count._all,
+      })),
+      delivery: {
+        evaluated: deliveryRows.length,
+        onTime,
+        late: deliveryRows.length - onTime,
+        onTimePercent:
+          deliveryRows.length > 0 ? (onTime / deliveryRows.length) * 100 : null,
+      },
+    };
+  }
+
+  // B2 — group theo SalesOrderItem.productId (Redundant Reference bất biến),
+  // hiển thị productName snapshot — không join ngược Product (Snapshot Rule).
+  async getRevenueByProduct(from: Date, to: Date) {
+    const itemWhere: Prisma.SalesOrderItemWhereInput = {
+      salesOrder: this.reportRangeWhere(from, to),
+    };
+
+    const [grouped, names] = await Promise.all([
+      this.prisma.salesOrderItem.groupBy({
+        by: ['productId'],
+        where: itemWhere,
+        _sum: { subtotal: true, quantity: true },
+        _count: { _all: true },
+      }),
+      // Tên hiển thị: snapshot mới nhất trên chính SalesOrderItem trong kỳ
+      // (distinct + orderBy desc) — không đọc lại Master Data.
+      this.prisma.salesOrderItem.findMany({
+        where: itemWhere,
+        distinct: ['productId'],
+        orderBy: { createdAt: 'desc' },
+        select: { productId: true, productCode: true, productName: true },
+      }),
+    ]);
+
+    const nameMap = new Map(names.map((n) => [n.productId, n]));
+    const totalRevenue = grouped.reduce(
+      (s, g) => s + Number(g._sum.subtotal ?? 0),
+      0,
+    );
+
+    return {
+      totalRevenue,
+      products: grouped
+        .map((g) => ({
+          productId: g.productId,
+          productCode: nameMap.get(g.productId)?.productCode ?? '',
+          productName: nameMap.get(g.productId)?.productName ?? '',
+          quantity: Number(g._sum.quantity ?? 0),
+          lineCount: g._count._all,
+          revenue: Number(g._sum.subtotal ?? 0),
+          revenuePercent:
+            totalRevenue > 0
+              ? (Number(g._sum.subtotal ?? 0) / totalRevenue) * 100
+              : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  // B4 — group theo productTypeId/productTypeName snapshot + theo tháng.
+  async getGrowthByProductType(from: Date, to: Date) {
+    const timezone = await this.getCompanyTimezone();
+
+    const rows = await this.prisma.salesOrderItem.findMany({
+      where: { salesOrder: this.reportRangeWhere(from, to) },
+      select: {
+        productTypeId: true,
+        productTypeName: true,
+        subtotal: true,
+        salesOrder: { select: { createdAt: true } },
+      },
+    });
+
+    type TypeAcc = {
+      productTypeId: string;
+      productTypeName: string;
+      revenue: number;
+      byMonth: Map<string, number>;
+    };
+    const byType = new Map<string, TypeAcc>();
+    const months = new Set<string>();
+
+    for (const row of rows) {
+      const month = bucketDate(row.salesOrder.createdAt, timezone, 'month');
+      months.add(month);
+      let acc = byType.get(row.productTypeId);
+      if (!acc) {
+        acc = {
+          productTypeId: row.productTypeId,
+          productTypeName: row.productTypeName,
+          revenue: 0,
+          byMonth: new Map(),
+        };
+        byType.set(row.productTypeId, acc);
+      }
+      // Nhãn hiển thị: snapshot gặp sau cùng — vẫn là snapshot, không đọc
+      // lại ProductType.
+      acc.productTypeName = row.productTypeName;
+      acc.revenue += Number(row.subtotal);
+      acc.byMonth.set(month, (acc.byMonth.get(month) ?? 0) + Number(row.subtotal));
+    }
+
+    const sortedMonths = Array.from(months).sort();
+
+    return {
+      months: sortedMonths,
+      productTypes: Array.from(byType.values())
+        .map((t) => ({
+          productTypeId: t.productTypeId,
+          productTypeName: t.productTypeName,
+          revenue: t.revenue,
+          byMonth: sortedMonths.map((m) => ({
+            period: m,
+            revenue: t.byMonth.get(m) ?? 0,
+          })),
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  // C1 — group theo ownerId (FK bất biến), hiển thị ownerName snapshot —
+  // không group theo chuỗi tên tự do (report.md C1).
+  async getRevenueByEmployee(from: Date, to: Date) {
+    const where = this.reportRangeWhere(from, to);
+
+    const [grouped, names] = await Promise.all([
+      this.prisma.salesOrder.groupBy({
+        by: ['ownerId'],
+        where,
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.salesOrder.findMany({
+        where,
+        distinct: ['ownerId'],
+        orderBy: { createdAt: 'desc' },
+        select: { ownerId: true, ownerName: true },
+      }),
+    ]);
+
+    const nameMap = new Map(names.map((n) => [n.ownerId, n.ownerName]));
+    const totalRevenue = grouped.reduce(
+      (s, g) => s + Number(g._sum.totalAmount ?? 0),
+      0,
+    );
+
+    return {
+      totalRevenue,
+      employees: grouped
+        .map((g) => ({
+          ownerId: g.ownerId,
+          // null = đơn trước Architecture Review 05/07/2026, không xác định
+          // được người phụ trách.
+          ownerName: g.ownerId ? (nameMap.get(g.ownerId) ?? null) : null,
+          orderCount: g._count._all,
+          revenue: Number(g._sum.totalAmount ?? 0),
+          revenuePercent:
+            totalRevenue > 0
+              ? (Number(g._sum.totalAmount ?? 0) / totalRevenue) * 100
+              : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  // C2 (phần Sales Order) — group theo customerId: tổng đơn, tổng doanh thu,
+  // lần mua đầu/gần nhất. Khách mới trong kỳ do CustomerService cung cấp,
+  // công nợ hiện tại do DebtService cung cấp — ReportService tự gộp.
+  async getRevenueByCustomer(from: Date, to: Date) {
+    const where = this.reportRangeWhere(from, to);
+
+    const [grouped, names] = await Promise.all([
+      this.prisma.salesOrder.groupBy({
+        by: ['customerId'],
+        where,
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+        _min: { createdAt: true },
+        _max: { createdAt: true },
+      }),
+      this.prisma.salesOrder.findMany({
+        where,
+        distinct: ['customerId'],
+        orderBy: { createdAt: 'desc' },
+        select: { customerId: true, customerName: true, customerPhone: true },
+      }),
+    ]);
+
+    const nameMap = new Map(names.map((n) => [n.customerId, n]));
+    const totalRevenue = grouped.reduce(
+      (s, g) => s + Number(g._sum.totalAmount ?? 0),
+      0,
+    );
+
+    return {
+      totalRevenue,
+      customers: grouped
+        .map((g) => ({
+          customerId: g.customerId,
+          customerName: nameMap.get(g.customerId)?.customerName ?? '',
+          customerPhone: nameMap.get(g.customerId)?.customerPhone ?? '',
+          orderCount: g._count._all,
+          revenue: Number(g._sum.totalAmount ?? 0),
+          firstOrderAt: g._min.createdAt,
+          lastOrderAt: g._max.createdAt,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
   }
 }

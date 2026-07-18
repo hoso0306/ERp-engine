@@ -1,7 +1,7 @@
 # Module Báo cáo (Report)
 
 > **Tên file:** `knowledge/modules/report.md`
-> **Trạng thái:** Thiết kế — chưa triển khai. Đây là tài liệu chốt **mốc ngày ghi nhận** và **nguồn dữ liệu** cho từng báo cáo, để Report và Dashboard không bao giờ ra hai con số khác nhau cho cùng một câu hỏi.
+> **Trạng thái:** Đã triển khai (`014-bao-cao.md`, 18/07/2026). Đây là tài liệu chốt **mốc ngày ghi nhận** và **nguồn dữ liệu** cho từng báo cáo, để Report và Dashboard không bao giờ ra hai con số khác nhau cho cùng một câu hỏi.
 
 ---
 
@@ -190,7 +190,7 @@ SalesOrder.status != CANCELLED
 
 # Thay đổi schema cần TRƯỚC khi triển khai Report
 
-> **Cập nhật 18/07/2026 (khảo sát trước khi code — `008-module-bao-cao.md`):** mục 1 và 2 dưới đây **đã được làm từ trước** (không rõ ở lần nào), giữ lại mô tả để biết lý do thiết kế. Chỉ còn thiếu index `Payment(paymentDate)` ở mục 3.
+> **Cập nhật 18/07/2026 (khảo sát trước khi code — `008-module-bao-cao.md`):** mục 1 và 2 dưới đây **đã được làm từ trước** (không rõ ở lần nào), giữ lại mô tả để biết lý do thiết kế. Index `Payment(paymentDate)` ở mục 3 rà soát lại lúc triển khai Task 00 (`014-bao-cao.md`) — hoá ra cũng **đã có sẵn** từ migration `20260706044014_architecture_review_snapshots_return_status_indexes`, không cần migration mới.
 
 Chốt tại đây để làm một lần, tránh retrofit khi dữ liệu thật đã phát sinh. Toàn bộ là **field snapshot/reference bổ sung + index** — không đổi Business Rule nào.
 
@@ -222,7 +222,7 @@ Thuộc hạng mục "Nên sửa trước Go-Live" của architecture review —
 | Bảng | Index | Phục vụ | Trạng thái |
 |---|---|---|---|
 | `SalesOrder` | `@@index([createdAt])` | A1/A3/B1/B3/C1/C2 | ✅ đã có |
-| `Payment` | `@@index([paymentDate])` | A2 | ❌ **còn thiếu — cần thêm** |
+| `Payment` | `@@index([paymentDate])` | A2 | ✅ đã có |
 | `Return` | `@@index([returnDate])` | D2 | ✅ đã có |
 | `MaterialReceipt` | `@@index([createdAt])` | ~~D1~~ (tạm gỡ) | ✅ đã có sẵn, không cần làm gì thêm |
 | `SalesOrderItem` | `@@index([productId])`, `@@index([productTypeId])` | B2/B4 | ✅ đã có |

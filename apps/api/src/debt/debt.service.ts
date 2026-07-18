@@ -17,6 +17,7 @@ import { SettingService } from '../setting/setting.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { buildSeries, type ReportGroupBy } from '../shared/report-range';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -526,5 +527,169 @@ export class DebtService {
       },
       topDebtors,
     };
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Report (Module Báo cáo, 014-bao-cao.md Task 00) — chỉ đọc theo kỳ.
+  // ─────────────────────────────────────────────────────
+
+  private async getCompanyTimezone(): Promise<string> {
+    try {
+      const company = await this.settingService.getCompany();
+      return company.timezone;
+    } catch {
+      return 'Asia/Ho_Chi_Minh';
+    }
+  }
+
+  // A2 — tiền mặt về (Actual): tổng Payment.amount theo Payment.paymentDate,
+  // phân theo paymentMethod, chuỗi theo groupBy. Payment không cần lọc
+  // CANCELLED — đơn đã thu tiền không huỷ được (rule debt.md).
+  // KHÔNG cộng lẫn với doanh thu Planned (A1/A3).
+  async getCashInReport(from: Date, to: Date, groupBy: ReportGroupBy = 'day') {
+    const timezone = await this.getCompanyTimezone();
+    const where: Prisma.PaymentWhereInput = {
+      paymentDate: { gte: from, lte: to },
+    };
+
+    const [rows, byMethod] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        select: { paymentDate: true, amount: true },
+      }),
+      this.prisma.payment.groupBy({
+        by: ['paymentMethod'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      totalCashIn: rows.reduce((s, r) => s + Number(r.amount), 0),
+      paymentCount: rows.length,
+      byMethod: byMethod.map((m) => ({
+        paymentMethod: m.paymentMethod,
+        count: m._count._all,
+        amount: Number(m._sum.amount ?? 0),
+      })),
+      series: buildSeries(
+        rows.map((r) => ({
+          date: r.paymentDate,
+          values: { cashIn: Number(r.amount), paymentCount: 1 },
+        })),
+        from,
+        to,
+        timezone,
+        groupBy,
+        ['cashIn', 'paymentCount'],
+      ),
+    };
+  }
+
+  // A4 — tách rõ 2 phần (report.md): `balance` là số dư hiện tại (KHÔNG theo
+  // kỳ), `inRange` là phát sinh trong kỳ (công nợ mới của SO tạo trong kỳ +
+  // tiền thu trong kỳ = A2). Tái dùng các method Dashboard đã có, không định
+  // nghĩa lại logic Overdue/Risk/Credit-limit.
+  async getDebtReport(from: Date, to: Date) {
+    const now = new Date();
+    const notCancelled = this.notCancelledFilter();
+    const riskAggregate = (dueDate: Prisma.ReceivableWhereInput['dueDate']) =>
+      this.prisma.receivable.aggregate({
+        where: { ...notCancelled, dueDate },
+        _sum: { remainingAmount: true },
+        _count: { _all: true },
+      });
+
+    const [
+      summary,
+      lowRisk,
+      mediumRisk,
+      highRisk,
+      creditExceeded,
+      topDebtors,
+      newReceivables,
+      cashIn,
+    ] = await Promise.all([
+      this.getDashboardSummary(),
+      // Bậc rủi ro — cùng ngưỡng 7/30 ngày như findAllReceivables()/computeRiskLevel().
+      riskAggregate({
+        not: null,
+        lt: now,
+        gte: new Date(now.getTime() - 7 * MS_PER_DAY),
+      }),
+      riskAggregate({
+        not: null,
+        lt: new Date(now.getTime() - 7 * MS_PER_DAY),
+        gte: new Date(now.getTime() - 30 * MS_PER_DAY),
+      }),
+      riskAggregate({
+        not: null,
+        lt: new Date(now.getTime() - 30 * MS_PER_DAY),
+      }),
+      this.getCreditLimitExceededCustomers(),
+      this.getTopDebtors(),
+      // Công nợ mới phát sinh trong kỳ: Receivable của SalesOrder tạo trong
+      // kỳ, loại đơn huỷ.
+      this.prisma.receivable.aggregate({
+        where: {
+          salesOrder: {
+            status: { not: SalesOrderStatus.CANCELLED },
+            createdAt: { gte: from, lte: to },
+          },
+        },
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+      this.getCashInReport(from, to),
+    ]);
+
+    const riskBucket = (agg: {
+      _sum: { remainingAmount: Prisma.Decimal | null };
+      _count: { _all: number };
+    }) => ({
+      count: agg._count._all,
+      amount: Number(agg._sum.remainingAmount ?? 0),
+    });
+
+    return {
+      balance: {
+        totalRemaining: summary.totalRemaining,
+        overdueAmount: summary.overdueAmount,
+        overdueCount: summary.overdueCount,
+        byRiskLevel: {
+          LOW: riskBucket(lowRisk),
+          MEDIUM: riskBucket(mediumRisk),
+          HIGH: riskBucket(highRisk),
+        },
+        creditExceeded,
+        topDebtors,
+      },
+      inRange: {
+        newReceivableCount: newReceivables._count._all,
+        newReceivableAmount: Number(newReceivables._sum.totalAmount ?? 0),
+        cashIn,
+      },
+    };
+  }
+
+  // C2 — công nợ hiện tại theo khách (đọc realtime, không lưu vào customers —
+  // cam kết customer.md). Report gọi qua đây thay vì tự query Receivable
+  // (Module Ownership).
+  async getRemainingByCustomers(customerIds: string[]) {
+    if (customerIds.length === 0) return new Map<string, number>();
+
+    const grouped = await this.prisma.receivable.groupBy({
+      by: ['customerId'],
+      where: {
+        ...this.notCancelledFilter(),
+        customerId: { in: customerIds },
+      },
+      _sum: { remainingAmount: true },
+    });
+
+    return new Map(
+      grouped.map((g) => [g.customerId, Number(g._sum.remainingAmount ?? 0)]),
+    );
   }
 }

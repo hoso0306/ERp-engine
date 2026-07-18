@@ -13,7 +13,7 @@
 - **Start Production KHÔNG kiểm tra tồn kho, KHÔNG xuất kho.** `ProductionOrderService.start()` bỏ lời gọi `issueForProductionOrder()` — sản xuất không bao giờ bị chặn vì "không đủ tồn kho". Đây là điểm nghẽn duy nhất về nghiệp vụ; các module còn lại (Báo giá, Đơn hàng, Công nợ, Hàng hoàn, `plannedCost`/`plannedProfit`) không phụ thuộc Kho — giá vốn kế hoạch snapshot từ BOM + MaterialPrice, không đọc tồn kho.
 - **Không ghi nhận gì trong thời gian tắt:** không MaterialReceipt, không WarehouseTransaction, `Material.currentStock` đứng yên (vô nghĩa). Không cho phép "ghi tạm cho âm kho" — kho tắt là không ghi, đúng triết lý "Warehouse chỉ ghi nhận".
 - **Phiếu sản xuất chạy trong thời gian tắt sẽ KHÔNG xuất kho hồi tố** khi bật lại — chấp nhận có chủ đích, giống giai đoạn trước khi module Kho tồn tại.
-- UI: menu "Kho" ẩn, route `/warehouse` ẩn, trang Vật tư để trống cột "Tồn kho" và không cảnh báo "Dưới mức" (`minimumStock` vẫn cấu hình được — chỉ là chưa có gì so sánh).
+- UI: menu "Kho" hiển thị dạng "Đang phát triển" (disabled, không bấm được), route `/warehouse` ẩn, trang Vật tư để trống cột "Tồn kho" và không cảnh báo "Dưới mức" (`minimumStock` vẫn cấu hình được — chỉ là chưa có gì so sánh).
 
 ## Các điểm đã ngắt (khôi phục đúng các chỗ này khi bật lại)
 
@@ -22,7 +22,7 @@
 | 1 | `apps/api/src/app.module.ts` | Bỏ `WarehouseModule` — toàn bộ API `/warehouse/*`, `/material-receipts` trả 404 |
 | 2 | `apps/api/src/production/production-order.service.ts` (`start()`) + `production.module.ts` | Bỏ gọi `issueForProductionOrder(id, tx)` và inject `WarehouseService` |
 | 3 | `apps/api/src/dashboard/*` | Bỏ `getWarehouseDashboard()`, endpoint `GET /dashboard/warehouse`, import `WarehouseModule` |
-| 4 | `apps/web/src/config/navigation.ts` | Bỏ mục menu "Kho" |
+| 4 | `apps/web/src/config/navigation.ts` | Mục menu "Kho" chuyển sang `disabled: true` — hiển thị badge "Đang phát triển", không bấm được (giống mục "Báo cáo") |
 | 5 | `apps/web/src/app/_warehouse/` | Đổi tên từ `warehouse/` — tiền tố `_` khiến Next.js không route; đổi tên lại là chạy |
 | 6 | Trang Vật tư (`material-table.tsx`, `materials/[id]/page.tsx`) | Cột/ô "Tồn kho hiện tại" hiển thị "—", bỏ badge "Dưới mức" |
 | 7 | `knowledge/modules/report.md` | Gỡ báo cáo D1 + các chỉ số kho khỏi bảng mốc ngày |

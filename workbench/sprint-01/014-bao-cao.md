@@ -104,14 +104,14 @@ Task này **không tạo Service mới**, chỉ hoàn thiện những gì Report
 
 ## Definition of Done
 
-- [ ] `SalesOrderService` có đầy đủ 7 method đọc theo kỳ ở trên.
-- [ ] `DebtService` có đầy đủ 2 method đọc theo kỳ ở trên.
-- [ ] `CustomerService` có `getNewCustomersInRange()`.
-- [ ] `ReturnService` xác nhận tái dùng được nguyên trạng — không sửa.
-- [ ] Migration `Payment(paymentDate)` áp dụng thành công.
-- [ ] `PdfService` hoạt động, export thử 1 file PDF đơn giản.
-- [ ] Không tạo class `ReportQueryService` hay Repository nào.
-- [ ] Report không truy cập Prisma trực tiếp (chuẩn bị sẵn nguyên tắc cho các Task sau).
+- [x] `SalesOrderService` có đầy đủ 7 method đọc theo kỳ ở trên.
+- [x] `DebtService` có đầy đủ 2 method đọc theo kỳ ở trên.
+- [x] `CustomerService` có `getNewCustomersInRange()`.
+- [x] `ReturnService` xác nhận tái dùng được nguyên trạng — không sửa.
+- [x] Migration `Payment(paymentDate)` áp dụng thành công (rà soát: đã có sẵn từ migration `20260706044014`, không cần tạo mới).
+- [x] `PdfService` hoạt động, export thử 1 file PDF đơn giản (verify: PDF export thật qua trình duyệt, 3 trang, mở được).
+- [x] Không tạo class `ReportQueryService` hay Repository nào.
+- [x] Report không truy cập Prisma trực tiếp (chuẩn bị sẵn nguyên tắc cho các Task sau).
 
 ---
 
@@ -137,10 +137,10 @@ Bao gồm:
 
 ## Definition of Done
 
-- [ ] `ReportModule` đăng ký vào `AppModule`.
-- [ ] Permission `report.view` seed đúng cho cả 6 role hiện có (đặc biệt xác nhận `ACCOUNTANT`).
-- [ ] Guard hoạt động — user không có `report.view` nhận 403.
-- [ ] `ReportService` không có Prisma import.
+- [x] `ReportModule` đăng ký vào `AppModule`.
+- [x] Permission `report.view` seed đúng (OWNER/ADMIN qua `allKeys()`, MANAGER/VIEWER qua `viewKeys()`, `ACCOUNTANT` thêm tường minh — SALES/PRODUCTION/WAREHOUSE cố ý không có, không cần báo cáo).
+- [x] Guard hoạt động — user không có `report.view` nhận 403 (verify: 403 trước khi seed, 200 sau khi seed permission).
+- [x] `ReportService` không có Prisma import.
 
 ---
 
@@ -165,10 +165,10 @@ Query chung: `from`, `to` (bắt buộc — Report không có "Tất cả" như 
 
 ## Definition of Done
 
-- [ ] 4 endpoint hoạt động đúng, đúng nguồn dữ liệu theo bảng "Triết lý Report".
-- [ ] A2 không cộng lẫn với A1/A3 trong cùng response.
-- [ ] A4 tách rõ `balance` / `inRange`.
-- [ ] Không tính lại Pricing/Discount/BOM.
+- [x] 4 endpoint hoạt động đúng, đúng nguồn dữ liệu theo bảng "Triết lý Report".
+- [x] A2 không cộng lẫn với A1/A3 trong cùng response.
+- [x] A4 tách rõ `balance` / `inRange`.
+- [x] Không tính lại Pricing/Discount/BOM.
 
 ---
 
@@ -191,10 +191,10 @@ B2/B4 group theo `productId`/`productTypeId` snapshot trên `SalesOrderItem` —
 
 ## Definition of Done
 
-- [ ] 4 endpoint hoạt động.
-- [ ] B3 tái sử dụng nguyên A1/A2/A3, không tính lại.
-- [ ] B2/B4 chỉ đọc field snapshot trên `SalesOrderItem`, không join Master Data.
-- [ ] % tăng trưởng (so kỳ trước, cùng kỳ năm trước) tính runtime, không lưu.
+- [x] 4 endpoint hoạt động.
+- [x] B3 tái sử dụng nguyên A1/A2/A3, không tính lại.
+- [x] B2/B4 chỉ đọc field snapshot trên `SalesOrderItem`, không join Master Data.
+- [x] % tăng trưởng (so kỳ trước, cùng kỳ năm trước) tính runtime, không lưu.
 
 ---
 
@@ -215,10 +215,10 @@ C2 gộp 2 nguồn: doanh thu/số đơn/lần mua theo khách (Sales Order) + k
 
 ## Definition of Done
 
-- [ ] 2 endpoint hoạt động.
-- [ ] C1 group theo `ownerId`, hiển thị `ownerName` snapshot.
-- [ ] C2 đúng cả phần doanh thu theo khách lẫn khách mới trong kỳ.
-- [ ] Công nợ hiện tại của từng khách (trong C2) đọc realtime, không lưu vào bảng `customers` (đúng cam kết `customer.md`).
+- [x] 2 endpoint hoạt động.
+- [x] C1 group theo `ownerId`, hiển thị `ownerName` snapshot.
+- [x] C2 đúng cả phần doanh thu theo khách lẫn khách mới trong kỳ.
+- [x] Công nợ hiện tại của từng khách (trong C2) đọc realtime, không lưu vào bảng `customers` (đúng cam kết `customer.md`).
 
 ---
 
@@ -238,9 +238,9 @@ D2 tái sử dụng nguyên 3 method `ReturnService` đã xây cho Dashboard —
 
 ## Definition of Done
 
-- [ ] Endpoint `/reports/returns` hoạt động, không tạo method `ReturnService` mới.
-- [ ] Không có endpoint/route/import nào liên quan Warehouse trong Report.
-- [ ] Giá trị hoàn hiển thị riêng, không trừ vào doanh thu (đúng ranh giới `return.md`).
+- [x] Endpoint `/reports/returns` hoạt động, không tạo method `ReturnService` mới.
+- [x] Không có endpoint/route/import nào liên quan Warehouse trong Report.
+- [x] Giá trị hoàn hiển thị riêng, không trừ vào doanh thu (đúng ranh giới `return.md`).
 
 ---
 
@@ -263,9 +263,9 @@ GET /reports/{name}/export?format=pdf
 
 ## Definition of Done
 
-- [ ] Toàn bộ 11 báo cáo (A1–A4, B1–B4, C1–C2, D2) có export Excel và PDF.
-- [ ] File tải về đúng dữ liệu, đúng bộ lọc đang xem.
-- [ ] Không có số liệu lệch giữa API và file export.
+- [x] Toàn bộ 11 báo cáo (A1–A4, B1–B4, C1–C2, D2) có export Excel và PDF.
+- [x] File tải về đúng dữ liệu, đúng bộ lọc đang xem (verify: click Excel/PDF thật trên trang doanh thu → file `.xlsx`/`.pdf` hợp lệ tải về).
+- [x] Không có số liệu lệch giữa API và file export (cùng method `buildExport()` gọi lại đúng method đọc của API).
 
 ---
 
@@ -284,10 +284,10 @@ Report nào có chuỗi thời gian trong response (A1, A2, A3, B3) hiển thị
 
 ## Definition of Done
 
-- [ ] Thư viện chart cài đặt, build không lỗi.
-- [ ] A1/A2/A3/B3 có biểu đồ xu hướng.
-- [ ] Component chart dùng chung, không copy-paste cấu hình.
-- [ ] Không có request API riêng cho biểu đồ.
+- [x] Thư viện chart cài đặt, build không lỗi (`recharts`, qua pnpm).
+- [x] A1/A2/A3/B3 có biểu đồ xu hướng.
+- [x] Component chart dùng chung (`ReportTrendChart`), không copy-paste cấu hình.
+- [x] Không có request API riêng cho biểu đồ.
 
 ---
 
@@ -309,10 +309,10 @@ Không cho phép: tính lại Pricing Engine, BOM, Discount, Material Requiremen
 
 ## Definition of Done
 
-- [ ] Trang `/reports` + 11 trang báo cáo con hoạt động.
-- [ ] Sidebar có mục "Báo cáo", ẩn đúng khi thiếu quyền.
-- [ ] Không N+1 Query ở bất kỳ báo cáo nào.
-- [ ] Không có Business Logic tính lại trong Report (BE lẫn FE).
+- [x] Trang `/reports` + 11 trang báo cáo con hoạt động (verify qua trình duyệt thật, có dữ liệu, không lỗi console).
+- [x] Sidebar có mục "Báo cáo", ẩn đúng khi thiếu quyền (permission-gated `report.view`, cùng cơ chế `disabled`/`requiredPermission` các mục khác).
+- [x] Không N+1 Query ở bất kỳ báo cáo nào (toàn bộ dùng `groupBy`/`aggregate`/`findMany` song song qua `Promise.all`).
+- [x] Không có Business Logic tính lại trong Report (BE lẫn FE) — chỉ %, tổng hợp hiển thị runtime từ số liệu API trả về.
 
 ---
 
@@ -341,23 +341,23 @@ Kiểm tra:
 
 ## Report Review Checklist
 
-- [ ] Report không có Business Logic.
-- [ ] Report không truy cập Repository/Prisma trực tiếp.
-- [ ] Report chỉ gọi Service của module sở hữu dữ liệu — không có class `ReportQueryService` nào được tạo.
-- [ ] Mỗi chỉ số chỉ có một nguồn sự thật, khớp bảng ở `report.md`.
-- [ ] Không triển khai D1 (Kho) — không còn dấu vết `WarehouseService` trong module.
-- [ ] Excel/PDF export và biểu đồ đều khớp đúng dữ liệu API, không tính thêm.
-- [ ] Query tối ưu, không N+1 Query.
+- [x] Report không có Business Logic.
+- [x] Report không truy cập Repository/Prisma trực tiếp.
+- [x] Report chỉ gọi Service của module sở hữu dữ liệu — không có class `ReportQueryService` nào được tạo.
+- [x] Mỗi chỉ số chỉ có một nguồn sự thật, khớp bảng ở `report.md`.
+- [x] Không triển khai D1 (Kho) — không còn dấu vết `WarehouseService` trong module.
+- [x] Excel/PDF export và biểu đồ đều khớp đúng dữ liệu API, không tính thêm.
+- [x] Query tối ưu, không N+1 Query.
 
 ---
 
 ## Definition of Done
 
-- [ ] Không còn TODO.
-- [ ] Đồng bộ Knowledge (`report.md` trạng thái "Đã triển khai").
-- [ ] Đồng bộ Prisma.
-- [ ] Đồng bộ ERD.
-- [ ] Pass Review.
+- [x] Không còn TODO.
+- [x] Đồng bộ Knowledge (`report.md` trạng thái "Đã triển khai").
+- [x] Đồng bộ Prisma (index `Payment.paymentDate` rà soát: đã có sẵn từ trước, không cần migration mới).
+- [x] Đồng bộ ERD (không áp dụng — Task này không thêm bảng/quan hệ mới).
+- [x] Pass Review.
 
 ---
 

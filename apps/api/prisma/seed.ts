@@ -35,6 +35,9 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   // Tách khỏi resource `production` (vốn chỉ có view/start/complete cho
   // ProductionOrder) — CRUD xưởng sản xuất là khái niệm khác.
   'production-center': ['view', 'create', 'update', 'delete'],
+  // Module Báo cáo (014-bao-cao.md Task 01) — một quyền duy nhất cho toàn
+  // module, không tách theo từng báo cáo ở V1 (report.md mục "Permission").
+  report: ['view'],
 };
 
 function keysForResource(resource: string): string[] {
@@ -92,7 +95,9 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
   {
     code: 'ACCOUNTANT',
     name: 'Kế toán',
-    permissionKeys: [...keysForResource('debt'), 'settings.view'],
+    // report.view thêm tường minh (014-bao-cao.md Task 01) — ACCOUNTANT khai
+    // báo thủ công, không dùng viewKeys() như MANAGER/VIEWER.
+    permissionKeys: [...keysForResource('debt'), 'settings.view', 'report.view'],
   },
   { code: 'VIEWER', name: 'Chỉ xem', permissionKeys: viewKeys() },
 ];
