@@ -69,6 +69,7 @@ web_modules/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -127,6 +128,10 @@ dist
 
 # pnpm
 .pnpm-store
+
+# SSL certs thật (Cloudflare Origin Cert) — chỉ đặt trên VPS, không commit.
+docker/nginx/certs/*
+!docker/nginx/certs/.gitkeep
 
 # yarn v3
 .pnp.*

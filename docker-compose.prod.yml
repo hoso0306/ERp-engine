@@ -1,7 +1,6 @@
 # Compose production — tách khỏi docker-compose.yml (chỉ Postgres cho dev).
-# Chưa có service Nginx — đó là mục 2.3 (🔴 chờ gần go-live, phụ thuộc quyết
-# định SSL/domain thật). Trước khi có Nginx, `ports` bên dưới expose thẳng ra
-# host để còn test được; khi thêm Nginx sẽ đổi lại thành `expose` nội bộ.
+# Nginx (docker/nginx/conf.d/default.conf) đứng trước, expose 80/443 ra host;
+# api/web chỉ `expose` nội bộ trong mạng Docker, không lộ port ra ngoài trực tiếp.
 #
 # Chạy: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 
@@ -27,10 +26,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3001
+      # Đọc bởi apps/api/prisma/seed.ts khi chạy `docker compose exec api npx prisma db seed`.
+      BOOTSTRAP_OWNER_EMAIL: ${BOOTSTRAP_OWNER_EMAIL}
+      BOOTSTRAP_OWNER_NAME: ${BOOTSTRAP_OWNER_NAME}
     depends_on:
       - postgres
-    ports:
-      - "${API_PORT:-3001}:3001"
+    expose:
+      - "3001"
 
   web:
     build:
@@ -42,8 +44,22 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: erp-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
 
 volumes:
   postgres_data:

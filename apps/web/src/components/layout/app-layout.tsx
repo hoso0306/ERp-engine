@@ -13,8 +13,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading, user } = useAuth();
 
-  // /login tự quản layout riêng, không có sidebar/header.
-  if (pathname === "/login") {
+  // /login và mọi trang in (kết thúc bằng /print) tự quản layout riêng,
+  // không có sidebar/header — bắt buộc để bản in không bị chèn sidebar
+  // (018-fix-khong-gian-tren-a5.md: sidebar chiếm chỗ làm nội dung phiếu bị
+  // cắt khi in thật).
+  if (pathname === "/login" || pathname.endsWith("/print")) {
     return <>{children}</>;
   }
 

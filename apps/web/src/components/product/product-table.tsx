@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 
 interface Product {
   id: string;
@@ -20,6 +20,9 @@ interface Product {
   status: string;
   productType: { id: string; name: string } | null;
   unit: { id: string; name: string } | null;
+  productionCenter: { id: string; code: string; name: string } | null;
+  hasActivePricingRule?: boolean;
+  hasActiveMaterialRequirement?: boolean;
 }
 
 interface Meta {
@@ -54,6 +57,9 @@ export function ProductTable({ products, meta, onPageChange }: ProductTableProps
               <TableHead>Tên sản phẩm</TableHead>
               <TableHead>Loại sản phẩm</TableHead>
               <TableHead>Đơn vị</TableHead>
+              <TableHead>Xưởng sản xuất</TableHead>
+              <TableHead className="text-center">Giá bán</TableHead>
+              <TableHead className="text-center">Giá vốn</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
@@ -73,6 +79,19 @@ export function ProductTable({ products, meta, onPageChange }: ProductTableProps
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {p.unit?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {p.productionCenter?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {p.hasActivePricingRule && (
+                      <CheckCircle2 className="mx-auto h-4 w-4 text-green-600" />
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {p.hasActiveMaterialRequirement && (
+                      <CheckCircle2 className="mx-auto h-4 w-4 text-green-600" />
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={status.variant}>{status.label}</Badge>

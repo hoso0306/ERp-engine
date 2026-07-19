@@ -508,7 +508,7 @@ export class ProductService {
       where.productionCenterId = query.productionCenterId;
     }
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
         skip,
@@ -518,10 +518,22 @@ export class ProductService {
           productType: { select: { id: true, name: true } },
           unit: { select: { id: true, name: true } },
           productionCenter: { select: { id: true, code: true, name: true } },
+          pricingRule: {
+            select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+          },
+          materialRequirement: {
+            select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+          },
         },
       }),
       this.prisma.product.count({ where }),
     ]);
+
+    const data = rows.map(({ pricingRule, materialRequirement, ...product }) => ({
+      ...product,
+      hasActivePricingRule: (pricingRule?.versions.length ?? 0) > 0,
+      hasActiveMaterialRequirement: (materialRequirement?.versions.length ?? 0) > 0,
+    }));
 
     return {
       data,

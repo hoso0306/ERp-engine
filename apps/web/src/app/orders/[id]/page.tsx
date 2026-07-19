@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle, FileDown, MapPin, Pencil,
+  ArrowLeft, Truck, CheckCircle, XCircle, Settings2, Clock, AlertTriangle, FileDown, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SalesOrderStatusBadge, SALES_ORDER_STATUS_LABEL } from "@/components/sales-order/sales-order-status-badge";
@@ -23,6 +23,7 @@ import { PaymentStatusBadge, PAYMENT_STATUS_LABEL } from "@/components/sales-ord
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 import { SalesOrderItemTable } from "@/components/sales-order/sales-order-item-table";
 import { ReturnStatusBadge } from "@/components/return/return-status-badge";
+import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -186,15 +187,6 @@ export default function SalesOrderDetailPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
 
-  const [deliveryOpen, setDeliveryOpen] = useState(false);
-  const [deliveryName, setDeliveryName] = useState("");
-  const [deliveryPhone, setDeliveryPhone] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [deliveryProvince, setDeliveryProvince] = useState("");
-  const [deliveryDistrict, setDeliveryDistrict] = useState("");
-  const [deliveryWard, setDeliveryWard] = useState("");
-  const [deliverySaving, setDeliverySaving] = useState(false);
-
   const fetchOrder = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -280,43 +272,6 @@ export default function SalesOrderDetailPage() {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setOverrideSaving(false);
-    }
-  }
-
-  function openDeliveryDialog() {
-    if (!order) return;
-    setDeliveryName(order.deliveryName);
-    setDeliveryPhone(order.deliveryPhone);
-    setDeliveryAddress(order.deliveryAddress ?? "");
-    setDeliveryProvince(order.deliveryProvince ?? "");
-    setDeliveryDistrict(order.deliveryDistrict ?? "");
-    setDeliveryWard(order.deliveryWard ?? "");
-    setDeliveryOpen(true);
-  }
-
-  async function handleUpdateDeliveryAddress(e: React.FormEvent) {
-    e.preventDefault();
-    if (!deliveryName.trim() || !deliveryPhone.trim()) {
-      toast.error("Vui lòng nhập tên và số điện thoại nhận hàng.");
-      return;
-    }
-    setDeliverySaving(true);
-    try {
-      await apiPost(`/sales-orders/${id}/update-delivery-address`, {
-        deliveryName: deliveryName.trim(),
-        deliveryPhone: deliveryPhone.trim(),
-        deliveryAddress: deliveryAddress.trim() || null,
-        deliveryProvince: deliveryProvince.trim() || null,
-        deliveryDistrict: deliveryDistrict.trim() || null,
-        deliveryWard: deliveryWard.trim() || null,
-      });
-      toast.success("Đã cập nhật địa chỉ giao hàng.");
-      setDeliveryOpen(false);
-      fetchOrder();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
-    } finally {
-      setDeliverySaving(false);
     }
   }
 
@@ -462,12 +417,12 @@ export default function SalesOrderDetailPage() {
             <MapPin className="h-4 w-4" />
             Địa chỉ giao hàng
           </h3>
-          {hasPermission("sales-order.view") && (
-            <Button variant="outline" size="sm" onClick={openDeliveryDialog}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Sửa
-            </Button>
-          )}
+          <DeliveryAddressDialog
+            salesOrderId={order.id}
+            salesOrderCode={order.code}
+            value={order}
+            onSaved={fetchOrder}
+          />
         </div>
         <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
           <div className="flex gap-2">
@@ -693,91 +648,6 @@ export default function SalesOrderDetailPage() {
               disabled={overrideSaving || !overrideStatus || !overrideReason.trim()}
             >
               {overrideSaving ? "Đang lưu..." : "Xác nhận Override"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delivery Address Dialog */}
-      <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Sửa địa chỉ giao hàng — {order.code}</DialogTitle>
-          </DialogHeader>
-          <form id="delivery-form" onSubmit={handleUpdateDeliveryAddress} className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Chỉ áp dụng cho đơn hàng này — không ảnh hưởng địa chỉ mặc định của khách hàng.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="delivery-name">Người nhận *</Label>
-                <input
-                  id="delivery-name"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={deliveryName}
-                  onChange={(e) => setDeliveryName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="delivery-phone">Số điện thoại *</Label>
-                <input
-                  id="delivery-phone"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={deliveryPhone}
-                  onChange={(e) => setDeliveryPhone(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="delivery-address">Địa chỉ</Label>
-              <Textarea
-                id="delivery-address"
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-                rows={2}
-                placeholder="Số nhà, đường, công trình..."
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="delivery-ward">Phường/Xã</Label>
-                <input
-                  id="delivery-ward"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={deliveryWard}
-                  onChange={(e) => setDeliveryWard(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="delivery-district">Quận/Huyện</Label>
-                <input
-                  id="delivery-district"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={deliveryDistrict}
-                  onChange={(e) => setDeliveryDistrict(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="delivery-province">Tỉnh/Thành</Label>
-                <input
-                  id="delivery-province"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={deliveryProvince}
-                  onChange={(e) => setDeliveryProvince(e.target.value)}
-                />
-              </div>
-            </div>
-          </form>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeliveryOpen(false)}>Đóng</Button>
-            <Button
-              type="submit"
-              form="delivery-form"
-              disabled={deliverySaving || !deliveryName.trim() || !deliveryPhone.trim()}
-            >
-              {deliverySaving ? "Đang lưu..." : "Lưu địa chỉ"}
             </Button>
           </DialogFooter>
         </DialogContent>

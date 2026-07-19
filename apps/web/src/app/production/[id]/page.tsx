@@ -6,12 +6,24 @@ import Link from "next/link";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, PlayCircle, CheckCircle, Clock, FileDown } from "lucide-react";
+import { ArrowLeft, PlayCircle, CheckCircle, Clock, FileDown, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 import { ProductionItemTable } from "@/components/production/production-item-table";
+import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+
+function formatDeliveryAddress(o: {
+  deliveryAddress: string | null;
+  deliveryWard: string | null;
+  deliveryDistrict: string | null;
+  deliveryProvince: string | null;
+}) {
+  return [o.deliveryAddress, o.deliveryWard, o.deliveryDistrict, o.deliveryProvince]
+    .filter(Boolean)
+    .join(", ");
+}
 
 interface Parameter {
   name: string;
@@ -59,6 +71,13 @@ interface ProductionOrder {
     customerName: string;
     customerPhone: string;
     status: string;
+    deliveryName: string;
+    deliveryPhone: string;
+    deliveryAddress: string | null;
+    deliveryProvince: string | null;
+    deliveryDistrict: string | null;
+    deliveryWard: string | null;
+    expectedDeliveryDate: string | null;
   };
 }
 
@@ -195,6 +214,37 @@ export default function ProductionOrderDetailPage() {
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Hoàn thành lúc</span>
             <span>{order.completedAt ? new Date(order.completedAt).toLocaleString("vi-VN") : "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Địa chỉ giao hàng — sửa ngay tại đây, không cần rời trang sang Đơn
+          hàng (xem knowledge/modules/order.md mục "Địa chỉ giao hàng"). */}
+      <div className="rounded-lg border p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <MapPin className="h-4 w-4" />
+            Địa chỉ giao hàng
+          </h3>
+          <DeliveryAddressDialog
+            salesOrderId={order.salesOrder.id}
+            salesOrderCode={order.salesOrder.code}
+            value={order.salesOrder}
+            onSaved={fetchOrder}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Người nhận</span>
+            <span className="font-medium">{order.salesOrder.deliveryName}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Số điện thoại</span>
+            <span>{order.salesOrder.deliveryPhone}</span>
+          </div>
+          <div className="flex gap-2 col-span-2">
+            <span className="text-muted-foreground w-36 shrink-0">Địa chỉ</span>
+            <span>{formatDeliveryAddress(order.salesOrder) || "—"}</span>
           </div>
         </div>
       </div>

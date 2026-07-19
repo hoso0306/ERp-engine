@@ -43,6 +43,7 @@ describe('ProductionOrderService', () => {
       update: jest.Mock;
     };
     productionOrderTimeline: { create: jest.Mock };
+    productionCenter: { findUnique: jest.Mock };
     user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -59,6 +60,9 @@ describe('ProductionOrderService', () => {
       productionOrderTimeline: {
         create: jest.fn(),
       },
+      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — findOne()
+      // tra thêm ProductionCenter.code, mặc định null (không phải XL03).
+      productionCenter: { findUnique: jest.fn().mockResolvedValue(null) },
       user: { findUnique: jest.fn() },
       // print() (009-in-phieu-san-xuat.md) truyền một mảng Promise thay vì
       // callback — hỗ trợ cả 2 dạng $transaction() mà Prisma cho phép.
@@ -88,6 +92,31 @@ describe('ProductionOrderService', () => {
       await expect(service.findOne('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    // 010-mau-in-xuong-cau-vong.md — FE chọn mẫu in riêng dựa vào field này.
+    it('trả về productionCenterCode tra từ ProductionCenter theo productionCenterId', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder({ productionCenterId: 'pc-cau-vong' }),
+      );
+      prisma.productionCenter.findUnique.mockResolvedValue({ code: 'XL03' });
+
+      const result = await service.findOne('po-1');
+
+      expect(prisma.productionCenter.findUnique).toHaveBeenCalledWith({
+        where: { id: 'pc-cau-vong' },
+        select: { code: true },
+      });
+      expect(result.productionCenterCode).toBe('XL03');
+    });
+
+    it('productionCenterCode = null khi không tìm thấy ProductionCenter', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(makeProductionOrder());
+      prisma.productionCenter.findUnique.mockResolvedValue(null);
+
+      const result = await service.findOne('po-1');
+
+      expect(result.productionCenterCode).toBeNull();
     });
   });
 

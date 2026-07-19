@@ -35,6 +35,8 @@ const PRODUCTION_ORDER_INCLUDE = {
       deliveryDistrict: true,
       deliveryWard: true,
       expectedDeliveryDate: true,
+      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — "Ngày đặt hàng".
+      createdAt: true,
     },
   },
 } satisfies Prisma.ProductionOrderInclude;
@@ -112,9 +114,23 @@ export class ProductionOrderService {
       throw new NotFoundException('Phiếu sản xuất không tồn tại.');
     }
 
-    const items = await this.attachSpecsAndBom(productionOrder.items);
+    const [items, productionCenter] = await Promise.all([
+      this.attachSpecsAndBom(productionOrder.items),
+      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — nhận diện
+      // theo ProductionCenter.code (XL03), không so khớp fragile theo tên hiển
+      // thị. ProductionOrder chỉ snapshot id/name, không có relation, nên tra
+      // riêng ở đây.
+      this.prisma.productionCenter.findUnique({
+        where: { id: productionOrder.productionCenterId },
+        select: { code: true },
+      }),
+    ]);
 
-    return { ...productionOrder, items };
+    return {
+      ...productionOrder,
+      items,
+      productionCenterCode: productionCenter?.code ?? null,
+    };
   }
 
   // Task 01 (005-fe-san-xuat-kho.md) — quản đốc xưởng cần xem thông số sản

@@ -118,4 +118,13 @@ Kế toán/quản đốc in được Phiếu sản xuất khổ A5 ngay từ ERP
 
 Khối lượng nhỏ — 1 milestone, không cần chia cụm dừng giữa chừng như Báo cáo (008). Thực hiện tuần tự Việc 1 → 7, xong thì báo cáo tổng kết theo đúng mục 11 CLAUDE.md.
 
-**Đang dừng ở đây, chờ lệnh bắt đầu code.**
+## Bổ sung sau feedback người dùng (19/07/2026)
+
+Sau khi code xong Việc 1-7, người dùng phản hồi không tìm được chỗ sửa địa chỉ giao hàng khi đang ở luồng Sản xuất/In phiếu (đường dẫn ban đầu chỉ có ở `/orders/[id]`, xa luồng in). Bổ sung:
+
+- Tách component dùng chung `apps/web/src/components/sales-order/delivery-address-dialog.tsx` (trước đó form sửa chỉ nằm trong `/orders/[id]`).
+- Thêm khối "Địa chỉ giao hàng" + nút "Sửa" (dialog nổi tại chỗ) vào `/production/[id]` (trang chi tiết Phiếu sản xuất).
+- Thêm nút "Sửa" tương tự vào `/production/print` (trang xem trước bản in) — bọc `no-print` để không xuất hiện trên giấy in.
+- `/orders/[id]` refactor dùng lại component chung, không đổi hành vi.
+
+Đã chạy `tsc --noEmit` + `next build` sạch (cả 3 điểm chèn). Chưa verify qua trình duyệt thật.

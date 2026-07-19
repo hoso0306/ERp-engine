@@ -24,6 +24,7 @@ interface Product {
   status: string;
   productType: { id: string; name: string } | null;
   unit: { id: string; name: string } | null;
+  productionCenter: { id: string; code: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -190,6 +191,7 @@ export default function ProductDetailPage() {
           <Field label="Mã sản phẩm" value={product.code} />
           <Field label="Loại sản phẩm" value={product.productType?.name} />
           <Field label="Đơn vị tính" value={product.unit?.name} />
+          <Field label="Xưởng sản xuất" value={product.productionCenter?.name} />
         </dl>
       </div>
 
