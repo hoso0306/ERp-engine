@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Loading, ErrorState, EmptyState, DateRangeFilter } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, DateRangeFilter, endOfDayBound } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -98,7 +98,7 @@ export default function ReturnsPage() {
     return returns.filter((r) => {
       const d = new Date(r.returnDate);
       if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo && d > new Date(dateTo)) return false;
+      if (dateTo && d > endOfDayBound(dateTo)) return false;
       return true;
     });
   }, [returns, dateFrom, dateTo]);
@@ -141,7 +141,7 @@ export default function ReturnsPage() {
     return recoveryItems.filter((r) => {
       const d = new Date(r.createdAt);
       if (recoveryDateFrom && d < new Date(recoveryDateFrom)) return false;
-      if (recoveryDateTo && d > new Date(recoveryDateTo)) return false;
+      if (recoveryDateTo && d > endOfDayBound(recoveryDateTo)) return false;
       return true;
     });
   }, [recoveryItems, recoveryDateFrom, recoveryDateTo]);

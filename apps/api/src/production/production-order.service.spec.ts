@@ -40,6 +40,7 @@ describe('ProductionOrderService', () => {
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       update: jest.Mock;
     };
     productionOrderTimeline: { create: jest.Mock };
@@ -55,13 +56,14 @@ describe('ProductionOrderService', () => {
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
         update: jest.fn(),
       },
       productionOrderTimeline: {
         create: jest.fn(),
       },
-      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — findOne()
-      // tra thêm ProductionCenter.code, mặc định null (không phải XL03).
+      // Mẫu in riêng Xưởng Cầu Vồng (009-in-phieu-san-xuat.md) — findOne()
+      // tra thêm ProductionCenter.code, mặc định null (không phải XW004).
       productionCenter: { findUnique: jest.fn().mockResolvedValue(null) },
       user: { findUnique: jest.fn() },
       // print() (009-in-phieu-san-xuat.md) truyền một mảng Promise thay vì
@@ -94,7 +96,7 @@ describe('ProductionOrderService', () => {
       );
     });
 
-    // 010-mau-in-xuong-cau-vong.md — FE chọn mẫu in riêng dựa vào field này.
+    // 009-in-phieu-san-xuat.md — FE chọn mẫu in riêng dựa vào field này.
     it('trả về productionCenterCode tra từ ProductionCenter theo productionCenterId', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(
         makeProductionOrder({ productionCenterId: 'pc-cau-vong' }),
@@ -117,6 +119,33 @@ describe('ProductionOrderService', () => {
       const result = await service.findOne('po-1');
 
       expect(result.productionCenterCode).toBeNull();
+    });
+  });
+
+  // Cột "Đã in" ở tab Sản xuất (fix 19/07/2026) — isPrinted derive từ số dòng
+  // Timeline PRINTED (_count.timeline), không lưu field riêng.
+  describe('findAll()', () => {
+    it('isPrinted = true khi có ít nhất 1 dòng Timeline PRINTED', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { ...makeProductionOrder(), _count: { items: 2, timeline: 1 } },
+      ]);
+      prisma.productionOrder.count.mockResolvedValue(1);
+
+      const result = await service.findAll({});
+
+      expect(result.data[0].isPrinted).toBe(true);
+      expect(result.data[0]._count).toEqual({ items: 2 });
+    });
+
+    it('isPrinted = false khi chưa in lần nào', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { ...makeProductionOrder(), _count: { items: 2, timeline: 0 } },
+      ]);
+      prisma.productionOrder.count.mockResolvedValue(1);
+
+      const result = await service.findAll({});
+
+      expect(result.data[0].isPrinted).toBe(false);
     });
   });
 

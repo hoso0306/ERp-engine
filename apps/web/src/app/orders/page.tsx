@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState, todayISO } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, todayISO, endOfDayBound } from "@/components/shared";
 import {
   SalesOrderFilter,
   TAB_STATUS_PARAM,
@@ -78,13 +78,13 @@ export default function OrdersPage() {
       if (createdFrom || createdTo) {
         const c = new Date(o.createdAt);
         if (createdFrom && c < new Date(createdFrom)) return false;
-        if (createdTo && c > new Date(createdTo)) return false;
+        if (createdTo && c > endOfDayBound(createdTo)) return false;
       }
       if (deliveryFrom || deliveryTo) {
         if (!o.expectedDeliveryDate) return false;
         const d = new Date(o.expectedDeliveryDate);
         if (deliveryFrom && d < new Date(deliveryFrom)) return false;
-        if (deliveryTo && d > new Date(deliveryTo)) return false;
+        if (deliveryTo && d > endOfDayBound(deliveryTo)) return false;
       }
       return true;
     });

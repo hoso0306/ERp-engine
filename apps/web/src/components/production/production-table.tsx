@@ -16,6 +16,7 @@ interface ProductionOrderRow {
   status: string;
   salesOrder: { id: string; code: string; customerName: string };
   _count: { items: number };
+  isPrinted: boolean;
 }
 
 interface Meta {
@@ -68,6 +69,7 @@ export function ProductionTable({
               <TableHead>Xưởng</TableHead>
               <TableHead className="text-center">Số sản phẩm</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
+              <TableHead className="text-center">Đã in</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -94,6 +96,9 @@ export function ProductionTable({
                 <TableCell className="text-center text-sm">{po._count.items}</TableCell>
                 <TableCell className="text-center">
                   <ProductionOrderStatusBadge status={po.status} />
+                </TableCell>
+                <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                  <Checkbox checked={po.isPrinted} disabled title={po.isPrinted ? "Đã in" : "Chưa in"} />
                 </TableCell>
               </TableRow>
             ))}

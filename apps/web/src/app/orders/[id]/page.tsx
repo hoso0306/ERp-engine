@@ -143,6 +143,7 @@ const TIMELINE_LABEL: Record<string, string> = {
   PAYMENT_STATUS_CHANGED: "Cập nhật thanh toán",
   MANUAL_OVERRIDE: "Điều chỉnh thủ công",
   DELIVERY_ADDRESS_UPDATED: "Cập nhật địa chỉ giao hàng",
+  CARRIER_INFO_UPDATED: "Cập nhật thông tin nhà xe",
   CANCELLED: "Huỷ đơn hàng",
 };
 
@@ -728,6 +729,20 @@ export default function SalesOrderDetailPage() {
                                   deliveryDistrict: (newV.deliveryDistrict as string) ?? null,
                                   deliveryProvince: (newV.deliveryProvince as string) ?? null,
                                 }) || "—"}</span>
+                              </div>
+                            );
+                          })()}
+                        {entry.action === "CARRIER_INFO_UPDATED" &&
+                          !!payload.old && !!payload.new && (() => {
+                            const oldV = payload.old as Record<string, unknown>;
+                            const newV = payload.new as Record<string, unknown>;
+                            const fmt = (v: Record<string, unknown>) =>
+                              [v.carrierName, v.carrierPhone].filter(Boolean).join(" — ") || "—";
+                            return (
+                              <div>
+                                Nhà xe: <span className="text-foreground">{fmt(oldV)}</span>
+                                {" → "}
+                                <span className="text-foreground">{fmt(newV)}</span>
                               </div>
                             );
                           })()}

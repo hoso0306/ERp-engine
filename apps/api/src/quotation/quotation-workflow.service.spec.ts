@@ -61,6 +61,7 @@ function makeQuotation(overrides: Record<string, unknown> = {}) {
     status: 'SENT',
     salesOrderId: null,
     expiryDate: null,
+    expectedDeliveryDate: null,
     note: null,
     discountAmount: 0,
     discountReason: null,
@@ -381,6 +382,46 @@ describe('QuotationWorkflowService.approve()', () => {
     // plannedProfit = totalAmount − plannedCost − discountAmount
     expect(soData.plannedProfit).toBe(2_000_000 - 0 - 300_000);
   });
+
+  // Fix 19/07/2026 — expectedDeliveryDate không được set ở đâu cả, dù field
+  // đã có sẵn trên SalesOrder. Snapshot từ Quotation.expectedDeliveryDate
+  // (nhập tay lúc tạo/sửa báo giá) tại Approve.
+  it('snapshot expectedDeliveryDate từ Quotation sang SalesOrder khi Approve', async () => {
+    const deliveryDate = new Date('2026-08-01T00:00:00.000Z');
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ expectedDeliveryDate: deliveryDate }),
+    );
+
+    const tx = {
+      runningNumber: {
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'DH', lastNumber: 1, paddingLength: 6 }),
+      },
+      salesOrder: { create: jest.fn().mockResolvedValue({ id: 'so-1' }) },
+      receivable: { create: jest.fn() },
+      salesOrderItem: { create: jest.fn().mockResolvedValue({ id: 'soi-1' }) },
+      orderBOM: { create: jest.fn() },
+      productionOrder: { create: jest.fn().mockResolvedValue({ id: 'po-1' }) },
+      productionOrderTimeline: { create: jest.fn() },
+      quotation: { update: jest.fn().mockResolvedValue({ id: 'q-1' }) },
+      quotationTimeline: { create: jest.fn() },
+      salesOrderTimeline: { create: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Lê Văn Duyệt', email: 'duyet@acme.vn' }),
+      },
+    };
+    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
+      fn(tx),
+    );
+
+    await service.approve('q-1', 'approver-1');
+
+    const soData = tx.salesOrder.create.mock.calls[0][0].data;
+    expect(soData.expectedDeliveryDate).toBe(deliveryDate);
+  });
 });
 
 // Sprint 04 (005-nguoi-thuc-hien-lich-su-hoat-dong.md) — createdByName/
@@ -668,6 +709,153 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
           finalPrice: 900_000, // vẫn 10% như snapshot cũ
           subtotal: 2_700_000, // 900.000 × 3
         }),
+      }),
+    );
+  });
+});
+
+// 009-in-phieu-san-xuat.md (workbench/sprint-04) — snapshot valueLabel (nhãn hiển thị option
+// ENUM đã chọn) tại addItem/updateItem, để bản in không phải hiện mã thô.
+describe('QuotationWorkflowService — snapshot valueLabel cho tham số ENUM', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: { findUnique: jest.Mock };
+    quotationItem: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    quotationItemParameter: { deleteMany: jest.Mock; createMany: jest.Mock };
+    customerProductDiscount: { findUnique: jest.Mock };
+    product: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let pricingEngine: { calculate: jest.Mock };
+
+  const productWithEnumParam = {
+    id: 'prod-1',
+    code: 'SP000036',
+    name: '[Cửa lưới] Hệ xếp Thăng Long 27',
+    parameters: [
+      {
+        name: 'loaicua',
+        label: 'Loại cửa',
+        unit: null,
+        displayOrder: 0,
+        options: [
+          { value: 'cuadi', label: 'Cửa đi' },
+          { value: 'cuaso', label: 'Cửa sổ' },
+        ],
+      },
+      {
+        name: 'chieurong',
+        label: 'Chiều rộng',
+        unit: 'm',
+        displayOrder: 1,
+        options: [],
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: { findUnique: jest.fn() },
+      quotationItem: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      quotationItemParameter: { deleteMany: jest.fn(), createMany: jest.fn() },
+      customerProductDiscount: { findUnique: jest.fn() },
+      product: { findUnique: jest.fn() },
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    };
+    pricingEngine = { calculate: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: pricingEngine },
+        { provide: BomEngineService, useValue: { loadConfigForVersion: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('addItem(): tham số ENUM khớp option → snapshot đúng valueLabel', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+    prisma.product.findUnique.mockResolvedValue(productWithEnumParam);
+    prisma.customerProductDiscount.findUnique.mockResolvedValue(null);
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 500_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.addItem('q-1', {
+      productId: 'prod-1',
+      quantity: 1,
+      parameters: [
+        { name: 'loaicua', value: 'cuaso' },
+        { name: 'chieurong', value: '0.63' },
+      ],
+    });
+
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          parameters: {
+            create: [
+              expect.objectContaining({ name: 'loaicua', value: 'cuaso', valueLabel: 'Cửa sổ' }),
+              expect.objectContaining({ name: 'chieurong', value: '0.63', valueLabel: null }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('addItem(): giá trị ENUM không khớp option nào → valueLabel = null (không throw)', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+    prisma.product.findUnique.mockResolvedValue(productWithEnumParam);
+    prisma.customerProductDiscount.findUnique.mockResolvedValue(null);
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 500_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.addItem('q-1', {
+      productId: 'prod-1',
+      quantity: 1,
+      parameters: [{ name: 'loaicua', value: 'khong_ton_tai' }],
+    });
+
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          parameters: {
+            create: [expect.objectContaining({ value: 'khong_ton_tai', valueLabel: null })],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('updateItem(): sửa tham số ENUM → createMany ghi đúng valueLabel mới', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+    prisma.quotationItem.findFirst.mockResolvedValue(makeItem());
+    prisma.product.findUnique.mockResolvedValue(productWithEnumParam);
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 500_000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+    });
+
+    await service.updateItem('q-1', 'item-1', {
+      parameters: [{ name: 'loaicua', value: 'cuadi' }],
+    });
+
+    expect(prisma.quotationItemParameter.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ name: 'loaicua', value: 'cuadi', valueLabel: 'Cửa đi' })],
       }),
     );
   });

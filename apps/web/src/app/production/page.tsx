@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState, todayISO } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, todayISO, endOfDayBound } from "@/components/shared";
 import {
   ProductionFilter,
   TAB_STATUS_PARAM,
@@ -19,6 +19,7 @@ interface ProductionOrderRow {
   status: string;
   salesOrder: { id: string; code: string; customerName: string };
   _count: { items: number };
+  isPrinted: boolean;
   createdAt: string;
   completedAt: string | null;
 }
@@ -111,13 +112,13 @@ export default function ProductionPage() {
       if (dateFrom || dateTo) {
         const d = new Date(o.createdAt);
         if (dateFrom && d < new Date(dateFrom)) return false;
-        if (dateTo && d > new Date(dateTo)) return false;
+        if (dateTo && d > endOfDayBound(dateTo)) return false;
       }
       if (completedFrom || completedTo) {
         if (!o.completedAt) return false;
         const d = new Date(o.completedAt);
         if (completedFrom && d < new Date(completedFrom)) return false;
-        if (completedTo && d > new Date(completedTo)) return false;
+        if (completedTo && d > endOfDayBound(completedTo)) return false;
       }
       return true;
     });

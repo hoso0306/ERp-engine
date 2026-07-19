@@ -113,6 +113,10 @@ enum SalesOrderTimelineAction {
   // Sửa địa chỉ giao hàng của đơn (Sprint 04, 009-in-phieu-san-xuat.md) —
   // không phải Manual Override (không đổi Status, không bắt buộc lý do).
   DELIVERY_ADDRESS_UPDATED
+  // Sửa thông tin nhà xe/vận chuyển (Sprint 04, 009-in-phieu-san-xuat.md) —
+  // cùng cơ chế với DELIVERY_ADDRESS_UPDATED nhưng là 1 nhóm dữ liệu khác
+  // (nhà xe chở hàng, không phải người/nơi nhận hàng).
+  CARRIER_INFO_UPDATED
   CANCELLED
 }
 
@@ -807,6 +811,10 @@ model Quotation {
   customerId   String          @map("customer_id")
   status       QuotationStatus @default(DRAFT)
   expiryDate   DateTime?       @map("expiry_date")
+  // Hạn giao hàng thoả thuận với khách (Sprint 04, fix 19/07/2026) — nhập tay
+  // lúc tạo/sửa báo giá (DRAFT/SENT). Snapshot sang SalesOrder.expectedDeliveryDate
+  // tại Approve — sau đó Quotation không còn là nguồn đọc nữa.
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
   note         String?
   salesOrderId String?         @unique @map("sales_order_id")
 
@@ -894,6 +902,9 @@ model QuotationItemParameter {
   name            String
   label           String
   value           String
+  // Nhãn hiển thị của option ENUM đã chọn — xem ghi chú ở
+  // SalesOrderItemParameter.valueLabel (009-in-phieu-san-xuat.md).
+  valueLabel      String?  @map("value_label")
   unit            String?
   displayOrder    Int      @default(0) @map("display_order")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -947,6 +958,16 @@ model SalesOrder {
   deliveryProvince String? @map("delivery_province")
   deliveryDistrict String? @map("delivery_district")
   deliveryWard     String? @map("delivery_ward")
+
+  // Thông tin nhà xe/vận chuyển (Sprint 04, 009-in-phieu-san-xuat.md) — KHÁC
+  // nhóm delivery* ở trên: đây là nhà xe/tài xế chở hàng, không phải người/
+  // nơi nhận hàng. Không có nguồn Master Data để auto-copy (không giống
+  // delivery* copy từ Customer) — mặc định NULL, nhập tay qua action
+  // updateCarrierInfo() khi đã sắp xếp được xe (không bắt buộc lý do, sửa
+  // được ở mọi Status, cùng cơ chế Timeline với delivery*).
+  carrierName  String? @map("carrier_name")
+  carrierPhone String? @map("carrier_phone")
+  carrierNote  String? @map("carrier_note")
 
   status        SalesOrderStatus @default(IN_PRODUCTION)
   totalAmount   Decimal          @map("total_amount") @db.Decimal(15, 0)
@@ -1057,6 +1078,12 @@ model SalesOrderItemParameter {
   name             String
   label            String
   value            String
+  // Nhãn hiển thị của option ENUM đã chọn (vd "Cửa sổ" cho value "cuaso") —
+  // snapshot từ ProductParameterOption.label tại thời điểm thêm/sửa dòng báo
+  // giá (009-in-phieu-san-xuat.md). Null với tham số không phải ENUM hoặc
+  // option không còn nhãn. `value` giữ nguyên mã gốc (dùng cho Pricing Engine/
+  // Expression) — trường này CHỈ phục vụ hiển thị, không dùng để tính toán.
+  valueLabel       String?  @map("value_label")
   unit             String?
   displayOrder     Int      @default(0) @map("display_order")
   createdAt        DateTime @default(now()) @map("created_at")

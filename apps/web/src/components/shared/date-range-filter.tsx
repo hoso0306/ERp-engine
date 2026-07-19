@@ -22,6 +22,18 @@ export function todayISO(): string {
   return toISO(new Date());
 }
 
+// Mốc "đến ngày" của bộ lọc phải bao hết cả ngày đó — input <type=date> chỉ
+// cho ngày (vd "2026-07-19"), new Date(...) parse ra 00:00:00 UTC, nên so
+// trực tiếp với timestamp thật (createdAt...) sẽ loại mọi bản ghi tạo sau
+// mốc đó trong CÙNG ngày (bug: đơn vừa tạo hôm nay biến mất khỏi filter mặc
+// định "Hôm nay"). Chuẩn hoá về cuối ngày theo giờ local trước khi so sánh —
+// cùng cách BE đã làm cho createdTo (xem quotation-workflow.service.ts findAll()).
+export function endOfDayBound(iso: string): Date {
+  const d = new Date(iso);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 function startOfWeek(d: Date): Date {
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;

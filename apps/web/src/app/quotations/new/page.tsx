@@ -18,6 +18,7 @@ export default function NewQuotationPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,6 +30,7 @@ export default function NewQuotationPage() {
     try {
       const body: Record<string, unknown> = { customerId: customer.id };
       if (expiryDate) body.expiryDate = expiryDate;
+      if (expectedDeliveryDate) body.expectedDeliveryDate = expectedDeliveryDate;
       if (note.trim()) body.note = note.trim();
 
       const data = await apiPost<{ id: string }>("/quotations", body);
@@ -59,6 +61,16 @@ export default function NewQuotationPage() {
               type="date"
               value={expiryDate}
               onChange={(e) => setExpiryDate(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expectedDeliveryDate">Hạn giao hàng <span className="text-muted-foreground">(tuỳ chọn)</span></Label>
+            <Input
+              id="expectedDeliveryDate"
+              type="date"
+              value={expectedDeliveryDate}
+              onChange={(e) => setExpectedDeliveryDate(e.target.value)}
             />
           </div>
 

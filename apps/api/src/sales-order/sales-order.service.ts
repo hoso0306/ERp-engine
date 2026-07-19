@@ -20,6 +20,7 @@ import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
 import { UpdateDeliveryAddressDto } from './dto/update-delivery-address.dto';
+import { UpdateCarrierInfoDto } from './dto/update-carrier-info.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import {
   bucketDate,
@@ -278,6 +279,58 @@ export class SalesOrderService {
         data: {
           salesOrderId: id,
           action: SalesOrderTimelineAction.DELIVERY_ADDRESS_UPDATED,
+          actorType: SalesOrderTimelineActorType.USER,
+          payload: { old: oldValue, new: newValue },
+          createdBy: userId ?? null,
+          createdByName,
+        },
+      });
+
+      return tx.salesOrder.findUniqueOrThrow({
+        where: { id },
+        include: SALES_ORDER_INCLUDE,
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Thông tin nhà xe (009-in-phieu-san-xuat.md) — cùng cơ chế với
+  // updateDeliveryAddress(): không phải Manual Override, không đổi Status,
+  // không bắt buộc lý do, sửa được ở mọi Status. Khác nhóm dữ liệu: nhà xe
+  // chở hàng, không phải người/nơi nhận hàng — không có field nào bắt buộc
+  // (không có nguồn Master Data để auto-copy, nhập tay khi đã sắp xe).
+  // ─────────────────────────────────────────────────────
+
+  async updateCarrierInfo(
+    id: string,
+    dto: UpdateCarrierInfoDto,
+    userId?: string | null,
+  ) {
+    const salesOrder = await this.findOne(id);
+
+    const oldValue = {
+      carrierName: salesOrder.carrierName,
+      carrierPhone: salesOrder.carrierPhone,
+      carrierNote: salesOrder.carrierNote,
+    };
+    const newValue = {
+      carrierName: dto.carrierName?.trim() || null,
+      carrierPhone: dto.carrierPhone?.trim() || null,
+      carrierNote: dto.carrierNote?.trim() || null,
+    };
+
+    const createdByName = await resolveActorName(this.prisma, userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.salesOrder.update({
+        where: { id },
+        data: newValue,
+      });
+
+      await tx.salesOrderTimeline.create({
+        data: {
+          salesOrderId: id,
+          action: SalesOrderTimelineAction.CARRIER_INFO_UPDATED,
           actorType: SalesOrderTimelineActorType.USER,
           payload: { old: oldValue, new: newValue },
           createdBy: userId ?? null,

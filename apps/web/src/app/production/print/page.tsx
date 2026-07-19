@@ -4,11 +4,16 @@ import { useEffect, useState, useCallback, Suspense, type CSSProperties } from "
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
+import { CarrierInfoDialog } from "@/components/sales-order/carrier-info-dialog";
+import { useBranding } from "@/lib/use-branding";
 
 interface Parameter {
   name: string;
   label: string;
   value: string;
+  // Nhãn hiển thị của option ENUM đã chọn (009-in-phieu-san-xuat.md) — null
+  // với tham số không phải ENUM hoặc dữ liệu cũ tạo trước khi có field này.
+  valueLabel: string | null;
   unit: string | null;
 }
 
@@ -25,7 +30,7 @@ interface ProductionOrderPrintData {
   id: string;
   code: string;
   productionCenterName: string;
-  // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — null với các
+  // Mẫu in riêng Xưởng Cầu Vồng (009-in-phieu-san-xuat.md) — null với các
   // xưởng cũ chưa cần phân biệt mẫu in.
   productionCenterCode: string | null;
   createdAt: string;
@@ -39,6 +44,11 @@ interface ProductionOrderPrintData {
     deliveryProvince: string | null;
     deliveryDistrict: string | null;
     deliveryWard: string | null;
+    // Thông tin nhà xe (009-in-phieu-san-xuat.md) — khối "Thông tin giao
+    // hàng" trên mẫu in riêng xưởng, sửa được qua CarrierInfoDialog.
+    carrierName: string | null;
+    carrierPhone: string | null;
+    carrierNote: string | null;
     expectedDeliveryDate: string | null;
     createdAt: string;
   };
@@ -46,8 +56,7 @@ interface ProductionOrderPrintData {
 
 // Mã ProductionCenter thật trong DB (tra trực tiếp — ví dụ XL01/XL02/XL03 ở
 // production.md chỉ là minh hoạ, KHÔNG phải mã thật đang dùng). Đặc thù từng
-// xưởng cụ thể, không cấu hình được — xem 010-mau-in-xuong-cau-vong.md /
-// 011-mau-in-xuong-cua-luoi.md.
+// xưởng cụ thể, không cấu hình được — xem 009-in-phieu-san-xuat.md.
 const CAU_VONG_CENTER_CODE = "XW004";
 const CUA_LUOI_CENTER_CODE = "XW001";
 
@@ -58,7 +67,7 @@ interface ProductGroup {
   items: ProductionOrderItem[];
 }
 
-// Mẫu Xưởng (013-gop-dong-theo-xuong.md) — quy tắc gộp dòng khác nhau theo
+// Mẫu Xưởng (009-in-phieu-san-xuat.md) — quy tắc gộp dòng khác nhau theo
 // từng xưởng: Cầu Vồng chỉ gộp theo mã sản phẩm; Cửa Lưới phải khớp CẢ mã sản
 // phẩm LẪN toàn bộ thông số khác Rộng/Cao (loại cửa, số cánh, màu khung...)
 // mới được gộp — truyền `keyFn` khác nhau từ nơi gọi, xem `groupKeyFor()`.
@@ -98,7 +107,7 @@ function groupKeyFor(productionCenterCode: string | null) {
 
 // Tên thật của 2 tham số kích thước trong dữ liệu (tra trực tiếp DB dev —
 // toàn bộ Product hiện có đều dùng đúng 2 tên này, KHÔNG phải "width"/"height"
-// như ví dụ minh hoạ trong product.md). Xem 017-fix-ten-tham-so-kich-thuoc.md.
+// như ví dụ minh hoạ trong product.md). Xem 009-in-phieu-san-xuat.md.
 const WIDTH_PARAM_NAME = "chieurong";
 const HEIGHT_PARAM_NAME = "chieucao";
 
@@ -106,16 +115,25 @@ function paramValue(item: ProductionOrderItem, name: string): string {
   return item.parameters.find((p) => p.name === name)?.value ?? "—";
 }
 
-// Mẫu Xưởng (012-hop-nhat-mau-in-xuong.md) — dòng mô tả dưới tên sản phẩm gồm
-// các thông số KHÁC Rộng/Cao (khung, loại cửa, số cánh, hệ...), mỗi thông số
-// hiển thị "label value unit" (bỏ phần nào không có), nối bằng dấu phẩy. Nếu
-// sản phẩm không có thông số nào khác (như Rèm ở Cầu Vồng) thì để trống hẳn.
+// Mẫu Xưởng (009-in-phieu-san-xuat.md) — dòng mô tả dưới tên sản phẩm gồm
+// các thông số KHÁC Rộng/Cao (loại cửa, số cánh, màu khung...), CHỈ hiển thị
+// giá trị + đơn vị (bỏ nhãn — "Cửa sổ" thay vì "Loại cửa cuaso"), nối bằng dấu
+// phẩy. Nếu sản phẩm không có thông số nào khác (như Rèm ở Cầu Vồng) thì để
+// trống hẳn.
+//
+// Ưu tiên `valueLabel` (nhãn hiển thị option ENUM, vd "Cửa sổ") nếu có, rơi về
+// `value` (mã gốc, vd "cuaso") cho tham số không phải ENUM hoặc đơn cũ tạo
+// trước khi có field `valueLabel` (không snapshot lại được, chấp nhận hiện mã
+// thô cho dữ liệu lịch sử — đúng nguyên tắc Snapshot, CLAUDE.md mục 7).
 function otherParamsText(item: ProductionOrderItem): string {
   return item.parameters
     .filter((p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME)
     .map((p) => {
-      const withLabel = p.label ? `${p.label} ${p.value}` : p.value;
-      return p.unit ? `${withLabel} ${p.unit}` : withLabel;
+      // Nhãn ENUM (vd "Mở 1 cánh") đã tự mô tả đầy đủ — không nối thêm unit
+      // nữa, kẻo lặp từ (vd unit="cánh" → "Mở 1 cánh cánh"). Chỉ nối unit khi
+      // hiển thị value thô (tham số không phải ENUM / chưa có valueLabel).
+      if (p.valueLabel) return p.valueLabel;
+      return p.unit ? `${p.value} ${p.unit}` : p.value;
     })
     .join(", ");
 }
@@ -136,6 +154,9 @@ function formatAddress(o: {
 function ProductionOrderPrintContent() {
   const searchParams = useSearchParams();
   const ids = (searchParams.get("ids") ?? "").split(",").filter(Boolean);
+  // Logo công ty trên mẫu in riêng xưởng (009-in-phieu-san-xuat.md) — fetch 1
+  // lần cho cả lượt in, truyền xuống từng WorkshopOrderContent.
+  const branding = useBranding();
 
   const [orders, setOrders] = useState<ProductionOrderPrintData[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,7 +212,7 @@ function ProductionOrderPrintContent() {
     );
   }
 
-  // 018-fix-khong-gian-tren-a5.md — CSS "named page" (page: <name>) không hoạt
+  // 009-in-phieu-san-xuat.md — CSS "named page" (page: <name>) không hoạt
   // động trên Chromium thật khi test bằng Playwright (vẫn ra khổ Letter dọc
   // mặc định). Đổi sang tính 1 khổ giấy DUY NHẤT cho cả lượt in, dựa theo
   // danh sách phiếu đang in: có ít nhất 1 phiếu thuộc mẫu xưởng (Cầu Vồng/Cửa
@@ -223,6 +244,22 @@ function ProductionOrderPrintContent() {
         body { font-family: "Inter", "Roboto", Arial, sans-serif; font-size: 10.5px; color: #101828; }
         table { border-collapse: collapse; width: 100%; }
         .label { font-size: 9px; color: var(--grey); text-transform: uppercase; letter-spacing: 0.04em; }
+        /* Ghi chú sửa tại trang in (chỉ cục bộ, không lưu DB) — textarea tự
+           giãn chiều cao theo nội dung (field-sizing: content) để luôn in đủ
+           chữ, không bị cắt/cuộn như input 1 dòng. */
+        .note-textarea {
+          width: 100%;
+          display: block;
+          border: none;
+          outline: none;
+          resize: none;
+          background: transparent;
+          font: inherit;
+          color: inherit;
+          padding: 5px 3px;
+          overflow: hidden;
+          field-sizing: content;
+        }
       `}</style>
 
       <div className="no-print fixed top-4 right-4 flex gap-2 z-50">
@@ -256,7 +293,7 @@ function ProductionOrderPrintContent() {
             }
           >
             {isWorkshopTicket ? (
-              <WorkshopOrderContent order={order} onSaved={loadOrders} />
+              <WorkshopOrderContent order={order} onSaved={loadOrders} branding={branding} />
             ) : (
               <GenericOrderContent order={order} onSaved={loadOrders} />
             )}
@@ -344,7 +381,7 @@ function GenericOrderContent({
                     {item.parameters.map((p) => (
                       <span key={p.name} style={{ marginRight: 8 }}>
                         <span style={{ color: "var(--grey)" }}>{p.label}: </span>
-                        {p.value}{p.unit ? ` ${p.unit}` : ""}
+                        {p.valueLabel ?? p.value}{p.unit ? ` ${p.unit}` : ""}
                       </span>
                     ))}
                   </div>
@@ -385,12 +422,12 @@ function GenericOrderContent({
 }
 
 // Mẫu in dùng chung cho Xưởng Cầu Vồng + Xưởng Cửa Lưới
-// (012-hop-nhat-mau-in-xuong.md, 013-gop-dong-theo-xuong.md) — cùng bố cục
+// (009-in-phieu-san-xuat.md) — cùng bố cục
 // (rowSpan gộp dòng, tiêu đề có phụ đề tên xưởng, A5 ngang, không ô ký tên),
 // nhưng ĐIỀU KIỆN gộp dòng khác nhau theo xưởng — xem `groupKeyFor()`: Cầu
 // Vồng chỉ cần cùng mã sản phẩm; Cửa Lưới phải cùng cả mã sản phẩm lẫn toàn bộ
 // thông số khác Rộng/Cao (loại cửa, số cánh, màu khung...).
-// Thiết kế theo tư duy phiếu sản xuất giấy (016-thiet-ke-lai-phieu-xuong.md):
+// Thiết kế theo tư duy phiếu sản xuất giấy:
 // không phải 1 bảng HTML duy nhất — header/khối thông tin dựng bằng flex/div,
 // CHỈ bảng sản phẩm mới dùng <table> (đúng bản chất dữ liệu dạng bảng). Ưu
 // tiên tốc độ đọc của công nhân: phân cấp cỡ chữ rõ (tên khách, Rộng/Cao rất
@@ -400,12 +437,21 @@ const WORKSHOP_BORDER = "0.75px solid #000";
 function WorkshopOrderContent({
   order,
   onSaved,
+  branding,
 }: {
   order: ProductionOrderPrintData;
   onSaved: () => void;
+  branding: { companyName: string | null; logo: string | null } | null;
 }) {
   const groups = groupItems(order.items, groupKeyFor(order.productionCenterCode));
   const totalQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity), 0);
+
+  // Sửa ghi chú từng dòng CHỈ trên trang in — chỉnh cục bộ (state FE), không
+  // gọi API, không đổi SalesOrderItem.note. Refresh lại trang là mất, đúng ý
+  // định "chỉ sửa bản in đang xem, không ảnh hưởng gì tới đơn hàng".
+  const [noteOverrides, setNoteOverrides] = useState<Record<string, string>>(() =>
+    Object.fromEntries(order.items.map((item) => [item.id, item.note ?? ""])),
+  );
 
   const lookupStyle: CSSProperties = { fontSize: 9, color: "#555", lineHeight: 1.6 };
   const boxLabelStyle: CSSProperties = {
@@ -439,7 +485,7 @@ function WorkshopOrderContent({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 2fr 1fr",
+          gridTemplateColumns: "0.7fr 3fr 0.7fr",
           alignItems: "center",
           borderBottom: "1.5px solid #000",
           paddingBottom: 6,
@@ -450,11 +496,16 @@ function WorkshopOrderContent({
           <div>Mã đơn hàng: {order.salesOrder.code}</div>
           <div>Mã phiếu SX: {order.code}</div>
         </div>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          {branding?.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branding.logo}
+              alt=""
+              style={{ maxHeight: 34, maxWidth: 100, objectFit: "contain" }}
+            />
+          )}
           <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: 0.5 }}>PHIẾU SX - XUẤT KHO</div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2, textTransform: "uppercase" }}>
-            {order.productionCenterName}
-          </div>
         </div>
         <div style={{ ...lookupStyle, textAlign: "right" }}>
           <div>Ngày đặt hàng: {fmtDate(order.salesOrder.createdAt)}</div>
@@ -462,7 +513,7 @@ function WorkshopOrderContent({
             Hạn giao hàng:{" "}
             {order.salesOrder.expectedDeliveryDate ? fmtDate(order.salesOrder.expectedDeliveryDate) : "—"}
           </div>
-          <div>Xưởng: {order.productionCenterName}</div>
+          <div>{order.productionCenterName}</div>
         </div>
       </div>
 
@@ -481,19 +532,37 @@ function WorkshopOrderContent({
               />
             </span>
           </div>
-          <div style={{ fontSize: 11, marginTop: 3 }}>{formatAddress(order.salesOrder) || "—"}</div>
-          <div style={{ fontSize: 11, marginTop: 1 }}>{order.salesOrder.deliveryPhone}</div>
+          <div style={{ fontSize: 12.5, marginTop: 3 }}>{formatAddress(order.salesOrder) || "—"}</div>
+          <div style={{ fontSize: 12.5, marginTop: 1 }}>SĐT: {order.salesOrder.deliveryPhone}</div>
         </div>
         <div style={{ flex: 1, border: WORKSHOP_BORDER, padding: "5px 8px" }}>
           <div style={boxLabelStyle}>Thông tin giao hàng</div>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>
-            Tên nhà xe: <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 120 }}>&nbsp;</span>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>
+              {order.salesOrder.carrierName || (
+                <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 120 }}>&nbsp;</span>
+              )}
+            </div>
+            <span className="no-print">
+              <CarrierInfoDialog
+                salesOrderId={order.salesOrder.id}
+                salesOrderCode={order.salesOrder.code}
+                value={order.salesOrder}
+                onSaved={onSaved}
+              />
+            </span>
           </div>
           <div style={{ fontSize: 11, marginTop: 3 }}>
-            SĐT: <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 90 }}>&nbsp;</span>
+            SĐT:{" "}
+            {order.salesOrder.carrierPhone || (
+              <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 90 }}>&nbsp;</span>
+            )}
           </div>
           <div style={{ fontSize: 11, marginTop: 1 }}>
-            Ghi chú: <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 90 }}>&nbsp;</span>
+            Ghi chú:{" "}
+            {order.salesOrder.carrierNote || (
+              <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 90 }}>&nbsp;</span>
+            )}
           </div>
         </div>
       </div>
@@ -539,12 +608,13 @@ function WorkshopOrderContent({
                         rowSpan={group.items.length}
                         style={{ padding: "5px 8px", border: WORKSHOP_BORDER, verticalAlign: "middle", textAlign: "left" }}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{group.productName}</div>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: "#444" }}>{group.productName}</div>
                         {description && (
                           <div
                             style={{
-                              fontSize: 10,
-                              marginTop: 1,
+                              fontSize: 13,
+                              fontWeight: 700,
+                              marginTop: 2,
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -561,7 +631,16 @@ function WorkshopOrderContent({
                     <td style={tdStyle} />
                     <td style={tdStyle} />
                     <td style={tdStyle} />
-                    <td style={{ ...tdStyle, textAlign: "left", fontSize: 10 }}>{item.note ?? ""}</td>
+                    <td style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top", fontSize: 10 }}>
+                      <textarea
+                        className="note-textarea"
+                        rows={1}
+                        value={noteOverrides[item.id] ?? ""}
+                        onChange={(e) =>
+                          setNoteOverrides((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                      />
+                    </td>
                   </tr>
                 );
               });

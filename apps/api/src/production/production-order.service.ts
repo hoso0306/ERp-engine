@@ -34,8 +34,13 @@ const PRODUCTION_ORDER_INCLUDE = {
       deliveryProvince: true,
       deliveryDistrict: true,
       deliveryWard: true,
+      // Thông tin nhà xe (009-in-phieu-san-xuat.md) — khối "Thông tin giao
+      // hàng" trên mẫu in riêng xưởng, sửa được qua CarrierInfoDialog.
+      carrierName: true,
+      carrierPhone: true,
+      carrierNote: true,
       expectedDeliveryDate: true,
-      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — "Ngày đặt hàng".
+      // Mẫu in riêng Xưởng Cầu Vồng (009-in-phieu-san-xuat.md) — "Ngày đặt hàng".
       createdAt: true,
     },
   },
@@ -89,7 +94,15 @@ export class ProductionOrderService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          _count: { select: { items: true } },
+          _count: {
+            select: {
+              items: true,
+              // Cột "Đã in" ở tab Sản xuất (fix 19/07/2026) — Derived Data hợp
+              // lệ theo Section 13 (tính trực tiếp từ Timeline, chi phí thấp),
+              // không lưu field riêng. Đã in ⇔ có ít nhất 1 dòng Timeline PRINTED.
+              timeline: { where: { action: ProductionOrderTimelineAction.PRINTED } },
+            },
+          },
           salesOrder: {
             select: { id: true, code: true, customerName: true },
           },
@@ -99,7 +112,11 @@ export class ProductionOrderService {
     ]);
 
     return {
-      data,
+      data: data.map(({ _count, ...po }) => ({
+        ...po,
+        _count: { items: _count.items },
+        isPrinted: _count.timeline > 0,
+      })),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -116,10 +133,10 @@ export class ProductionOrderService {
 
     const [items, productionCenter] = await Promise.all([
       this.attachSpecsAndBom(productionOrder.items),
-      // Mẫu in riêng Xưởng Cầu Vồng (010-mau-in-xuong-cau-vong.md) — nhận diện
-      // theo ProductionCenter.code (XL03), không so khớp fragile theo tên hiển
-      // thị. ProductionOrder chỉ snapshot id/name, không có relation, nên tra
-      // riêng ở đây.
+      // Mẫu in riêng Xưởng Cầu Vồng (009-in-phieu-san-xuat.md) — nhận diện
+      // theo ProductionCenter.code (XW004/XW001), không so khớp fragile theo
+      // tên hiển thị. ProductionOrder chỉ snapshot id/name, không có relation,
+      // nên tra riêng ở đây.
       this.prisma.productionCenter.findUnique({
         where: { id: productionOrder.productionCenterId },
         select: { code: true },
@@ -153,6 +170,9 @@ export class ProductionOrderService {
           name: true,
           label: true,
           value: true,
+          // 009-in-phieu-san-xuat.md — nhãn hiển thị của option ENUM đã
+          // chọn, dùng để in đúng "Cửa sổ" thay vì mã "cuaso".
+          valueLabel: true,
           unit: true,
         },
       }),

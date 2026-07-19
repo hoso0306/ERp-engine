@@ -201,6 +201,9 @@ export class QuotationWorkflowService {
           code,
           customerId: dto.customerId,
           expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+          expectedDeliveryDate: dto.expectedDeliveryDate
+            ? new Date(dto.expectedDeliveryDate)
+            : null,
           note: dto.note?.trim() || null,
           status: QuotationStatus.DRAFT,
           // Người tạo báo giá (từ JWT) — nguồn cho SalesOrder.ownerId khi Approve.
@@ -236,6 +239,11 @@ export class QuotationWorkflowService {
     if (dto.expiryDate !== undefined) {
       data.expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
     }
+    if (dto.expectedDeliveryDate !== undefined) {
+      data.expectedDeliveryDate = dto.expectedDeliveryDate
+        ? new Date(dto.expectedDeliveryDate)
+        : null;
+    }
     if (dto.note !== undefined) {
       data.note = dto.note?.trim() ?? null;
     }
@@ -270,7 +278,9 @@ export class QuotationWorkflowService {
 
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
-      include: { parameters: { orderBy: { displayOrder: 'asc' } } },
+      include: {
+        parameters: { include: { options: true }, orderBy: { displayOrder: 'asc' } },
+      },
     });
 
     if (!product) {
@@ -335,6 +345,7 @@ export class QuotationWorkflowService {
               name: p.name,
               label: productParam?.label ?? p.name,
               value: p.value,
+              valueLabel: this.resolveValueLabel(productParam, p.value),
               unit: productParam?.unit ?? null,
               displayOrder: productParam?.displayOrder ?? idx,
             };
@@ -346,6 +357,20 @@ export class QuotationWorkflowService {
         parameters: { orderBy: { displayOrder: 'asc' } },
       },
     });
+  }
+
+  // 009-in-phieu-san-xuat.md (workbench/sprint-04) — snapshot nhãn hiển thị của option ENUM đã
+  // chọn (vd "cuaso" → "Cửa sổ") tại thời điểm thêm/sửa dòng báo giá, để bản
+  // in Phiếu sản xuất không phải đọc lại Master Data (ProductParameterOption)
+  // — đúng nguyên tắc Snapshot. `value` giữ nguyên mã gốc, CHỈ thêm field mới
+  // để hiển thị, không đổi hành vi tính giá/định mức đang đọc `value`.
+  private resolveValueLabel(
+    productParam:
+      | { options: { value: string; label: string | null }[] }
+      | undefined,
+    value: string,
+  ): string | null {
+    return productParam?.options.find((o) => o.value === value)?.label ?? null;
   }
 
   async updateItem(
@@ -422,7 +447,9 @@ export class QuotationWorkflowService {
 
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          include: { parameters: { orderBy: { displayOrder: 'asc' } } },
+          include: {
+            parameters: { include: { options: true }, orderBy: { displayOrder: 'asc' } },
+          },
         });
         const paramMap = new Map(
           (product?.parameters ?? []).map((p) => [p.name, p]),
@@ -436,6 +463,7 @@ export class QuotationWorkflowService {
               name: p.name,
               label: productParam?.label ?? p.name,
               value: p.value,
+              valueLabel: this.resolveValueLabel(productParam, p.value),
               unit: productParam?.unit ?? null,
               displayOrder: productParam?.displayOrder ?? idx,
             };
@@ -1104,6 +1132,9 @@ export class QuotationWorkflowService {
           deliveryProvince: quotation.customer.province,
           deliveryDistrict: quotation.customer.district,
           deliveryWard: quotation.customer.ward,
+          // Hạn giao hàng (fix 19/07/2026) — snapshot từ Quotation.expectedDeliveryDate
+          // (nhập tay lúc tạo/sửa báo giá) tại Approve, không đọc lại Quotation sau đó.
+          expectedDeliveryDate: quotation.expectedDeliveryDate,
           status: SalesOrderStatus.IN_PRODUCTION,
           totalAmount,
           plannedCost,
@@ -1188,6 +1219,7 @@ export class QuotationWorkflowService {
                 name: p.name,
                 label: p.label,
                 value: p.value,
+                valueLabel: p.valueLabel,
                 unit: p.unit,
                 displayOrder: p.displayOrder,
               })),

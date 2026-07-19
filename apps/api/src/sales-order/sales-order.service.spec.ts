@@ -17,6 +17,9 @@ function makeSalesOrder(overrides: Record<string, unknown> = {}) {
     deliveryProvince: 'Hà Nội',
     deliveryDistrict: 'Cầu Giấy',
     deliveryWard: null,
+    carrierName: null,
+    carrierPhone: null,
+    carrierNote: null,
     ...overrides,
   };
 }
@@ -277,6 +280,73 @@ describe('SalesOrderService — actor name snapshot', () => {
       await expect(
         service.updateDeliveryAddress('so-1', dto, 'user-1'),
       ).resolves.toBeDefined();
+    });
+  });
+
+  // 009-in-phieu-san-xuat.md — cùng cơ chế updateDeliveryAddress() nhưng khác
+  // nhóm dữ liệu (nhà xe chở hàng), không field nào bắt buộc.
+  describe('updateCarrierInfo()', () => {
+    const dto = {
+      carrierName: 'Xe Anh Công',
+      carrierPhone: '0988670165',
+      carrierNote: 'Giao trước 9h sáng',
+    };
+
+    it('ghi Timeline CARRIER_INFO_UPDATED với payload old/new + createdBy', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+
+      await service.updateCarrierInfo('so-1', dto, 'user-1');
+
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
+        where: { id: 'so-1' },
+        data: {
+          carrierName: 'Xe Anh Công',
+          carrierPhone: '0988670165',
+          carrierNote: 'Giao trước 9h sáng',
+        },
+      });
+      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CARRIER_INFO_UPDATED',
+            createdBy: 'user-1',
+            createdByName: 'Nguyễn Văn An',
+            payload: {
+              old: { carrierName: null, carrierPhone: null, carrierNote: null },
+              new: {
+                carrierName: 'Xe Anh Công',
+                carrierPhone: '0988670165',
+                carrierNote: 'Giao trước 9h sáng',
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('không có field nào bắt buộc — cho lưu rỗng hết', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+
+      await expect(
+        service.updateCarrierInfo('so-1', {}, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
+        where: { id: 'so-1' },
+        data: { carrierName: null, carrierPhone: null, carrierNote: null },
+      });
+    });
+
+    it('không đổi Status — sửa được kể cả khi đã DELIVERED/CANCELLED', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({ status: 'CANCELLED' }),
+      );
+
+      await expect(
+        service.updateCarrierInfo('so-1', dto, 'user-1'),
+      ).resolves.toBeDefined();
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.not.objectContaining({ status: expect.anything() }) }),
+      );
     });
   });
 });

@@ -15,6 +15,7 @@ import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
 import { UpdateDeliveryAddressDto } from './dto/update-delivery-address.dto';
+import { UpdateCarrierInfoDto } from './dto/update-carrier-info.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -66,6 +67,23 @@ export class SalesOrderController {
     @Req() req: { user?: { userId?: string } },
   ) {
     return this.salesOrderService.updateDeliveryAddress(
+      id,
+      dto,
+      req.user?.userId ?? null,
+    );
+  }
+
+  // ── Thông tin nhà xe (009-in-phieu-san-xuat.md) — không phải Manual Override ──
+
+  @Post(':id/update-carrier-info')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('sales-order.view')
+  updateCarrierInfo(
+    @Param('id') id: string,
+    @Body() dto: UpdateCarrierInfoDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.salesOrderService.updateCarrierInfo(
       id,
       dto,
       req.user?.userId ?? null,

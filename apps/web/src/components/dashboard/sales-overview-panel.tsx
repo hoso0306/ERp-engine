@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SalesOrderStatusBadge } from "@/components/sales-order/sales-order-status-badge";
 import { PaymentStatusBadge } from "@/components/sales-order/payment-status-badge";
 import { StatTile } from "./stat-tile";
+import { endOfDayBound } from "@/components/shared";
 
 export interface SalesOverview {
   summary: {
@@ -49,7 +50,7 @@ export function SalesOverviewPanel({ sales, dateFrom, dateTo }: SalesOverviewPan
     return sales.recentOrders.filter((o) => {
       const d = new Date(o.createdAt);
       if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo && d > new Date(dateTo)) return false;
+      if (dateTo && d > endOfDayBound(dateTo)) return false;
       return true;
     });
   }, [sales.recentOrders, dateFrom, dateTo]);

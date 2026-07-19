@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, endOfDayBound } from "@/components/shared";
 import {
   ReceivableFilter,
   type ReceivableTab,
@@ -81,7 +81,7 @@ export default function DebtsPage() {
       if (!r.dueDate) return false;
       const d = new Date(r.dueDate);
       if (dueFrom && d < new Date(dueFrom)) return false;
-      if (dueTo && d > new Date(dueTo)) return false;
+      if (dueTo && d > endOfDayBound(dueTo)) return false;
       return true;
     });
   }, [receivables, dueFrom, dueTo]);

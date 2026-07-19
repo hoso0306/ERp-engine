@@ -84,6 +84,7 @@ interface Quotation {
   code: string;
   status: string;
   expiryDate: string | null;
+  expectedDeliveryDate: string | null;
   note: string | null;
   salesOrderId: string | null;
   createdAt: string;
@@ -137,6 +138,7 @@ export default function QuotationDetailPage() {
   // Edit header dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editExpiry, setEditExpiry] = useState("");
+  const [editExpectedDelivery, setEditExpectedDelivery] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
@@ -192,6 +194,11 @@ export default function QuotationDetailPage() {
     setEditExpiry(
       quotation.expiryDate ? new Date(quotation.expiryDate).toISOString().split("T")[0] : "",
     );
+    setEditExpectedDelivery(
+      quotation.expectedDeliveryDate
+        ? new Date(quotation.expectedDeliveryDate).toISOString().split("T")[0]
+        : "",
+    );
     setEditNote(quotation.note ?? "");
     setEditOpen(true);
   }
@@ -203,6 +210,7 @@ export default function QuotationDetailPage() {
       await apiPatch(`/quotations/${id}`, {
         note: editNote.trim() || null,
         expiryDate: editExpiry || null,
+        expectedDeliveryDate: editExpectedDelivery || null,
       });
       toast.success("Đã cập nhật.");
       setEditOpen(false);
@@ -540,6 +548,14 @@ export default function QuotationDetailPage() {
               <span className="text-muted-foreground">—</span>
             )}
           </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-muted-foreground w-32 shrink-0">Hạn giao hàng</span>
+            {quotation.expectedDeliveryDate ? (
+              <span>{new Date(quotation.expectedDeliveryDate).toLocaleDateString("vi-VN")}</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
           {quotation.salesOrderId && (
             <div className="flex gap-2">
               <span className="text-muted-foreground w-32 shrink-0">Đơn hàng</span>
@@ -619,6 +635,15 @@ export default function QuotationDetailPage() {
                 type="date"
                 value={editExpiry}
                 onChange={(e) => setEditExpiry(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-expected-delivery">Hạn giao hàng</Label>
+              <Input
+                id="edit-expected-delivery"
+                type="date"
+                value={editExpectedDelivery}
+                onChange={(e) => setEditExpectedDelivery(e.target.value)}
               />
             </div>
             <div className="space-y-2">
