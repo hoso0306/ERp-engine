@@ -193,6 +193,7 @@ describe('Billable ≠ Actual — giá theo kích thước tính tiền, BOM the
     const pricingConfig: PricingConfig = {
       pricingRuleVersionId: 'ver-1',
       expression: 'unitPrice * area',
+      surchargeExpression: null,
       priceRoundType: RoundType.NONE,
       priceRoundValue: 0,
       ruleItems: [

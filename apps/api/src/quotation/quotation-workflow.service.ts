@@ -443,7 +443,12 @@ export class QuotationWorkflowService {
     );
 
     const systemPrice = priceResult.systemPrice;
-    const finalPrice = this.calcFinalPrice(systemPrice, discountPercent);
+    const surchargeAfterDiscount = priceResult.surchargeAfterDiscount;
+    const finalPrice = this.calcFinalPrice(
+      systemPrice,
+      discountPercent,
+      surchargeAfterDiscount,
+    );
     const subtotal = this.calcSubtotal(finalPrice, dto.quantity);
     const vatRate = priceResult.vatRate;
     const vatAmount = this.calcVatAmount(subtotal, vatRate);
@@ -464,6 +469,7 @@ export class QuotationWorkflowService {
         systemPrice,
         unitPrice: priceResult.unitPrice,
         discountPercent,
+        surchargeAfterDiscount,
         finalPrice,
         subtotal,
         vatRate,
@@ -540,6 +546,7 @@ export class QuotationWorkflowService {
     let pricingRuleVersionId = item.pricingRuleVersionId;
     let warnings = item.warnings as string[] | null;
     let vatRate = Number(item.vatRate);
+    let surchargeAfterDiscount = Number(item.surchargeAfterDiscount ?? 0);
     const newParameters = dto.parameters;
 
     if (dto.parameters !== undefined) {
@@ -552,12 +559,17 @@ export class QuotationWorkflowService {
       pricingRuleVersionId = priceResult.pricingRuleVersionId;
       warnings = priceResult.warnings;
       vatRate = priceResult.vatRate;
+      surchargeAfterDiscount = priceResult.surchargeAfterDiscount;
     }
 
     // discountPercent là snapshot cố định từ lúc thêm dòng (giống hệt cách
     // groupDiscount cũ hoạt động) — sửa dòng không lookup lại CustomerProductDiscount.
     const discountPercent = Number(item.discountPercent);
-    const finalPrice = this.calcFinalPrice(systemPrice, discountPercent);
+    const finalPrice = this.calcFinalPrice(
+      systemPrice,
+      discountPercent,
+      surchargeAfterDiscount,
+    );
     // subtotal (và do đó vatAmount) luôn tính lại dù tham số không đổi —
     // số lượng có thể đổi độc lập với tham số sản phẩm.
     const subtotal = this.calcSubtotal(finalPrice, quantity);
@@ -614,6 +626,7 @@ export class QuotationWorkflowService {
           systemPrice,
           unitPrice,
           pricingRuleVersionId,
+          surchargeAfterDiscount,
           finalPrice,
           subtotal,
           vatRate,
@@ -738,6 +751,7 @@ export class QuotationWorkflowService {
       systemPrice: number;
       unitPrice: number | null;
       pricingRuleVersionId: string;
+      surchargeAfterDiscount: number;
       finalPrice: number;
       subtotal: number;
       vatRate: number;
@@ -758,6 +772,7 @@ export class QuotationWorkflowService {
       const newFinalPrice = this.calcFinalPrice(
         newSystemPrice,
         Number(item.discountPercent),
+        priceResult.surchargeAfterDiscount,
       );
       const newSubtotal = this.calcSubtotal(
         newFinalPrice,
@@ -782,6 +797,7 @@ export class QuotationWorkflowService {
         systemPrice: newSystemPrice,
         unitPrice: priceResult.unitPrice,
         pricingRuleVersionId: priceResult.pricingRuleVersionId,
+        surchargeAfterDiscount: priceResult.surchargeAfterDiscount,
         finalPrice: newFinalPrice,
         subtotal: newSubtotal,
         vatRate: priceResult.vatRate,
@@ -800,6 +816,7 @@ export class QuotationWorkflowService {
             systemPrice: u.systemPrice,
             unitPrice: u.unitPrice,
             pricingRuleVersionId: u.pricingRuleVersionId,
+            surchargeAfterDiscount: u.surchargeAfterDiscount,
             finalPrice: u.finalPrice,
             subtotal: u.subtotal,
             vatRate: u.vatRate,
@@ -1371,6 +1388,8 @@ export class QuotationWorkflowService {
             unitPrice:
               item.unitPrice !== null ? Number(item.unitPrice) : null,
             discountPercent: Number(item.discountPercent),
+            // Snapshot y nguyên, không tính lại (023-phu-phi) — giống finalPrice.
+            surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
             finalPrice: Number(item.finalPrice),
             quantity: Number(item.quantity),
             subtotal: Number(item.subtotal),
@@ -1534,8 +1553,16 @@ export class QuotationWorkflowService {
   // Helpers
   // ─────────────────────────────────────────────────────
 
-  private calcFinalPrice(systemPrice: number, discountPercent: number): number {
-    const final = systemPrice * (1 - discountPercent / 100);
+  // surchargeAfterDiscount (023-phu-phi) — cộng SAU khi áp discountPercent,
+  // không bị chiết khấu ăn vào (vd rèm cầu vồng: máng nhôm +20.000đ/m² dù
+  // khách được CK 60%). Từ PricingRuleVersion.surchargeExpression, tính riêng
+  // ở Pricing Engine (KHÔNG nằm trong systemPrice).
+  private calcFinalPrice(
+    systemPrice: number,
+    discountPercent: number,
+    surchargeAfterDiscount = 0,
+  ): number {
+    const final = systemPrice * (1 - discountPercent / 100) + surchargeAfterDiscount;
 
     if (final < 0) {
       throw new BadRequestException(

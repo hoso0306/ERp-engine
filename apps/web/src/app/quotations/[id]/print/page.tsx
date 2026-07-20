@@ -17,6 +17,7 @@ interface QuotationItem {
   systemPrice: number;
   unitPrice: number | null;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
@@ -67,6 +68,7 @@ interface SalesOrderItem {
   systemPrice: number;
   unitPrice: number | null;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
@@ -118,6 +120,7 @@ interface ViewItem {
   systemPrice: number;
   unitPrice: number | null;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   quantity: number;
   subtotal: number;
   vatRate: number;
@@ -227,6 +230,7 @@ export default function QuotationPrintPage() {
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
         discountPercent: Number(i.discountPercent),
+        surchargeAfterDiscount: Number(i.surchargeAfterDiscount ?? 0),
         quantity: Number(i.quantity),
         subtotal: Number(i.subtotal),
         vatRate: Number(i.vatRate),
@@ -242,6 +246,7 @@ export default function QuotationPrintPage() {
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
         discountPercent: Number(i.discountPercent),
+        surchargeAfterDiscount: Number(i.surchargeAfterDiscount ?? 0),
         quantity: Number(i.quantity),
         subtotal: Number(i.subtotal),
         vatRate: Number(i.vatRate),
@@ -406,14 +411,15 @@ export default function QuotationPrintPage() {
           <thead>
             <tr style={{ background: "var(--navy)", color: "#fff" }}>
               <th style={{ width: 26, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "center", border: "1px solid var(--navy)" }}>STT</th>
-              <th style={{ width: 128, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Sản phẩm</th>
-              <th style={{ width: 175, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Thông số</th>
+              <th style={{ width: 118, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Sản phẩm</th>
+              <th style={{ width: 150, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Thông số</th>
               <th style={{ width: 88, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Giá bán</th>
               <th style={{ width: 46, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "center", border: "1px solid var(--navy)" }}>CK</th>
+              <th style={{ width: 55, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Phụ phí</th>
               <th style={{ width: 38, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>SL</th>
               <th style={{ width: 95, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Thành tiền</th>
               <th style={{ width: 70, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>VAT</th>
-              <th style={{ width: 90, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Ghi chú</th>
+              <th style={{ width: 70, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Ghi chú</th>
             </tr>
           </thead>
           <tbody>
@@ -455,6 +461,9 @@ export default function QuotationPrintPage() {
                   </td>
                   <td style={{ textAlign: "center", padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
                     {item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
+                    {item.surchargeAfterDiscount > 0 ? fmt(item.surchargeAfterDiscount) : "—"}
                   </td>
                   <td style={{ textAlign: "right", padding: "6px", fontSize: 12, border: "1px solid var(--border)" }}>{item.quantity}</td>
                   <td style={{ textAlign: "right", padding: "6px", fontSize: 12, fontWeight: 700, border: "1px solid var(--border)" }}>{fmt(item.subtotal)}</td>

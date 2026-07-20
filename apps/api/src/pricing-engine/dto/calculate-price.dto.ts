@@ -29,4 +29,10 @@ export class CalculatePriceResultDto {
   adjustedVariables: Record<string, number>;
   /** Cảnh báo từ Validation Rule (WARN) — cho phép tiếp tục. */
   warnings: string[];
+  /**
+   * Phụ phí cộng SAU chiết khấu khách hàng (023-phu-phi) — CHƯA áp
+   * discountPercent. Nơi gọi (Quotation Discount Engine) tự cộng vào
+   * finalPrice sau khi tính systemPrice × (1 − discountPercent%).
+   */
+  surchargeAfterDiscount: number;
 }

@@ -1120,6 +1120,9 @@ export class ProductService {
     if (dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
+    if (dto.surchargeExpression?.trim()) {
+      this.validateExpression(dto.surchargeExpression.trim());
+    }
     this.validateVatRate(dto.vatRate);
 
     return this.prisma.pricingRuleVersion.create({
@@ -1128,6 +1131,7 @@ export class ProductService {
         versionNumber: nextVersionNumber,
         name: dto.name?.trim() || null,
         expression: dto.expression?.trim() || null,
+        surchargeExpression: dto.surchargeExpression?.trim() || null,
         priceRoundType: (dto.priceRoundType as RoundType) ?? 'NONE',
         priceRoundValue: dto.priceRoundValue ?? null,
         vatRate: dto.vatRate ?? 0,
@@ -1153,19 +1157,22 @@ export class ProductService {
     if (dto.expression !== undefined && dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
+    if (dto.surchargeExpression !== undefined && dto.surchargeExpression?.trim()) {
+      this.validateExpression(dto.surchargeExpression.trim());
+    }
     if (dto.vatRate !== undefined) this.validateVatRate(dto.vatRate);
 
     const data: Prisma.PricingRuleVersionUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name?.trim() || null;
     if (dto.expression !== undefined)
       data.expression = dto.expression?.trim() || null;
+    if (dto.surchargeExpression !== undefined)
+      data.surchargeExpression = dto.surchargeExpression?.trim() || null;
     if (dto.priceRoundType !== undefined)
       data.priceRoundType = dto.priceRoundType as RoundType;
     if ('priceRoundValue' in dto)
       data.priceRoundValue = dto.priceRoundValue ?? null;
     if (dto.vatRate !== undefined) data.vatRate = dto.vatRate;
-    if (dto.matrixUnitLabel !== undefined)
-      data.matrixUnitLabel = dto.matrixUnitLabel?.trim() || null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
 
     return this.prisma.pricingRuleVersion.update({
@@ -1203,6 +1210,9 @@ export class ProductService {
     }
     if (version.expression?.trim()) {
       this.validateExpression(version.expression.trim());
+    }
+    if (version.surchargeExpression?.trim()) {
+      this.validateExpression(version.surchargeExpression.trim());
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1262,10 +1272,10 @@ export class ProductService {
           versionNumber: nextVersionNumber,
           name: source.name,
           expression: source.expression,
+          surchargeExpression: source.surchargeExpression,
           priceRoundType: source.priceRoundType,
           priceRoundValue: source.priceRoundValue,
           vatRate: source.vatRate,
-          matrixUnitLabel: source.matrixUnitLabel,
           status: 'DRAFT',
           note: source.note,
         },
@@ -1753,6 +1763,10 @@ export class ProductService {
       vatRate: result.vatRate,
       vatAmount,
       priceWithVat: result.systemPrice + vatAmount,
+      // Chỉ minh hoạ công thức Phụ phí sau chiết khấu — Preview không gắn
+      // khách hàng nên không chạy Discount Engine, số này KHÔNG phải giá trị
+      // thật sẽ cộng vào Báo giá (xem quotation-workflow.service.ts calcFinalPrice).
+      surchargeAfterDiscount: result.surchargeAfterDiscount,
       // Trả về đúng cấu hình làm tròn ĐÃ DÙNG để tính (từ version đã lưu) — FE không
       // được lấy giá trị đang gõ dở trên form để hiển thị, tránh lệch với finalPrice
       // (bug 16/07/2026: nhãn hiện "Làm tròn lên 1000" nhưng giá không đổi vì DB đang NONE).

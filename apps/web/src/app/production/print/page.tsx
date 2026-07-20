@@ -56,9 +56,16 @@ interface ProductionOrderPrintData {
 
 // Mã ProductionCenter thật trong DB (tra trực tiếp — ví dụ XL01/XL02/XL03 ở
 // production.md chỉ là minh hoạ, KHÔNG phải mã thật đang dùng). Đặc thù từng
-// xưởng cụ thể, không cấu hình được — xem 009-in-phieu-san-xuat.md.
+// xưởng cụ thể, không cấu hình được — xem 009-in-phieu-san-xuat.md. Từ
+// 20/07/2026: áp dụng mẫu WorkshopOrderContent cho cả 4 xưởng đang có trong
+// DB (tra trực tiếp `production_centers`), không chỉ 2 xưởng Cầu Vồng/Cửa
+// Lưới như thiết kế gốc — GenericOrderContent giữ lại làm phương án dự phòng
+// nếu sau này có thêm xưởng mới chưa kịp thêm mã vào đây.
 const CAU_VONG_CENTER_CODE = "XW004";
 const CUA_LUOI_CENTER_CODE = "XW001";
+const BAT_CENTER_CODE = "XW005";
+const GIA_CONG_CENTER_CODE = "XW006";
+const WORKSHOP_CENTER_CODES = [CAU_VONG_CENTER_CODE, CUA_LUOI_CENTER_CODE, BAT_CENTER_CODE, GIA_CONG_CENTER_CODE];
 
 interface ProductGroup {
   productCode: string;
@@ -138,6 +145,18 @@ function otherParamsText(item: ProductionOrderItem): string {
     .join(", ");
 }
 
+// Cột "Ghi chú" gộp (mẫu Xưởng) chỉ có 1 dòng cao cố định — thay vì cho ô
+// cao dần theo nội dung (phá vỡ chiều cao các dòng khác cùng hàng), chữ tự
+// NHỎ LẠI khi gõ dài hơn để luôn vừa trong 1 dòng, đọc rõ khi gõ ngắn.
+function noteFontSize(text: string): number {
+  const len = text.length;
+  if (len <= 12) return 13;
+  if (len <= 24) return 11;
+  if (len <= 40) return 9.5;
+  if (len <= 60) return 8.5;
+  return 7.5;
+}
+
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
@@ -161,6 +180,10 @@ function ProductionOrderPrintContent() {
   const [orders, setOrders] = useState<ProductionOrderPrintData[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  // Cho phép người dùng ép khổ A4 khi phiếu quá dài (nhiều dòng sản phẩm)
+  // tràn sang trang 2 trên A5, dễ thất lạc. "auto" = giữ khổ mặc định theo
+  // loại mẫu như trước (A5 ngang cho mẫu xưởng, A5 dọc cho mẫu chung).
+  const [paperSize, setPaperSize] = useState<"auto" | "A4">("auto");
 
   // Xem trước KHÔNG ghi Timeline PRINTED — chỉ khi bấm "In / Tải PDF" mới gọi
   // POST /production-orders/print để ghi vết (xem 009-in-phieu-san-xuat.md
@@ -216,15 +239,27 @@ function ProductionOrderPrintContent() {
   // động trên Chromium thật khi test bằng Playwright (vẫn ra khổ Letter dọc
   // mặc định). Đổi sang tính 1 khổ giấy DUY NHẤT cho cả lượt in, dựa theo
   // danh sách phiếu đang in: có ít nhất 1 phiếu thuộc mẫu xưởng (Cầu Vồng/Cửa
-  // Lưới) → cả lượt in dùng A5 ngang; ngược lại giữ A5 dọc như mẫu chung.
+  // Lưới) → mặc định A5 ngang; ngược lại A5 dọc như mẫu chung. Người dùng có
+  // thể ép khổ A4 (dropdown bên dưới) cho lượt in đang chọn, ví dụ khi phiếu
+  // quá nhiều dòng sản phẩm tràn sang trang 2 trên A5.
   // Đánh đổi đã biết: in gộp lẫn xưởng có mẫu riêng + xưởng khác trong cùng 1
   // lượt vẫn dùng chung 1 khổ giấy (không tách riêng theo từng trang được).
   const anyWorkshopTicket = orders.some(
-    (o) => o.productionCenterCode === CAU_VONG_CENTER_CODE || o.productionCenterCode === CUA_LUOI_CENTER_CODE,
+    (o) => o.productionCenterCode !== null && WORKSHOP_CENTER_CODES.includes(o.productionCenterCode),
   );
-  const pageCss = anyWorkshopTicket
-    ? "@page { size: A5 landscape; margin: 8mm 10mm; }"
-    : "@page { size: A5; margin: 10mm 9mm 10mm 9mm; }";
+  // A4 LUÔN in dọc (portrait), kể cả khi thay cho mẫu xưởng vốn là A5 ngang:
+  // A4 dọc (210mm) có bề ngang đúng bằng A5 ngang (210mm), nên giữ nguyên
+  // margin trái/phải + bề rộng nội dung 190mm của WorkshopOrderContent mà
+  // không cần scale lại — chỉ trang được "kéo dài" thêm để đủ chỗ cho nhiều
+  // dòng sản phẩm, không đổi hướng sang A4 ngang.
+  const pageCss =
+    paperSize === "A4"
+      ? anyWorkshopTicket
+        ? "@page { size: A4 portrait; margin: 8mm 10mm; }"
+        : "@page { size: A4 portrait; margin: 10mm 9mm; }"
+      : anyWorkshopTicket
+        ? "@page { size: A5 landscape; margin: 8mm 10mm; }"
+        : "@page { size: A5; margin: 10mm 9mm 10mm 9mm; }";
 
   return (
     <>
@@ -262,7 +297,15 @@ function ProductionOrderPrintContent() {
         }
       `}</style>
 
-      <div className="no-print fixed top-4 right-4 flex gap-2 z-50">
+      <div className="no-print fixed top-4 right-4 flex gap-2 items-center z-50">
+        <select
+          value={paperSize}
+          onChange={(e) => setPaperSize(e.target.value as "auto" | "A4")}
+          style={{ border: "1px solid #d5d9e0", borderRadius: 6, padding: "8px 10px", fontSize: 14, background: "#fff" }}
+        >
+          <option value="auto">Khổ mặc định</option>
+          <option value="A4">Khổ A4 (đơn dài)</option>
+        </select>
         <button
           onClick={handlePrint}
           disabled={printing}
@@ -280,8 +323,7 @@ function ProductionOrderPrintContent() {
 
       {orders.map((order) => {
         const isWorkshopTicket =
-          order.productionCenterCode === CAU_VONG_CENTER_CODE ||
-          order.productionCenterCode === CUA_LUOI_CENTER_CODE;
+          order.productionCenterCode !== null && WORKSHOP_CENTER_CODES.includes(order.productionCenterCode);
         return (
           <div
             key={order.id}
@@ -446,11 +488,15 @@ function WorkshopOrderContent({
   const groups = groupItems(order.items, groupKeyFor(order.productionCenterCode));
   const totalQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity), 0);
 
-  // Sửa ghi chú từng dòng CHỈ trên trang in — chỉnh cục bộ (state FE), không
-  // gọi API, không đổi SalesOrderItem.note. Refresh lại trang là mất, đúng ý
-  // định "chỉ sửa bản in đang xem, không ảnh hưởng gì tới đơn hàng".
+  // Sửa ghi chú CHỈ trên trang in — chỉnh cục bộ (state FE), không gọi API,
+  // không đổi SalesOrderItem.note. Refresh lại trang là mất, đúng ý định "chỉ
+  // sửa bản in đang xem, không ảnh hưởng gì tới đơn hàng".
+  // Gộp theo NHÓM giống cột "Tên sản phẩm" (key = id item đầu nhóm, rowSpan
+  // = số dòng trong nhóm) — 1 ô Ghi chú dùng chung cho cả nhóm sản phẩm đã
+  // gộp, không phải 1 ô/dòng như trước. Giá trị khởi tạo lấy note của item
+  // đầu nhóm (item.note của các dòng còn lại trong nhóm bị bỏ qua trên UI).
   const [noteOverrides, setNoteOverrides] = useState<Record<string, string>>(() =>
-    Object.fromEntries(order.items.map((item) => [item.id, item.note ?? ""])),
+    Object.fromEntries(groups.map((group) => [group.items[0].id, group.items[0].note ?? ""])),
   );
 
   const lookupStyle: CSSProperties = { fontSize: 9, color: "#555", lineHeight: 1.6 };
@@ -575,10 +621,7 @@ function WorkshopOrderContent({
           <col style={{ width: "11%" }} />
           <col style={{ width: "11%" }} />
           <col style={{ width: "6%" }} />
-          <col style={{ width: "6%" }} />
-          <col style={{ width: "6%" }} />
-          <col style={{ width: "7%" }} />
-          <col style={{ width: "9%" }} />
+          <col style={{ width: "28%" }} />
         </colgroup>
         <thead>
           <tr style={{ background: "#f0f0f0" }}>
@@ -587,9 +630,6 @@ function WorkshopOrderContent({
             <th style={thStyle}>Rộng</th>
             <th style={thStyle}>Cao</th>
             <th style={thStyle}>SL</th>
-            <th style={thStyle}>Nhôm</th>
-            <th style={thStyle}>Vải</th>
-            <th style={thStyle}>Đóng gói</th>
             <th style={thStyle}>Ghi chú</th>
           </tr>
         </thead>
@@ -628,19 +668,22 @@ function WorkshopOrderContent({
                     <td style={tdBigStyle}>{paramValue(item, WIDTH_PARAM_NAME)}</td>
                     <td style={tdBigStyle}>{paramValue(item, HEIGHT_PARAM_NAME)}</td>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{Number(item.quantity)}</td>
-                    <td style={tdStyle} />
-                    <td style={tdStyle} />
-                    <td style={tdStyle} />
-                    <td style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top", fontSize: 10 }}>
-                      <textarea
-                        className="note-textarea"
-                        rows={1}
-                        value={noteOverrides[item.id] ?? ""}
-                        onChange={(e) =>
-                          setNoteOverrides((prev) => ({ ...prev, [item.id]: e.target.value }))
-                        }
-                      />
-                    </td>
+                    {itemIdx === 0 && (
+                      <td
+                        rowSpan={group.items.length}
+                        style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top" }}
+                      >
+                        <textarea
+                          className="note-textarea"
+                          rows={1}
+                          style={{ fontSize: noteFontSize(noteOverrides[group.items[0].id] ?? "") }}
+                          value={noteOverrides[group.items[0].id] ?? ""}
+                          onChange={(e) =>
+                            setNoteOverrides((prev) => ({ ...prev, [group.items[0].id]: e.target.value }))
+                          }
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               });
@@ -649,7 +692,7 @@ function WorkshopOrderContent({
           <tr>
             <td colSpan={4} style={{ ...tdStyle, fontWeight: 700 }}>TỔNG CỘNG</td>
             <td style={{ ...tdStyle, fontWeight: 700 }}>{totalQuantity}</td>
-            <td colSpan={4} style={{ border: WORKSHOP_BORDER }} />
+            <td style={{ border: WORKSHOP_BORDER }} />
           </tr>
         </tbody>
       </table>

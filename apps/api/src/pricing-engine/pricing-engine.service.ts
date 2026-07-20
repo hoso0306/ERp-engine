@@ -64,6 +64,9 @@ export interface PriceMatrixRowConfig {
 export interface PricingConfig {
   pricingRuleVersionId: string;
   expression: string | null;
+  // Công thức phụ phí cộng SAU chiết khấu khách hàng (Discount Engine ở
+  // Quotation module) — KHÔNG cộng vào rawPrice/systemPrice ở tầng này.
+  surchargeExpression: string | null;
   priceRoundType: RoundType;
   priceRoundValue: number;
   ruleItems: PricingRuleItemConfig[];
@@ -85,6 +88,9 @@ export interface PricingCalcResult {
   warnings: string[];
   pricingRuleVersionId: string;
   vatRate: number;
+  // Phụ phí cộng SAU chiết khấu (Quotation Discount Engine) — mặc định 0 khi
+  // Pricing Rule Version không cấu hình surchargeExpression.
+  surchargeAfterDiscount: number;
 }
 
 const VERSION_INCLUDE = {
@@ -164,6 +170,7 @@ export class PricingEngineService {
     version: {
       id: string;
       expression: string | null;
+      surchargeExpression: string | null;
       priceRoundType: RoundType;
       priceRoundValue: unknown;
       vatRate: unknown;
@@ -196,6 +203,7 @@ export class PricingEngineService {
     return {
       pricingRuleVersionId: version.id,
       expression: version.expression?.trim() || null,
+      surchargeExpression: version.surchargeExpression?.trim() || null,
       priceRoundType: version.priceRoundType,
       priceRoundValue: version.priceRoundValue
         ? Number(version.priceRoundValue)
@@ -301,6 +309,28 @@ export class PricingEngineService {
       applyRounding(rawPrice, config.priceRoundType, config.priceRoundValue),
     );
 
+    // 6. Phụ phí sau chiết khấu — tính RIÊNG, KHÔNG cộng vào rawPrice/systemPrice.
+    // Quotation Discount Engine mới là nơi cộng giá trị này, SAU khi đã áp
+    // discountPercent, để phụ phí không bị chiết khấu ăn vào (023-phu-phi).
+    let surchargeAfterDiscount = 0;
+    if (config.surchargeExpression) {
+      try {
+        surchargeAfterDiscount = evaluateNumber(config.surchargeExpression, {
+          ...billable,
+          ...(unitPrice !== null ? { unitPrice } : {}),
+        });
+      } catch (e) {
+        throw new BadRequestException(
+          `Lỗi tính phụ phí: ${(e as Error).message}`,
+        );
+      }
+      if (surchargeAfterDiscount < 0) {
+        throw new BadRequestException(
+          'Phụ phí tính được là số âm — kiểm tra lại công thức phụ phí.',
+        );
+      }
+    }
+
     return {
       systemPrice,
       rawPrice,
@@ -309,6 +339,7 @@ export class PricingEngineService {
       warnings,
       pricingRuleVersionId: config.pricingRuleVersionId,
       vatRate: config.vatRate,
+      surchargeAfterDiscount,
     };
   }
 
@@ -433,6 +464,7 @@ export class PricingEngineService {
       vatRate: result.vatRate,
       adjustedVariables: result.billableParams,
       warnings: result.warnings,
+      surchargeAfterDiscount: result.surchargeAfterDiscount,
     };
   }
 }

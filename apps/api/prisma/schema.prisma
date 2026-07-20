@@ -593,15 +593,17 @@ model PricingRuleVersion {
   versionNumber   Int           @map("version_number")
   name            String?
   expression      String?
+  // Công thức phụ phí cộng SAU khi Discount Engine (Quotation module) đã áp
+  // discountPercent — KHÔNG gộp vào expression/systemPrice, tránh bị chiết
+  // khấu ăn vào (vd rèm cầu vồng: máng nhôm +20.000đ/m² dù khách được CK 60%).
+  // Optional — trống = không có phụ phí. Cùng ngôn ngữ Expression, dùng chung
+  // biến với expression chính (tham số sản phẩm + unitPrice nếu có matrix).
+  surchargeExpression String? @map("surcharge_expression")
   priceRoundType  RoundType     @default(NONE) @map("price_round_type")
   priceRoundValue Decimal?      @map("price_round_value") @db.Decimal(15, 0)
   // Thuế suất VAT (%) — snapshot xuống QuotationItem.vatRate khi tính giá,
   // tính SAU Discount Engine (Quotation module), không gộp vào systemPrice.
   vatRate         Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)
-  // Đơn vị hiển thị của cột "Đơn giá" trong Bảng giá ma trận (vd "mdài" cho
-  // rèm cầu vồng dù sản phẩm báo giá theo m²). NULL = dùng đơn vị sản phẩm.
-  // Chỉ là nhãn hiển thị, không tham gia tính giá.
-  matrixUnitLabel String?       @map("matrix_unit_label")
   status          VersionStatus @default(DRAFT)
   note            String?
   createdAt       DateTime      @default(now()) @map("created_at")
@@ -880,6 +882,10 @@ model QuotationItem {
   // thêm/sửa dòng (Sprint 04, chốt 16/07/2026) — THAY THẾ groupDiscount
   // ("CK nhóm") + additionalDiscountPercent/Amount/discountReason/discountBy cũ.
   discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  // Phụ phí cộng SAU khi áp discountPercent (PricingRuleVersion.surchargeExpression,
+  // Sprint 04 — 023). Snapshot tại thời điểm thêm/sửa dòng, không tính lại khi
+  // chỉ đổi số lượng. finalPrice = systemPrice × (1 − discountPercent%) + surchargeAfterDiscount.
+  surchargeAfterDiscount Decimal @default(0) @map("surcharge_after_discount") @db.Decimal(15, 0)
   finalPrice      Decimal  @default(0) @map("final_price") @db.Decimal(15, 0)
   subtotal        Decimal  @default(0) @db.Decimal(15, 0)
 
@@ -1056,6 +1062,9 @@ model SalesOrderItem {
   // Snapshot từ QuotationItem.discountPercent tại Approve (Sprint 04, chốt
   // 16/07/2026) — THAY THẾ groupDiscount + additionalDiscountPercent/Amount cũ.
   discountPercent      Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  // Snapshot từ QuotationItem.surchargeAfterDiscount tại Approve (Sprint 04 —
+  // 023) — không tính lại, y hệt cách finalPrice được snapshot.
+  surchargeAfterDiscount Decimal @default(0) @map("surcharge_after_discount") @db.Decimal(15, 0)
   finalPrice           Decimal  @map("final_price") @db.Decimal(15, 0)
   quantity             Decimal  @db.Decimal(15, 4)
   subtotal             Decimal  @db.Decimal(15, 0)

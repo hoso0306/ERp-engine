@@ -41,6 +41,7 @@ interface QuotationItem {
   systemPrice: number;
   unitPrice: number | null;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;

@@ -35,6 +35,7 @@ interface ExistingItem {
   quantity: number;
   systemPrice: number;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   note: string | null;
   finalPrice: number;
   vatRate: number;
@@ -77,6 +78,10 @@ export function QuotationItemDialog({
   const [note, setNote] = useState("");
 
   const [systemPrice, setSystemPrice] = useState<number | null>(null);
+  // Phụ phí sau chiết khấu (023-phu-phi) — tính bởi Pricing Engine, cộng SAU
+  // khi áp discountPercent. Snapshot cũ khi sửa (giống discountPercent),
+  // tính lại khi tham số đổi (giống systemPrice/unitPrice).
+  const [surchargeAfterDiscount, setSurchargeAfterDiscount] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number | null>(null);
   const [vatRate, setVatRate] = useState<number>(0);
   const [adjustedVariables, setAdjustedVariables] = useState<Record<string, number>>({});
@@ -109,6 +114,7 @@ export function QuotationItemDialog({
       setSystemPrice(item.systemPrice);
       setVatRate(item.vatRate ?? 0);
       setDiscountPercent(Number(item.discountPercent ?? 0));
+      setSurchargeAfterDiscount(Number(item.surchargeAfterDiscount ?? 0));
       setNote(item.note ?? "");
       const vals: Record<string, string> = {};
       for (const p of item.parameters) vals[p.name] = p.value;
@@ -123,6 +129,7 @@ export function QuotationItemDialog({
       setNote("");
       setSystemPrice(null);
       setVatRate(0);
+      setSurchargeAfterDiscount(0);
     }
     setUnitPrice(null);
     setAdjustedVariables({});
@@ -154,18 +161,21 @@ export function QuotationItemDialog({
         vatRate: number;
         adjustedVariables: Record<string, number>;
         warnings: string[];
+        surchargeAfterDiscount: number;
       }>("/pricing-engine/calculate", { productId, parameters });
       setSystemPrice(data.systemPrice);
       setUnitPrice(data.unitPrice);
       setVatRate(data.vatRate ?? 0);
       setAdjustedVariables(data.adjustedVariables ?? {});
       setPriceWarnings(data.warnings ?? []);
+      setSurchargeAfterDiscount(data.surchargeAfterDiscount ?? 0);
     } catch {
       setSystemPrice(null);
       setUnitPrice(null);
       setVatRate(0);
       setAdjustedVariables({});
       setPriceWarnings([]);
+      setSurchargeAfterDiscount(0);
     } finally {
       setPriceLoading(false);
     }
@@ -200,6 +210,7 @@ export function QuotationItemDialog({
     setVatRate(0);
     setAdjustedVariables({});
     setPriceWarnings([]);
+    setSurchargeAfterDiscount(0);
     if (!product) {
       setProductParams([]);
       setParamValues({});
@@ -210,7 +221,9 @@ export function QuotationItemDialog({
   const qty = parseFloat(quantity) || 0;
 
   const finalPrice =
-    systemPrice !== null ? systemPrice * (1 - discountPercent / 100) : null;
+    systemPrice !== null
+      ? systemPrice * (1 - discountPercent / 100) + surchargeAfterDiscount
+      : null;
   const finalPriceSafe = finalPrice !== null ? Math.max(0, Math.round(finalPrice)) : null;
   const subtotal = finalPriceSafe !== null ? Math.round(finalPriceSafe * qty) : null;
   const finalNegative = finalPrice !== null && finalPrice < 0;
@@ -396,6 +409,12 @@ export function QuotationItemDialog({
                       ? "−" + formatMoney(Math.round(systemPrice * (discountPercent / 100)))
                       : "—"}
                   </span>
+                </div>
+              )}
+              {surchargeAfterDiscount > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Phụ phí (sau chiết khấu)</span>
+                  <span className="font-mono">{formatMoney(surchargeAfterDiscount)}</span>
                 </div>
               )}
               <div className={`flex justify-between border-t pt-1.5 font-medium ${finalNegative ? "text-destructive" : ""}`}>

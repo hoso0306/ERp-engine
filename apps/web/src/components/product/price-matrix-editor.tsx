@@ -53,10 +53,7 @@ export function PriceMatrixEditor({
   matrixRows: PriceMatrixRow[];
   isDraft: boolean;
   onSaved: () => void;
-  /**
-   * Đơn vị hiển thị cột "Đơn giá (đ/...)" — theo matrixUnitLabel của phiên bản
-   * (người dùng tự đặt, vd "mdài"), mặc định theo đơn vị sản phẩm ("m²", "Cái").
-   */
+  /** Đơn vị hiển thị cột "Đơn giá (đ/...)" — theo đơn vị sản phẩm, mặc định "m²". */
   unitLabel?: string;
 }) {
   const enumParams = useMemo(

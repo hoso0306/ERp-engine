@@ -20,6 +20,7 @@ interface QuotationItemRow {
   systemPrice: number;
   unitPrice: number | null;
   discountPercent: number;
+  surchargeAfterDiscount: number;
   finalPrice: number;
   subtotal: number;
   vatRate: number;
@@ -82,7 +83,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
     ? items.some((i) => costByItemId.get(i.id)?.costAvailable === false)
     : false;
   const profit = totalAmount - totalCost;
-  const colSpan = (editable ? 7 : 6) + (showCost ? 1 : 0);
+  const colSpan = (editable ? 8 : 7) + (showCost ? 1 : 0);
 
   return (
     <div className="rounded-md border">
@@ -93,6 +94,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
             <TableHead>Thông số</TableHead>
             <TableHead className="text-right">Giá bán</TableHead>
             <TableHead className="text-center">Chiết khấu</TableHead>
+            <TableHead className="text-right">Phụ phí</TableHead>
             <TableHead className="text-right">SL</TableHead>
             <TableHead className="text-right">Thành tiền</TableHead>
             <TableHead className="text-right">VAT</TableHead>
@@ -132,6 +134,11 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
               </TableCell>
               <TableCell className="text-center text-sm">
                 {Number(item.discountPercent) > 0 ? `${item.discountPercent}%` : "—"}
+              </TableCell>
+              <TableCell className="text-right text-sm">
+                {Number(item.surchargeAfterDiscount) > 0
+                  ? formatMoney(Number(item.surchargeAfterDiscount))
+                  : "—"}
               </TableCell>
               <TableCell className="text-right text-sm">{Number(item.quantity)}</TableCell>
               <TableCell className="text-right font-mono text-sm font-semibold">

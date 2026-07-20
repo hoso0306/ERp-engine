@@ -12,6 +12,7 @@ function makeConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
   return {
     pricingRuleVersionId: 'ver-001',
     expression: null,
+    surchargeExpression: null,
     priceRoundType: RoundType.NONE,
     priceRoundValue: 0,
     ruleItems: [],

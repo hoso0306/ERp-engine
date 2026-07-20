@@ -50,10 +50,10 @@ interface PricingRuleVersion {
   versionNumber: number;
   name: string | null;
   expression: string | null;
+  surchargeExpression: string | null;
   priceRoundType: string;
   priceRoundValue: number | null;
   vatRate: number;
-  matrixUnitLabel: string | null;
   status: string;
   note: string | null;
   items: PricingRuleItem[];
@@ -73,6 +73,9 @@ interface PreviewResult {
   priceWithVat: number;
   priceRoundType: string;
   priceRoundValue: number | null;
+  // Chỉ minh hoạ công thức — Preview không gắn khách hàng nên KHÔNG chạy
+  // Discount Engine, số này khác giá trị thật sẽ cộng vào Báo giá thực tế.
+  surchargeAfterDiscount: number;
 }
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -114,10 +117,10 @@ export default function PricingRuleVersionPage() {
   // Form state (for DRAFT editing)
   const [formName, setFormName] = useState("");
   const [formExpr, setFormExpr] = useState("");
+  const [formSurchargeExpr, setFormSurchargeExpr] = useState("");
   const [formRoundType, setFormRoundType] = useState("NONE");
   const [formRoundValue, setFormRoundValue] = useState("");
   const [formVatRate, setFormVatRate] = useState("0");
-  const [formMatrixUnit, setFormMatrixUnit] = useState("");
   const [formNote, setFormNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -144,10 +147,10 @@ export default function PricingRuleVersionPage() {
       setVersion(data);
       setFormName(data.name ?? "");
       setFormExpr(data.expression ?? "");
+      setFormSurchargeExpr(data.surchargeExpression ?? "");
       setFormRoundType(data.priceRoundType);
       setFormRoundValue(data.priceRoundValue != null ? String(data.priceRoundValue) : "");
       setFormVatRate(String(data.vatRate ?? 0));
-      setFormMatrixUnit(data.matrixUnitLabel ?? "");
       setFormNote(data.note ?? "");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Không tìm thấy phiên bản.");
@@ -185,10 +188,10 @@ export default function PricingRuleVersionPage() {
       const body: Record<string, unknown> = {
         name: formName.trim() || null,
         expression: formExpr.trim() || null,
+        surchargeExpression: formSurchargeExpr.trim() || null,
         priceRoundType: formRoundType,
         priceRoundValue: formRoundValue ? Number(formRoundValue) : null,
         vatRate: formVatRate ? Number(formVatRate) : 0,
-        matrixUnitLabel: formMatrixUnit.trim() || null,
         note: formNote.trim() || null,
       };
       const updated = await apiPatch<PricingRuleVersion>(
@@ -289,11 +292,9 @@ export default function PricingRuleVersionPage() {
   const isDraft = version.status === "DRAFT";
   const st = statusMap[version.status] ?? statusMap.DRAFT;
   const numberParams = parameters.filter((p) => p.type === "NUMBER" || p.type === "ENUM");
+  const priceUnit = productUnitName?.trim() || "m²";
 
   const hasMatrix = version.matrixRows.length > 0;
-  // Đơn vị hiển thị của cột "Đơn giá" ma trận — người dùng tự đặt (vd "mdài"
-  // cho rèm cầu vồng), mặc định theo đơn vị sản phẩm.
-  const priceUnit = formMatrixUnit.trim() || productUnitName?.trim() || "m²";
   const firstEnumParam = parameters.find((p) => p.type === "ENUM" && p.options.length > 0);
   const exprPlaceholder = hasMatrix
     ? "ví dụ: unitPrice * area"
@@ -439,6 +440,29 @@ export default function PricingRuleVersionPage() {
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="v-surcharge-expr">Công thức Phụ phí sau chiết khấu (tuỳ chọn)</Label>
+          <p className="text-xs text-muted-foreground">
+            Dùng chung biến với Công thức ở trên (tham số sản phẩm, biến phái sinh
+            {hasMatrix ? ", unitPrice" : ""}). Kết quả chỉ được cộng vào giá bán trong Báo giá
+            thực tế, SAU khi đã trừ % chiết khấu khách hàng — không bị chiết khấu ăn vào. Ví dụ:{" "}
+            <code className="font-mono">
+              if(loaimang == &quot;nhom&quot;, 20000 * area, 0)
+            </code>
+            . Ô &quot;Preview giá bán&quot; bên dưới không phản ánh số này vì Preview không gắn
+            khách hàng cụ thể (không có chiết khấu).
+          </p>
+          <Textarea
+            id="v-surcharge-expr"
+            value={formSurchargeExpr}
+            onChange={(e) => setFormSurchargeExpr(e.target.value)}
+            placeholder={'ví dụ: if(mangremcuon == "nhom", 20000 * area, 0)'}
+            rows={2}
+            className="font-mono"
+            disabled={!isDraft}
+          />
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Làm tròn giá</Label>
@@ -474,36 +498,19 @@ export default function PricingRuleVersionPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="v-vat">Thuế VAT (%)</Label>
-            <Input
-              id="v-vat"
-              type="number"
-              value={formVatRate}
-              onChange={(e) => setFormVatRate(e.target.value)}
-              placeholder="ví dụ: 10"
-              min={0}
-              max={100}
-              step="0.01"
-              disabled={!isDraft}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="v-matrix-unit">Đơn vị của Đơn giá (Bảng giá ma trận)</Label>
-            <Input
-              id="v-matrix-unit"
-              value={formMatrixUnit}
-              onChange={(e) => setFormMatrixUnit(e.target.value)}
-              placeholder={productUnitName ?? "m²"}
-              disabled={!isDraft}
-            />
-            <p className="text-xs text-muted-foreground">
-              Chỉ để hiển thị cột &quot;Đơn giá (đ/...)&quot;. Để trống = theo đơn vị sản phẩm
-              {productUnitName ? ` (${productUnitName})` : ""}. Ví dụ rèm cầu vồng: đơn giá theo
-              đ/mdài dù báo giá theo đ/m².
-            </p>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="v-vat">Thuế VAT (%)</Label>
+          <Input
+            id="v-vat"
+            type="number"
+            value={formVatRate}
+            onChange={(e) => setFormVatRate(e.target.value)}
+            placeholder="ví dụ: 10"
+            min={0}
+            max={100}
+            step="0.01"
+            disabled={!isDraft}
+          />
         </div>
 
         <div className="space-y-2">
@@ -615,7 +622,7 @@ export default function PricingRuleVersionPage() {
           matrixRows={version.matrixRows}
           isDraft={isDraft}
           onSaved={loadVersion}
-          unitLabel={priceUnit}
+          unitLabel={productUnitName ?? undefined}
         />
       </div>
 
@@ -713,6 +720,15 @@ export default function PricingRuleVersionPage() {
                       {previewResult.finalPrice.toLocaleString("vi-VN")} đ
                     </span>
                   </div>
+                  {previewResult.surchargeAfterDiscount > 0 && (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>
+                        Phụ phí sau chiết khấu (minh hoạ công thức — Báo giá thực tế mới cộng khoản
+                        này):
+                      </span>
+                      <span>{previewResult.surchargeAfterDiscount.toLocaleString("vi-VN")} đ</span>
+                    </div>
+                  )}
                   {previewResult.vatRate > 0 && (
                     <>
                       <div className="flex justify-between text-muted-foreground">
