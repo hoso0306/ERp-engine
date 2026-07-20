@@ -9,7 +9,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -66,86 +65,81 @@
 }
 
 :root {
-  --background: oklch(0.9916 0.0050 228.8162);
-  --foreground: oklch(0.2012 0.0307 210.2063);
+  --background: oklch(0.9800 0.0020 236.4993);
+  --foreground: oklch(0.3211 0 0);
   --card: oklch(1.0000 0 0);
-  --card-foreground: oklch(0.2012 0.0307 210.2063);
+  --card-foreground: oklch(0.3211 0 0);
   --popover: oklch(1.0000 0 0);
-  --popover-foreground: oklch(0.2395 0.0455 282.4182);
-  --primary: oklch(0.7040 0.1400 182.5030);
-  --primary-foreground: oklch(0.9911 0 0);
-  --secondary: oklch(0.9507 0.0148 196.9072);
-  --secondary-foreground: oklch(0.4011 0.0399 210.3561);
-  --muted: oklch(0.9604 0.0096 196.9971);
-  --muted-foreground: oklch(0.4999 0.0296 211.7976);
-  --accent: oklch(0.9104 0.0460 174.0259);
-  --accent-foreground: oklch(0.4524 0.0772 194.7689);
-  --destructive: oklch(0.5993 0.1597 24.9573);
+  --popover-foreground: oklch(0.3211 0 0);
+  --primary: oklch(0.4544 0.1028 241.4653);
+  --primary-foreground: oklch(1.0000 0 0);
+  --secondary: oklch(0.9100 0.0350 241.4653);
+  --secondary-foreground: oklch(0.4544 0.1028 241.4653);
+  --muted: oklch(0.9300 0.0017 247.8389);
+  --muted-foreground: oklch(0.5510 0.0234 264.3637);
+  --accent: oklch(0.9119 0.0222 243.8174);
+  --accent-foreground: oklch(0.3791 0.1378 265.5222);
+  --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1.0000 0 0);
-  --border: oklch(0.9093 0.0098 204.9097);
-  --input: oklch(0.9093 0.0098 204.9097);
-  --ring: oklch(0.7040 0.1400 182.5030);
-  /* Categorical palette cho biểu đồ Report (Task 07, 014-bao-cao.md), lấy từ
-     theme tweakcn "Future Teal" — thứ tự chart-1..5 phải cố định, không đổi
+  --border: oklch(0.8452 0 0);
+  --input: oklch(0.7500 0.0029 264.5420);
+  --ring: oklch(0.4544 0.1028 241.4653);
+  /* Categorical palette cho biểu đồ Report (Task 07, 014-bao-cao.md) — tuỳ
+     biến thủ công: chart-1 đồng bộ tông navy với primary, chart 2-5 dùng các
+     màu bổ trợ khác hệ (xanh lá/vàng/tím/đỏ cam) để dễ phân biệt nhiều chuỗi
+     số liệu trên cùng 1 chart. Thứ tự chart-1..5 phải cố định, không đổi
      giữa các chart để cùng một chỉ số luôn cùng màu. */
-  --chart-1: oklch(0.7040 0.1400 182.5030);
-  --chart-2: oklch(0.6700 0.1336 230.0356);
-  --chart-3: oklch(0.7217 0.1638 297.0816);
-  --chart-4: oklch(0.8614 0.1165 74.2273);
-  --chart-5: oklch(0.8975 0.0740 131.2181);
+  --chart-1: oklch(0.4544 0.1028 241.4653);
+  --chart-2: oklch(0.6206 0.1415 152.6945);
+  --chart-3: oklch(0.7429 0.1436 81.5450);
+  --chart-4: oklch(0.5741 0.1477 303.2267);
+  --chart-5: oklch(0.6851 0.1330 28.3516);
   --radius: 0.5rem;
-  --sidebar: oklch(0.9794 0.0045 214.3282);
-  --sidebar-foreground: oklch(0.2514 0.0307 209.6770);
-  --sidebar-primary: oklch(0.7040 0.1400 182.5030);
-  --sidebar-primary-foreground: oklch(0.9859 0.0040 286.3269);
-  --sidebar-accent: oklch(0.9104 0.0460 174.0259);
-  --sidebar-accent-foreground: oklch(0.2395 0.0455 282.4182);
-  --sidebar-border: oklch(0.9202 0.0202 200.6310);
-  --sidebar-ring: oklch(0.5606 0.1650 288.1741);
-  --font-serif: Georgia, serif;
-  --shadow-color: #2d2d53;
-  --shadow-opacity: 0.12;
-  --shadow-blur: 10px;
+  /* Sidebar cố định tông tối (navy) bất kể light/dark mode của nội dung
+     chính, để tách bạch khu vực điều hướng — dùng chung 1 giá trị cho cả
+     :root và .dark (không khai báo riêng trong .dark bên dưới). */
+  --sidebar: oklch(0.3563 0.0649 246.0157);
+  --sidebar-foreground: oklch(0.9219 0 0);
+  --sidebar-primary: oklch(0.4544 0.1028 241.4653);
+  --sidebar-primary-foreground: oklch(1.0000 0 0);
+  --sidebar-accent: oklch(0.4544 0.1028 241.4653);
+  --sidebar-accent-foreground: oklch(1.0000 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.4544 0.1028 241.4653);
+  --shadow-color: #1a1a1a;
+  --shadow-opacity: 0.1;
+  --shadow-blur: 3px;
   --shadow-spread: 0px;
   --shadow-offset-x: 0px;
-  --shadow-offset-y: 4px;
+  --shadow-offset-y: 1px;
   --spacing: 0.25rem;
   --tracking-normal: 0em;
-  --shadow-2xs: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.06);
-  --shadow-xs: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.06);
-  --shadow-sm: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.12), 0px 1px 2px -1px hsl(240 29.6875% 25.0980% / 0.12);
-  --shadow: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.12), 0px 1px 2px -1px hsl(240 29.6875% 25.0980% / 0.12);
-  --shadow-md: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.12), 0px 2px 4px -1px hsl(240 29.6875% 25.0980% / 0.12);
-  --shadow-lg: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.12), 0px 4px 6px -1px hsl(240 29.6875% 25.0980% / 0.12);
-  --shadow-xl: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.12), 0px 8px 10px -1px hsl(240 29.6875% 25.0980% / 0.12);
-  --shadow-2xl: 0px 4px 10px 0px hsl(240 29.6875% 25.0980% / 0.30);
+  --shadow-2xs: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.05);
+  --shadow-xs: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.05);
+  --shadow-sm: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.10), 0px 1px 2px -1px hsl(0 0% 10.1961% / 0.10);
+  --shadow: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.10), 0px 1px 2px -1px hsl(0 0% 10.1961% / 0.10);
+  --shadow-md: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.10), 0px 2px 4px -1px hsl(0 0% 10.1961% / 0.10);
+  --shadow-lg: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.10), 0px 4px 6px -1px hsl(0 0% 10.1961% / 0.10);
+  --shadow-xl: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.10), 0px 8px 10px -1px hsl(0 0% 10.1961% / 0.10);
+  --shadow-2xl: 0px 1px 3px 0px hsl(0 0% 10.1961% / 0.25);
 }
 
 .dark {
-  --background: oklch(0.1396 0.0155 195.5244);
-  --foreground: oklch(0.9396 0.0097 204.9127);
-  --card: oklch(0.1788 0.0202 201.3265);
-  --card-foreground: oklch(0.9396 0.0097 204.9127);
-  --popover: oklch(0.2101 0.0257 280.5303);
-  --popover-foreground: oklch(0.9294 0.0202 286.0004);
-  --primary-foreground: oklch(1.0000 0 0);
-  --secondary: oklch(0.2413 0.0307 198.8697);
-  --secondary-foreground: oklch(0.8496 0.0299 199.2418);
-  --muted: oklch(0.2185 0.0195 201.5676);
-  --muted-foreground: oklch(0.6494 0.0304 199.2066);
-  --accent: oklch(0.4370 0.0780 188.2160);
-  --accent-foreground: oklch(0.7994 0.0596 196.0230);
-  --destructive: oklch(0.6593 0.2097 25.0107);
-  --destructive-foreground: oklch(0.9859 0.0040 286.3269);
-  --border: oklch(0.2397 0.0193 201.5913);
-  --input: oklch(0.2397 0.0193 201.5913);
-  --sidebar: oklch(0.1604 0.0209 201.0807);
-  --sidebar-foreground: oklch(0.9396 0.0097 204.9127);
-  --sidebar-primary-foreground: oklch(1.0000 0 0);
-  --sidebar-accent: oklch(0.4370 0.0780 188.2160);
-  --sidebar-accent-foreground: oklch(0.9294 0.0202 286.0004);
-  --sidebar-border: oklch(0.3008 0.0343 281.7840);
-  --sidebar-ring: oklch(0.7155 0.1583 288.7763);
+  --background: oklch(0.2178 0 0);
+  --foreground: oklch(0.9219 0 0);
+  --card: oklch(0.2435 0 0);
+  --card-foreground: oklch(0.9219 0 0);
+  --popover: oklch(0.2435 0 0);
+  --popover-foreground: oklch(0.9219 0 0);
+  --secondary: oklch(0.3743 0.0726 241.4653);
+  --secondary-foreground: oklch(0.9219 0 0);
+  --muted: oklch(0.2850 0 0);
+  --muted-foreground: oklch(0.5999 0 0);
+  --accent: oklch(0.3380 0.0589 267.5867);
+  --accent-foreground: oklch(0.8823 0.0571 254.1284);
+  --border: oklch(0.3290 0 0);
+  --input: oklch(0.3092 0 0);
+  --chart-1: oklch(0.7124 0.0606 248.6896);
 }
 
 @layer base {

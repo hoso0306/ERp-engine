@@ -212,6 +212,12 @@ model User {
   // Field theo từng User — khác với Settings.Security.forceChangePasswordOnFirstLogin
   // (công tắc chung toàn hệ thống, chỉ quyết định giá trị ban đầu của field này).
   mustChangePassword Boolean   @default(false) @map("must_change_password")
+  // Chống dò mật khẩu (chốt 20/07/2026): sai 5 lần liên tiếp khoá 5 phút, sai
+  // đủ 10 lần khoá 30 phút — đếm dồn, chỉ reset về 0 khi đăng nhập đúng (xem
+  // AuthService.login()). Không tính khi tài khoản đang bị khoá (không kiểm
+  // tra mật khẩu lúc đó nên không tăng thêm).
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
   // Bắt buộc, gán khi tạo User (013-permission.md) — Authentication chỉ đọc để
   // đưa vào payload JWT, không sở hữu field này (xem permission.md).
   roleId             String    @map("role_id")

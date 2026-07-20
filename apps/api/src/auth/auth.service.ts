@@ -14,6 +14,23 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 const BCRYPT_SALT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 6;
 
+// Chống dò mật khẩu (chốt 20/07/2026) — đếm dồn số lần sai liên tiếp, chỉ
+// reset khi đăng nhập đúng (xem AuthService.login()):
+//   - Đúng lần thứ TIER_1_ATTEMPTS  → khoá TIER_1_MINUTES phút.
+//   - Đúng lần thứ TIER_2_ATTEMPTS trở lên → khoá TIER_2_MINUTES phút (áp
+//     dụng lại mỗi lần sai tiếp theo, không có bậc cao hơn).
+//   - Các lần sai ở giữa 2 mốc chỉ cảnh báo "còn X lần thử", không khoá lại.
+const TIER_1_ATTEMPTS = 5;
+const TIER_1_MINUTES = 5;
+const TIER_2_ATTEMPTS = 10;
+const TIER_2_MINUTES = 30;
+
+function formatWait(minutes: number): string {
+  return minutes < 10
+    ? `${minutes * 60} giây`
+    : `${minutes} phút`;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -51,19 +68,63 @@ export class AuthService {
       throw invalidCredentials();
     }
 
+    // Đang bị khoá tạm — không kiểm tra mật khẩu, không tăng thêm số lần sai.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil(
+        (user.lockedUntil.getTime() - Date.now()) / 60000,
+      );
+      throw new UnauthorizedException(
+        `Tài khoản đang tạm khoá. Chờ ${formatWait(minutesLeft)} để thử lại.`,
+      );
+    }
+
     const passwordMatches = await bcrypt.compare(
       dto.password,
       user.passwordHash,
     );
     if (!passwordMatches) {
-      throw invalidCredentials();
+      const attempts = user.failedLoginAttempts + 1;
+      let lockMinutes: number | null = null;
+      if (attempts >= TIER_2_ATTEMPTS) {
+        lockMinutes = TIER_2_MINUTES;
+      } else if (attempts === TIER_1_ATTEMPTS) {
+        lockMinutes = TIER_1_MINUTES;
+      }
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: attempts,
+          lockedUntil: lockMinutes
+            ? new Date(Date.now() + lockMinutes * 60000)
+            : null,
+        },
+      });
+
+      if (lockMinutes) {
+        throw new UnauthorizedException(
+          `Sai mật khẩu quá ${attempts} lần. Chờ ${formatWait(lockMinutes)} để thử lại.`,
+        );
+      }
+
+      const nextThreshold =
+        attempts < TIER_1_ATTEMPTS ? TIER_1_ATTEMPTS : TIER_2_ATTEMPTS;
+      const remaining = nextThreshold - attempts;
+      throw new UnauthorizedException(
+        `Email hoặc mật khẩu không đúng. Hãy liên hệ với người sáng lập để cấp lại mật khẩu. Còn ${remaining} lần thử.`,
+      );
     }
 
     const accessToken = await this.issueToken(user.id, user.roleId);
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date(), lastLoginIp: ip },
+      data: {
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
     });
 
     return {

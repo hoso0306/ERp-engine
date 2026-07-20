@@ -12,10 +12,13 @@ function makeUser(overrides: Record<string, unknown> = {}) {
   return {
     id: 'user-1',
     email: 'owner@erp.local',
+    phone: null,
     name: 'Owner',
     passwordHash: 'hashed-real-password',
     isActive: true,
     mustChangePassword: false,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
     lastLoginAt: null,
     lastLoginIp: null,
     createdAt: new Date(),
@@ -62,29 +65,27 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rejects with the SAME generic message when the password is wrong (no user-enumeration)', async () => {
+    it('email không tồn tại → thông báo chung, KHÔNG có "còn X lần" (chỉ user có thật mới đếm lần sai)', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.login({ identifier: 'nope@erp.local', password: 'x' }, null),
+      ).rejects.toThrow(
+        'Email hoặc mật khẩu không đúng. Hãy liên hệ với người sáng lập để cấp lại mật khẩu.',
+      );
+    });
+
+    it('sai mật khẩu (lần đầu, chưa tới ngưỡng khoá) → thông báo chung kèm "còn X lần thử"', async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
-      let notFoundMessage = '';
-      let wrongPasswordMessage = '';
-      try {
-        prisma.user.findUnique.mockResolvedValueOnce(null);
-        await service.login({ identifier: 'nope@erp.local', password: 'x' }, null);
-      } catch (e) {
-        notFoundMessage = (e as Error).message;
-      }
-      try {
-        await service.login(
+      await expect(
+        service.login(
           { identifier: 'owner@erp.local', password: 'wrong' },
           null,
-        );
-      } catch (e) {
-        wrongPasswordMessage = (e as Error).message;
-      }
-
-      expect(notFoundMessage).toBe(wrongPasswordMessage);
-      expect(notFoundMessage).not.toBe('');
+        ),
+      ).rejects.toThrow(
+        'Email hoặc mật khẩu không đúng. Hãy liên hệ với người sáng lập để cấp lại mật khẩu. Còn 4 lần thử.',
+      );
     });
 
     it('rejects when isActive = false, even with correct password', async () => {
@@ -109,7 +110,12 @@ describe('AuthService', () => {
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
-        data: { lastLoginAt: expect.any(Date), lastLoginIp: '1.2.3.4' },
+        data: {
+          lastLoginAt: expect.any(Date),
+          lastLoginIp: '1.2.3.4',
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
       });
       expect(result.accessToken).toBe('signed.jwt.token');
       expect(result.user).not.toHaveProperty('passwordHash');
@@ -135,6 +141,128 @@ describe('AuthService', () => {
         { sub: 'user-1' },
         { expiresIn: '45m' },
       );
+    });
+  });
+
+  describe('login() — chống dò mật khẩu (chốt 20/07/2026)', () => {
+    it('sai lần thứ 5 → khoá 5 phút, thông báo nêu rõ thời gian', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 4 }),
+      );
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login(
+          { identifier: 'owner@erp.local', password: 'wrong' },
+          null,
+        ),
+      ).rejects.toThrow('Sai mật khẩu quá 5 lần. Chờ 300 giây để thử lại.');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { failedLoginAttempts: 5, lockedUntil: expect.any(Date) },
+      });
+    });
+
+    it('sai lần thứ 10 → khoá 30 phút', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 9 }),
+      );
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login(
+          { identifier: 'owner@erp.local', password: 'wrong' },
+          null,
+        ),
+      ).rejects.toThrow('Sai mật khẩu quá 10 lần. Chờ 30 phút để thử lại.');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { failedLoginAttempts: 10, lockedUntil: expect.any(Date) },
+      });
+    });
+
+    it('sai lần thứ 6 (giữa 2 mốc, sau khi lần 5 đã từng khoá) → KHÔNG khoá lại, chỉ báo còn 4 lần tới mốc 10', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 5 }),
+      );
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login(
+          { identifier: 'owner@erp.local', password: 'wrong' },
+          null,
+        ),
+      ).rejects.toThrow(
+        'Email hoặc mật khẩu không đúng. Hãy liên hệ với người sáng lập để cấp lại mật khẩu. Còn 4 lần thử.',
+      );
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { failedLoginAttempts: 6, lockedUntil: null },
+      });
+    });
+
+    it('sai lần dưới ngưỡng (VD lần 3) → chỉ báo lỗi chung, không khoá', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 2 }),
+      );
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login(
+          { identifier: 'owner@erp.local', password: 'wrong' },
+          null,
+        ),
+      ).rejects.toThrow('Email hoặc mật khẩu không đúng');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { failedLoginAttempts: 3, lockedUntil: null },
+      });
+    });
+
+    it('đang bị khoá → từ chối ngay, không kiểm tra mật khẩu, không tăng thêm số lần sai', async () => {
+      const future = new Date(Date.now() + 3 * 60000);
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 5, lockedUntil: future }),
+      );
+
+      await expect(
+        service.login(
+          { identifier: 'owner@erp.local', password: 'correct' },
+          null,
+        ),
+      ).rejects.toThrow('Tài khoản đang tạm khoá. Chờ 180 giây để thử lại.');
+
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('đã hết thời gian khoá → cho kiểm tra mật khẩu lại bình thường', async () => {
+      const past = new Date(Date.now() - 1000);
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ failedLoginAttempts: 5, lockedUntil: past }),
+      );
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(makeUser());
+
+      const result = await service.login(
+        { identifier: 'owner@erp.local', password: 'correct' },
+        null,
+      );
+
+      expect(result.accessToken).toBe('signed.jwt.token');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: {
+          lastLoginAt: expect.any(Date),
+          lastLoginIp: null,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      });
     });
   });
 
