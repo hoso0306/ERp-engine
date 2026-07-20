@@ -11,6 +11,7 @@ import { useAuth } from "@/context/auth-context";
 export interface UserRow {
   id: string;
   email: string;
+  phone: string | null;
   name: string | null;
   isActive: boolean;
   mustChangePassword: boolean;
@@ -34,6 +35,7 @@ export function UserTable({ users, onEdit, onResetPassword }: UserTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Email</TableHead>
+            <TableHead>SĐT</TableHead>
             <TableHead>Tên</TableHead>
             <TableHead>Vai trò</TableHead>
             <TableHead className="text-center">Trạng thái</TableHead>
@@ -45,6 +47,7 @@ export function UserTable({ users, onEdit, onResetPassword }: UserTableProps) {
           {users.map((u) => (
             <TableRow key={u.id}>
               <TableCell className="font-medium">{u.email}</TableCell>
+              <TableCell>{u.phone ?? "—"}</TableCell>
               <TableCell>{u.name ?? "—"}</TableCell>
               <TableCell>{u.role.name}</TableCell>
               <TableCell className="text-center">

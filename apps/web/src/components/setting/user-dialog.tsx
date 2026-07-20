@@ -32,6 +32,7 @@ interface UserDialogProps {
 export function UserDialog({ open, onOpenChange, user, roles, onSaved }: UserDialogProps) {
   const isEdit = !!user;
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [roleId, setRoleId] = useState("");
   const [isActive, setIsActive] = useState(true);
@@ -40,6 +41,7 @@ export function UserDialog({ open, onOpenChange, user, roles, onSaved }: UserDia
   useEffect(() => {
     if (open) {
       setEmail(user?.email ?? "");
+      setPhone(user?.phone ?? "");
       setName(user?.name ?? "");
       setRoleId(user?.role.id ?? "");
       setIsActive(user?.isActive ?? true);
@@ -58,6 +60,7 @@ export function UserDialog({ open, onOpenChange, user, roles, onSaved }: UserDia
       if (isEdit) {
         await apiPatch(`/users/${user.id}`, {
           name: name.trim() || undefined,
+          phone: phone.trim() || undefined,
           roleId,
           isActive,
         });
@@ -66,6 +69,7 @@ export function UserDialog({ open, onOpenChange, user, roles, onSaved }: UserDia
       } else {
         const created = await apiPost<{ email: string; temporaryPassword: string }>("/users", {
           email: email.trim(),
+          phone: phone.trim() || undefined,
           name: name.trim() || undefined,
           roleId,
         });
@@ -96,6 +100,15 @@ export function UserDialog({ open, onOpenChange, user, roles, onSaved }: UserDia
               onChange={(e) => setEmail(e.target.value)}
               disabled={isEdit}
               required={!isEdit}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="user-phone">Số điện thoại</Label>
+            <Input
+              id="user-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="09xxxxxxxx (đăng nhập được bằng SĐT)"
             />
           </div>
           <div className="space-y-2">

@@ -60,9 +60,20 @@ export class UserService {
       PLACEHOLDER_HASH_ROUNDS,
     );
 
+    // Chuẩn hoá email về chữ thường — đăng nhập không phân biệt hoa/thường
+    // (xem AuthService.login()).
+    const email = dto.email.trim().toLowerCase();
+    const phone = dto.phone?.trim() || undefined;
+    if (phone && !/^0\d{9,10}$/.test(phone)) {
+      throw new BadRequestException(
+        'Số điện thoại không hợp lệ (cần 10-11 chữ số, bắt đầu bằng 0).',
+      );
+    }
+
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
+        phone,
         name: dto.name,
         roleId: dto.roleId,
         passwordHash: placeholderHash,
@@ -80,7 +91,7 @@ export class UserService {
       userId: user.id,
       action: 'USER_CREATED',
       changedBy: actorId,
-      payload: { email: dto.email, roleId: dto.roleId },
+      payload: { email, roleId: dto.roleId },
     });
 
     const created = await this.prisma.user.findUniqueOrThrow({
@@ -131,8 +142,15 @@ export class UserService {
       }
     }
 
+    if (dto.phone !== undefined && dto.phone.trim() && !/^0\d{9,10}$/.test(dto.phone.trim())) {
+      throw new BadRequestException(
+        'Số điện thoại không hợp lệ (cần 10-11 chữ số, bắt đầu bằng 0).',
+      );
+    }
+
     const data: Prisma.UserUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
+    if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (newRole) data.role = { connect: { id: newRole.id } };
 
@@ -180,6 +198,7 @@ export class UserService {
   private toSafeUser(user: {
     id: string;
     email: string;
+    phone: string | null;
     name: string | null;
     isActive: boolean;
     roleId: string;
@@ -191,6 +210,7 @@ export class UserService {
     return {
       id: user.id,
       email: user.email,
+      phone: user.phone,
       name: user.name,
       isActive: user.isActive,
       mustChangePassword: user.mustChangePassword,

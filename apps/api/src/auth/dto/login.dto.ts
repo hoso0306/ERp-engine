@@ -1,4 +1,5 @@
 export class LoginDto {
-  email!: string;
+  // Nhận cả email lẫn số điện thoại (xem AuthService.login()).
+  identifier!: string;
   password!: string;
 }

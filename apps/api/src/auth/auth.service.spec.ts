@@ -58,7 +58,7 @@ describe('AuthService', () => {
     it('rejects with a generic message when the email does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       await expect(
-        service.login({ email: 'nope@erp.local', password: 'x' }, null),
+        service.login({ identifier: 'nope@erp.local', password: 'x' }, null),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -70,13 +70,13 @@ describe('AuthService', () => {
       let wrongPasswordMessage = '';
       try {
         prisma.user.findUnique.mockResolvedValueOnce(null);
-        await service.login({ email: 'nope@erp.local', password: 'x' }, null);
+        await service.login({ identifier: 'nope@erp.local', password: 'x' }, null);
       } catch (e) {
         notFoundMessage = (e as Error).message;
       }
       try {
         await service.login(
-          { email: 'owner@erp.local', password: 'wrong' },
+          { identifier: 'owner@erp.local', password: 'wrong' },
           null,
         );
       } catch (e) {
@@ -91,7 +91,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(makeUser({ isActive: false }));
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       await expect(
-        service.login({ email: 'owner@erp.local', password: 'correct' }, null),
+        service.login({ identifier: 'owner@erp.local', password: 'correct' }, null),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -103,7 +103,7 @@ describe('AuthService', () => {
       );
 
       const result = await service.login(
-        { email: 'owner@erp.local', password: 'correct' },
+        { identifier: 'owner@erp.local', password: 'correct' },
         '1.2.3.4',
       );
 
@@ -123,7 +123,7 @@ describe('AuthService', () => {
       settingService.getNumberValue.mockResolvedValue(45);
 
       await service.login(
-        { email: 'owner@erp.local', password: 'correct' },
+        { identifier: 'owner@erp.local', password: 'correct' },
         null,
       );
 

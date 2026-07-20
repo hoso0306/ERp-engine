@@ -1,5 +1,7 @@
 export class UpdateUserDto {
   name?: string;
+  // Tuỳ chọn — chuỗi rỗng = xoá SĐT, undefined = không đổi (xem UserService.update()).
+  phone?: string;
   isActive?: boolean;
   roleId?: string;
   // Task 01 (010-fe-cai-dat-nguoi-dung.md) — cấp lại mật khẩu tạm cho User đã

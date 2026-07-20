@@ -30,14 +30,22 @@ export class AuthService {
     // Không phân biệt "email không tồn tại" / "sai mật khẩu" — cùng một lỗi
     // chung (tránh lộ email nào đã đăng ký).
     const invalidCredentials = () =>
-      new UnauthorizedException('Email hoặc mật khẩu không đúng.');
+      new UnauthorizedException(
+        'Email hoặc mật khẩu không đúng. Hãy liên hệ với người sáng lập để cấp lại mật khẩu.',
+      );
 
-    if (!dto.email || !dto.password) {
+    if (!dto.identifier || !dto.password) {
       throw invalidCredentials();
     }
 
+    // Đăng nhập bằng email hoặc SĐT — tự nhận diện theo định dạng (giống quy
+    // ước SĐT của Customer, xem customer.service.ts). Email không phân biệt
+    // hoa/thường (chuẩn hoá về chữ thường — khớp cách UserService.create() lưu).
+    const identifier = dto.identifier.trim();
+    const isPhone = /^0\d{9,10}$/.test(identifier);
+
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: isPhone ? { phone: identifier } : { email: identifier.toLowerCase() },
     });
     if (!user || !user.isActive) {
       throw invalidCredentials();
@@ -173,6 +181,7 @@ export class AuthService {
   private toSafeUser(user: {
     id: string;
     email: string;
+    phone: string | null;
     name: string | null;
     isActive: boolean;
     roleId: string;
@@ -183,6 +192,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
+      phone: user.phone,
       name: user.name,
       isActive: user.isActive,
       roleId: user.roleId,

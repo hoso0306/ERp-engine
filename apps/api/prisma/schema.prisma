@@ -199,6 +199,9 @@ enum PermissionAuditAction {
 model User {
   id                 String    @id @default(cuid())
   email              String    @unique
+  // Đăng nhập được bằng email hoặc SĐT (xem AuthService.login()) — tuỳ chọn,
+  // User cũ không có SĐT vẫn đăng nhập bằng email bình thường.
+  phone              String?   @unique
   name               String?
   // bcrypt hash — không bao giờ lưu/trả về plaintext (xem authentication.md).
   passwordHash       String    @map("password_hash")

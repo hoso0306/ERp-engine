@@ -9,7 +9,7 @@ interface AuthContextValue {
   user: MeResponse | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<LoginResponse>;
+  login: (identifier: string, password: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   hasPermission: (key: string) => boolean;
@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = React.useCallback(async (email: string, password: string) => {
-    const result = await apiPost<LoginResponse>("/auth/login", { email, password });
+  const login = React.useCallback(async (identifier: string, password: string) => {
+    const result = await apiPost<LoginResponse>("/auth/login", { identifier, password });
     storeToken(result.accessToken);
     await refreshMe();
     return result;
