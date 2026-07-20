@@ -45,7 +45,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const refreshedToken = res.headers.get("X-Refreshed-Token");
   if (refreshedToken) storeToken(refreshedToken);
 
-  if (res.status === 401) {
+  // Chỉ coi 401 là "phiên hết hạn" khi request có đính token (đang dùng phiên
+  // cũ mà bị từ chối). Nếu không có token — vd lúc gọi /auth/login — 401 nghĩa
+  // là sai tài khoản/mật khẩu, không phải hết hạn; để rơi xuống nhánh dưới cho
+  // hiển thị đúng message backend trả (còn mấy lần thử, bị khoá...).
+  if (res.status === 401 && token) {
     clearStoredToken();
     redirectToLogin();
     throw new ApiError(401, "Phiên đăng nhập đã hết hạn.");

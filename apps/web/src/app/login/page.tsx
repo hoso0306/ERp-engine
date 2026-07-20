@@ -8,7 +8,14 @@ import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { useBranding } from "@/lib/use-branding";
 
@@ -18,6 +25,7 @@ function LoginForm() {
   const { login } = useAuth();
   const [submitting, setSubmitting] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const branding = useBranding();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -32,7 +40,7 @@ function LoginForm() {
       const redirect = searchParams.get("redirect");
       router.push(redirect && redirect.startsWith("/") ? redirect : "/");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+      setErrorMessage(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
       setSubmitting(false);
     }
@@ -94,6 +102,18 @@ function LoginForm() {
           </Button>
         </form>
       </div>
+
+      <Dialog open={!!errorMessage}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Đăng nhập thất bại</DialogTitle>
+            <DialogDescription>{errorMessage}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setErrorMessage(null)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
