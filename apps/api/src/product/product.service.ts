@@ -1164,6 +1164,8 @@ export class ProductService {
     if ('priceRoundValue' in dto)
       data.priceRoundValue = dto.priceRoundValue ?? null;
     if (dto.vatRate !== undefined) data.vatRate = dto.vatRate;
+    if (dto.matrixUnitLabel !== undefined)
+      data.matrixUnitLabel = dto.matrixUnitLabel?.trim() || null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
 
     return this.prisma.pricingRuleVersion.update({
@@ -1263,6 +1265,7 @@ export class ProductService {
           priceRoundType: source.priceRoundType,
           priceRoundValue: source.priceRoundValue,
           vatRate: source.vatRate,
+          matrixUnitLabel: source.matrixUnitLabel,
           status: 'DRAFT',
           note: source.note,
         },

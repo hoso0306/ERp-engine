@@ -53,6 +53,7 @@ interface PricingRuleVersion {
   priceRoundType: string;
   priceRoundValue: number | null;
   vatRate: number;
+  matrixUnitLabel: string | null;
   status: string;
   note: string | null;
   items: PricingRuleItem[];
@@ -104,6 +105,7 @@ export default function PricingRuleVersionPage() {
   const [parameters, setParameters] = useState<ProductParameter[]>([]);
   const [derivedParameters, setDerivedParameters] = useState<DerivedParameter[]>([]);
   const [productName, setProductName] = useState<string | null>(null);
+  const [productUnitName, setProductUnitName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +117,7 @@ export default function PricingRuleVersionPage() {
   const [formRoundType, setFormRoundType] = useState("NONE");
   const [formRoundValue, setFormRoundValue] = useState("");
   const [formVatRate, setFormVatRate] = useState("0");
+  const [formMatrixUnit, setFormMatrixUnit] = useState("");
   const [formNote, setFormNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -144,6 +147,7 @@ export default function PricingRuleVersionPage() {
       setFormRoundType(data.priceRoundType);
       setFormRoundValue(data.priceRoundValue != null ? String(data.priceRoundValue) : "");
       setFormVatRate(String(data.vatRate ?? 0));
+      setFormMatrixUnit(data.matrixUnitLabel ?? "");
       setFormNote(data.note ?? "");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Không tìm thấy phiên bản.");
@@ -164,8 +168,11 @@ export default function PricingRuleVersionPage() {
         setPreviewParams(init);
       })
       .catch(() => {});
-    apiGet<{ name: string }>(`/products/${productId}`)
-      .then((data) => setProductName(data.name))
+    apiGet<{ name: string; unit: { name: string } }>(`/products/${productId}`)
+      .then((data) => {
+        setProductName(data.name);
+        setProductUnitName(data.unit.name);
+      })
       .catch(() => {});
     apiGet<DerivedParameter[]>(`/products/${productId}/derived-parameters`)
       .then((data) => setDerivedParameters(data))
@@ -181,6 +188,7 @@ export default function PricingRuleVersionPage() {
         priceRoundType: formRoundType,
         priceRoundValue: formRoundValue ? Number(formRoundValue) : null,
         vatRate: formVatRate ? Number(formVatRate) : 0,
+        matrixUnitLabel: formMatrixUnit.trim() || null,
         note: formNote.trim() || null,
       };
       const updated = await apiPatch<PricingRuleVersion>(
@@ -283,6 +291,10 @@ export default function PricingRuleVersionPage() {
   const numberParams = parameters.filter((p) => p.type === "NUMBER" || p.type === "ENUM");
 
   const hasMatrix = version.matrixRows.length > 0;
+  // Đơn vị hiển thị của cột "Đơn giá" ma trận — người dùng tự đặt (vd "mdài"
+  // cho rèm cầu vồng), mặc định theo đơn vị sản phẩm.
+  const priceUnit = formMatrixUnit.trim() || productUnitName?.trim() || "m²";
+  const firstEnumParam = parameters.find((p) => p.type === "ENUM" && p.options.length > 0);
   const exprPlaceholder = hasMatrix
     ? "ví dụ: unitPrice * area"
     : derivedParameters.some((dp) => dp.name === "area")
@@ -354,9 +366,19 @@ export default function PricingRuleVersionPage() {
           {(parameters.length > 0 || derivedParameters.length > 0 || hasMatrix) && (
             <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
               <p className="font-medium">Biến có thể dùng:</p>
-              {parameters.length > 0 && (
-                <p className="font-mono">{parameters.map((p) => p.name).join(", ")}</p>
-              )}
+              {parameters.map((p) => (
+                <p key={p.id}>
+                  <code className="font-mono">{p.name}</code>{" "}
+                  <span>
+                    ({p.label}
+                    {p.type === "NUMBER" ? ` — số${p.unit ? `, ${p.unit}` : ""}` : ""}
+                    {p.type === "ENUM"
+                      ? ` — lựa chọn: ${p.options.map((o) => `"${o.value}"`).join(" / ")}`
+                      : ""}
+                    )
+                  </span>
+                </p>
+              ))}
               {derivedParameters.map((dp) => (
                 <p key={dp.id}>
                   <code className="font-mono">{dp.name}</code>{" "}
@@ -366,9 +388,37 @@ export default function PricingRuleVersionPage() {
               {hasMatrix && (
                 <p>
                   <code className="font-mono">unitPrice</code>{" "}
-                  <span>(= đơn giá tra được từ Bảng giá ma trận theo tổ hợp cấu hình)</span>
+                  <span>
+                    (= đơn giá đ/{priceUnit} tra được từ Bảng giá ma trận theo tổ hợp cấu hình)
+                  </span>
                 </p>
               )}
+              <p className="pt-1">
+                Hàm hỗ trợ:{" "}
+                <code className="font-mono">
+                  if(điều_kiện, a, b), ceil(x, bước), floor(x, bước), round(x, bước), min, max, abs
+                </code>
+              </p>
+              <p>
+                Ví dụ:{" "}
+                <code className="font-mono">
+                  {hasMatrix
+                    ? `unitPrice * ${
+                        derivedParameters[0]?.name ??
+                        parameters.find((p) => p.type === "NUMBER")?.name ??
+                        "1.05"
+                      }`
+                    : exprPlaceholder.replace("ví dụ: ", "")}
+                </code>
+                {firstEnumParam && (
+                  <>
+                    {" "}· có điều kiện:{" "}
+                    <code className="font-mono">
+                      {`if(${firstEnumParam.name} == "${firstEnumParam.options[0].value}", giá_A, giá_B)`}
+                    </code>
+                  </>
+                )}
+              </p>
             </div>
           )}
           {hasMatrix && (
@@ -438,6 +488,21 @@ export default function PricingRuleVersionPage() {
               step="0.01"
               disabled={!isDraft}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="v-matrix-unit">Đơn vị của Đơn giá (Bảng giá ma trận)</Label>
+            <Input
+              id="v-matrix-unit"
+              value={formMatrixUnit}
+              onChange={(e) => setFormMatrixUnit(e.target.value)}
+              placeholder={productUnitName ?? "m²"}
+              disabled={!isDraft}
+            />
+            <p className="text-xs text-muted-foreground">
+              Chỉ để hiển thị cột &quot;Đơn giá (đ/...)&quot;. Để trống = theo đơn vị sản phẩm
+              {productUnitName ? ` (${productUnitName})` : ""}. Ví dụ rèm cầu vồng: đơn giá theo
+              đ/mdài dù báo giá theo đ/m².
+            </p>
           </div>
         </div>
 
@@ -550,6 +615,7 @@ export default function PricingRuleVersionPage() {
           matrixRows={version.matrixRows}
           isDraft={isDraft}
           onSaved={loadVersion}
+          unitLabel={priceUnit}
         />
       </div>
 
@@ -626,7 +692,7 @@ export default function PricingRuleVersionPage() {
                   {previewResult.unitPrice !== null && (
                     <div className="flex justify-between text-muted-foreground">
                       <span>Đơn giá tra được (matrix):</span>
-                      <span className="font-mono">{previewResult.unitPrice.toLocaleString("vi-VN")} đ/m²</span>
+                      <span className="font-mono">{previewResult.unitPrice.toLocaleString("vi-VN")} đ/{priceUnit}</span>
                     </div>
                   )}
                   <div className="flex justify-between">

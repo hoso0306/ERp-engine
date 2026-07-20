@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { QuotationStatusBadge } from "./quotation-status-badge";
+import { useAuth } from "@/context/auth-context";
 
 interface QuotationItem {
   id: string;
@@ -29,6 +30,10 @@ interface Quotation {
   createdAt: string;
   customer: Customer;
   items: QuotationItem[];
+  // 022-gia-von-loi-nhuan-bao-gia.md — chỉ có khi role có quotation.view-cost,
+  // API omit hẳn field này nếu không có quyền (không trả null).
+  totalCost?: number;
+  profit?: number;
 }
 
 interface Meta {
@@ -55,6 +60,12 @@ function isExpired(expiryDate: string | null): boolean {
 
 export function QuotationTable({ quotations, meta, onPageChange }: QuotationTableProps) {
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  // API omit hẳn totalCost/profit nếu role không có quyền — kiểm tra thêm dữ
+  // liệu thật có mặt, không chỉ dựa permission (đề phòng lệch quyền).
+  const showCost =
+    hasPermission("quotation.view-cost") &&
+    quotations.some((q) => q.totalCost !== undefined);
 
   return (
     <div>
@@ -65,7 +76,10 @@ export function QuotationTable({ quotations, meta, onPageChange }: QuotationTabl
               <TableHead className="w-32">Mã BG</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
+              <TableHead>Ghi chú</TableHead>
               <TableHead className="text-right">Tổng tiền</TableHead>
+              {showCost && <TableHead className="text-right">Tổng giá vốn</TableHead>}
+              {showCost && <TableHead className="text-right">Lợi nhuận</TableHead>}
               <TableHead>Ngày hết hạn</TableHead>
               <TableHead>Ngày tạo</TableHead>
             </TableRow>
@@ -92,6 +106,9 @@ export function QuotationTable({ quotations, meta, onPageChange }: QuotationTabl
                   <TableCell className="text-center">
                     <QuotationStatusBadge status={q.status} />
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-56 truncate">
+                    {q.note || <span className="text-muted-foreground/60">—</span>}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm">
                     {q.items.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
@@ -99,6 +116,20 @@ export function QuotationTable({ quotations, meta, onPageChange }: QuotationTabl
                       formatMoney(total)
                     )}
                   </TableCell>
+                  {showCost && (
+                    <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                      {q.totalCost !== undefined ? formatMoney(q.totalCost) : "—"}
+                    </TableCell>
+                  )}
+                  {showCost && (
+                    <TableCell
+                      className={`text-right font-mono text-sm font-medium ${
+                        q.profit !== undefined && q.profit < 0 ? "text-destructive" : ""
+                      }`}
+                    >
+                      {q.profit !== undefined ? formatMoney(q.profit) : "—"}
+                    </TableCell>
+                  )}
                   <TableCell>
                     {q.expiryDate ? (
                       <span className={expired ? "text-destructive flex items-center gap-1 text-sm" : "text-sm"}>

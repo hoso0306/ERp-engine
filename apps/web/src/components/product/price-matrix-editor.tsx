@@ -45,6 +45,7 @@ export function PriceMatrixEditor({
   matrixRows,
   isDraft,
   onSaved,
+  unitLabel,
 }: {
   productId: string;
   versionId: string;
@@ -52,6 +53,11 @@ export function PriceMatrixEditor({
   matrixRows: PriceMatrixRow[];
   isDraft: boolean;
   onSaved: () => void;
+  /**
+   * Đơn vị hiển thị cột "Đơn giá (đ/...)" — theo matrixUnitLabel của phiên bản
+   * (người dùng tự đặt, vd "mdài"), mặc định theo đơn vị sản phẩm ("m²", "Cái").
+   */
+  unitLabel?: string;
 }) {
   const enumParams = useMemo(
     () => parameters.filter((p) => p.type === "ENUM" && p.usedInPricing && p.options.length > 0),
@@ -126,8 +132,16 @@ export function PriceMatrixEditor({
     );
   }
 
+  const priceUnitLabel = unitLabel?.trim() || "m²";
+
   return (
     <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Giá nhập ở mỗi dòng sẽ trở thành biến <code className="font-mono">unitPrice</code> dùng
+        trong Công thức tính giá bán ở trên (ví dụ: <code className="font-mono">unitPrice * area</code>
+        ). Nếu Công thức không dùng <code className="font-mono">unitPrice</code>, bảng này không ảnh
+        hưởng đến giá bán.
+      </p>
       {isDraft && (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
@@ -144,7 +158,7 @@ export function PriceMatrixEditor({
               {enumParams.map((p) => (
                 <TableHead key={p.name}>{p.label}</TableHead>
               ))}
-              <TableHead className="w-48">Đơn giá (đ/m²)</TableHead>
+              <TableHead className="w-48">Đơn giá (đ/{priceUnitLabel})</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

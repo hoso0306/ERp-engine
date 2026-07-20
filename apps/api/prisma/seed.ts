@@ -14,7 +14,11 @@ const BCRYPT_SALT_ROUNDS = 10;
 // Permission catalog (013-permission.md Task 00) — khớp knowledge/modules/permission.md.
 const PERMISSION_CATALOG: Record<string, string[]> = {
   customer: ['view', 'create', 'update', 'delete', 'export'],
-  quotation: ['view', 'create', 'update', 'approve', 'cancel', 'override', 'print'],
+  // 'view-cost' (022-gia-von-loi-nhuan-bao-gia.md) — xem giá vốn/lợi nhuận
+  // ước tính của báo giá, dữ liệu tài chính nhạy cảm. Tách riêng khỏi `view`
+  // vì chỉ OWNER/ADMIN được thấy — SALES có `view` (xem báo giá) nhưng KHÔNG
+  // có `view-cost` (lọc trừ tường minh ở role SALES bên dưới, xem seed Role).
+  quotation: ['view', 'create', 'update', 'approve', 'cancel', 'override', 'print', 'view-cost'],
   'sales-order': ['view', 'ship', 'deliver', 'cancel', 'override'],
   production: ['view', 'start', 'complete'],
   warehouse: ['view', 'receipt'],
@@ -74,7 +78,12 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
     name: 'Kinh doanh',
     permissionKeys: [
       ...keysForResource('customer'),
-      ...keysForResource('quotation'),
+      // 'quotation.view-cost' lọc trừ (022-gia-von-loi-nhuan-bao-gia.md) —
+      // Sales xử lý nghiệp vụ báo giá bình thường nhưng KHÔNG xem giá vốn/lợi
+      // nhuận, chỉ OWNER/ADMIN mới có (dữ liệu tài chính nhạy cảm).
+      ...keysForResource('quotation').filter(
+        (key) => key !== 'quotation.view-cost',
+      ),
       'sales-order.view',
       // Sprint 03 Task 012 — bắt buộc để chọn sản phẩm khi tạo báo giá.
       'product.view',

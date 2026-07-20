@@ -598,6 +598,10 @@ model PricingRuleVersion {
   // Thuế suất VAT (%) — snapshot xuống QuotationItem.vatRate khi tính giá,
   // tính SAU Discount Engine (Quotation module), không gộp vào systemPrice.
   vatRate         Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  // Đơn vị hiển thị của cột "Đơn giá" trong Bảng giá ma trận (vd "mdài" cho
+  // rèm cầu vồng dù sản phẩm báo giá theo m²). NULL = dùng đơn vị sản phẩm.
+  // Chỉ là nhãn hiển thị, không tham gia tính giá.
+  matrixUnitLabel String?       @map("matrix_unit_label")
   status          VersionStatus @default(DRAFT)
   note            String?
   createdAt       DateTime      @default(now()) @map("created_at")

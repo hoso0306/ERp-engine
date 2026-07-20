@@ -26,6 +26,7 @@ import {
   BomConfig,
   BomLine,
 } from '../bom-engine/bom-engine.service';
+import { PermissionService } from '../permission/permission.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
@@ -72,13 +73,14 @@ export class QuotationWorkflowService {
     private readonly prisma: PrismaService,
     private readonly pricingEngine: PricingEngineService,
     private readonly bomEngine: BomEngineService,
+    private readonly permissionService: PermissionService,
   ) {}
 
   // ─────────────────────────────────────────────────────
   // Queries
   // ─────────────────────────────────────────────────────
 
-  async findAll(query: QuotationQueryDto) {
+  async findAll(query: QuotationQueryDto, roleId?: string | null) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
     const skip = (page - 1) * limit;
@@ -135,6 +137,16 @@ export class QuotationWorkflowService {
       where.createdAt = createdAtFilter;
     }
 
+    // 022-gia-von-loi-nhuan-bao-gia.md — Việc 5: totalCost/profit CHỈ tính +
+    // trả về khi role có quotation.view-cost (OWNER/ADMIN). Không có quyền →
+    // field này bị omit hẳn khỏi response, không phải giấu ở FE.
+    const canViewCost = roleId
+      ? await this.permissionService.hasPermission(
+          roleId,
+          'quotation.view-cost',
+        )
+      : false;
+
     const [data, total] = await Promise.all([
       this.prisma.quotation.findMany({
         where,
@@ -145,14 +157,63 @@ export class QuotationWorkflowService {
           customer: {
             select: { id: true, code: true, name: true, phone: true },
           },
-          items: { select: { id: true, subtotal: true } },
+          items: canViewCost
+            ? {
+                select: {
+                  id: true,
+                  productId: true,
+                  quantity: true,
+                  subtotal: true,
+                  parameters: { select: { name: true, value: true } },
+                },
+              }
+            : { select: { id: true, subtotal: true } },
         },
       }),
       this.prisma.quotation.count({ where }),
     ]);
 
+    let resultData: unknown[] = data;
+    if (canViewCost) {
+      // Batch tính giá vốn cho TOÀN BỘ item trong trang hiện tại — 1 lần
+      // batch (tránh N+1 theo từng báo giá), đúng lý do estimateItemsCost
+      // được thiết kế nhận mảng phẳng nhiều nguồn khác nhau.
+      const flatItems = (
+        data as Array<{
+          items: Array<{
+            id: string;
+            productId: string;
+            quantity: unknown;
+            subtotal: unknown;
+            parameters: Array<{ name: string; value: string }>;
+          }>;
+        }>
+      ).flatMap((q) =>
+        q.items.map((i) => ({
+          id: i.id,
+          productId: i.productId,
+          quantity: Number(i.quantity),
+          parameters: i.parameters,
+        })),
+      );
+      const costByItemId = await this.estimateItemsCost(flatItems);
+
+      resultData = (
+        data as Array<{
+          items: Array<{ id: string; subtotal: unknown }>;
+        }>
+      ).map((q) => {
+        const totalCost = q.items.reduce(
+          (s, i) => s + (costByItemId.get(i.id)?.totalCost ?? 0),
+          0,
+        );
+        const totalSale = q.items.reduce((s, i) => s + Number(i.subtotal), 0);
+        return { ...q, totalCost, profit: totalSale - totalCost };
+      });
+    }
+
     return {
-      data,
+      data: resultData,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -168,6 +229,79 @@ export class QuotationWorkflowService {
     }
 
     return quotation;
+  }
+
+  // 022-gia-von-loi-nhuan-bao-gia.md — Việc 4. Chỉ dùng cho endpoint đã gắn
+  // @RequirePermission('quotation.view-cost') (OWNER/ADMIN) ở controller.
+  async getCostSummary(id: string) {
+    const quotation = await this.prisma.quotation.findUnique({
+      where: { id },
+      select: {
+        items: {
+          select: {
+            id: true,
+            productId: true,
+            productCode: true,
+            productName: true,
+            quantity: true,
+            finalPrice: true,
+            subtotal: true,
+            parameters: { select: { name: true, value: true } },
+          },
+          orderBy: { displayOrder: 'asc' },
+        },
+      },
+    });
+
+    if (!quotation) {
+      throw new NotFoundException('Báo giá không tồn tại.');
+    }
+
+    const costByItemId = await this.estimateItemsCost(
+      quotation.items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        quantity: Number(item.quantity),
+        parameters: item.parameters,
+      })),
+    );
+
+    const items = quotation.items.map((item) => {
+      const cost = costByItemId.get(item.id)!;
+      const totalSale = Number(item.subtotal);
+      const profit = totalSale - cost.totalCost;
+
+      return {
+        quotationItemId: item.id,
+        productId: item.productId,
+        productCode: item.productCode,
+        productName: item.productName,
+        quantity: Number(item.quantity),
+        costUnitPrice: cost.costUnitPrice,
+        saleUnitPrice: Number(item.finalPrice),
+        totalCost: cost.totalCost,
+        // Đã không gồm VAT sẵn (subtotal = finalPrice × quantity, VAT tách
+        // riêng ở vatAmount) — khớp yêu cầu "tổng giá bán không tính VAT".
+        totalSale,
+        profit,
+        costAvailable: cost.costAvailable,
+      };
+    });
+
+    const totals = items.reduce(
+      (acc, i) => ({
+        totalCost: acc.totalCost + i.totalCost,
+        totalSale: acc.totalSale + i.totalSale,
+        profit: acc.profit + i.profit,
+      }),
+      { totalCost: 0, totalSale: 0, profit: 0 },
+    );
+
+    return {
+      items,
+      totals,
+      hasIncompleteData: items.some((i) => !i.costAvailable),
+    };
   }
 
   // ─────────────────────────────────────────────────────
@@ -895,6 +1029,11 @@ export class QuotationWorkflowService {
               include: {
                 productType: true,
                 productionCenter: true,
+                // ENUM param (vd "socanh") không được ép kiểu số khi coerceParameters()
+                // — nếu không, condition BOM dạng `socanh == "1"` lỗi lệch kiểu
+                // (phát hiện khi backfill 022-gia-von-loi-nhuan-bao-gia.md Việc 9,
+                // cùng pattern PricingEngineService.enumParameterNames).
+                parameters: { where: { type: 'ENUM' }, select: { name: true } },
                 pricingRule: {
                   include: {
                     versions: {
@@ -963,6 +1102,15 @@ export class QuotationWorkflowService {
       productCode: string;
       productName: string;
     }> = [];
+    // materialRequirementVersionId dùng để tính BOM (Việc 1, 022-gia-von-loi-nhuan-bao-gia
+    // — fix bug plannedCost luôn = 0): QuotationItem KHÔNG snapshot field này ở
+    // Draft/Sent (chỉ pricingRuleVersionId), nên phải lấy từ version ACTIVE vừa
+    // validate ở đây, không đọc lại item.materialRequirementVersionId (luôn null).
+    const materialVersionIdByItem = new Map<string, string>();
+    // Tên tham số ENUM của sản phẩm (vd "socanh") — coerceParameters() cần biết
+    // để KHÔNG ép giá trị ENUM giống số (vd "1") sang number, nếu không condition
+    // BOM dạng `socanh == "1"` lệch kiểu khi so sánh (cùng pattern PricingEngine).
+    const enumParamNamesByItem = new Map<string, string[]>();
 
     for (const item of quotation.items) {
       if (item.product.status !== 'ACTIVE') {
@@ -996,6 +1144,11 @@ export class QuotationWorkflowService {
           `Sản phẩm "${item.product.name}" không có Phiên bản Định mức vật tư đang hoạt động.`,
         );
       }
+      materialVersionIdByItem.set(item.id, activeMaterialVersion.id);
+      enumParamNamesByItem.set(
+        item.id,
+        item.product.parameters.map((p) => p.name),
+      );
 
       if (Number(item.finalPrice) < 0) {
         throw new BadRequestException(
@@ -1051,44 +1204,52 @@ export class QuotationWorkflowService {
       if (owner) break;
     }
 
-    // Snapshot Rule (knowledge/modules/order.md): OrderBOM tính từ đúng
-    // QuotationItem.materialRequirementVersionId đã snapshot khi báo giá —
-    // KHÔNG phải version đang ACTIVE trên sản phẩm. Version đã kích hoạt là
-    // bất biến nên load được trước transaction; toàn bộ tính toán là hàm thuần
-    // của BOM Engine (Filter theo condition → Formula → Waste → Round).
+    // Snapshot Rule (knowledge/modules/quotation.md mục "Khi Pricing Rule đổi
+    // version giữa chừng"): giá vốn/BOM luôn tính tại Approve bằng Material
+    // Requirement Version đang ACTIVE hiện tại (materialVersionIdByItem, đã
+    // resolve + validate ở vòng lặp trên) — KHÔNG có khái niệm "đã snapshot
+    // sớm" như Pricing Rule Version. Version đã kích hoạt là bất biến nên load
+    // được trước transaction; toàn bộ tính toán là hàm thuần của BOM Engine
+    // (Filter theo condition → Formula → Waste → Round).
     const bomConfigCache = new Map<string, BomConfig>();
     const itemComputations: Array<{
       item: (typeof quotation.items)[number];
+      materialRequirementVersionId: string;
       bomLines: BomLine[];
       itemPlannedCost: number;
     }> = [];
 
     for (const item of quotation.items) {
-      let bomLines: BomLine[] = [];
-      let itemPlannedCost = 0;
+      const materialRequirementVersionId = materialVersionIdByItem.get(
+        item.id,
+      )!;
 
-      if (item.materialRequirementVersionId) {
-        let config = bomConfigCache.get(item.materialRequirementVersionId);
-        if (!config) {
-          config = await this.bomEngine.loadConfigForVersion(
-            item.materialRequirementVersionId,
-          );
-          bomConfigCache.set(item.materialRequirementVersionId, config);
-        }
-
-        // BOM nhận KÍCH THƯỚC GỐC khách đặt — không bao giờ nhận billable
-        // params của Pricing Engine (nguyên tắc billable ≠ actual).
-        const rawParams = coerceParameters(item.parameters);
-        const bomResult = this.bomEngine.calculateBom(
-          config,
-          rawParams,
-          Number(item.quantity),
+      let config = bomConfigCache.get(materialRequirementVersionId);
+      if (!config) {
+        config = await this.bomEngine.loadConfigForVersion(
+          materialRequirementVersionId,
         );
-        bomLines = bomResult.lines;
-        itemPlannedCost = bomResult.plannedCost;
+        bomConfigCache.set(materialRequirementVersionId, config);
       }
 
-      itemComputations.push({ item, bomLines, itemPlannedCost });
+      // BOM nhận KÍCH THƯỚC GỐC khách đặt — không bao giờ nhận billable
+      // params của Pricing Engine (nguyên tắc billable ≠ actual).
+      const rawParams = coerceParameters(
+        item.parameters,
+        enumParamNamesByItem.get(item.id),
+      );
+      const bomResult = this.bomEngine.calculateBom(
+        config,
+        rawParams,
+        Number(item.quantity),
+      );
+
+      itemComputations.push({
+        item,
+        materialRequirementVersionId,
+        bomLines: bomResult.lines,
+        itemPlannedCost: bomResult.plannedCost,
+      });
     }
 
     // All validations pass — execute in a single transaction
@@ -1187,7 +1348,12 @@ export class QuotationWorkflowService {
       >();
 
       // Create SalesOrderItems + OrderBOMs
-      for (const { item, bomLines, itemPlannedCost } of itemComputations) {
+      for (const {
+        item,
+        materialRequirementVersionId,
+        bomLines,
+        itemPlannedCost,
+      } of itemComputations) {
         const soItem = await tx.salesOrderItem.create({
           data: {
             salesOrderId: salesOrder.id,
@@ -1211,7 +1377,7 @@ export class QuotationWorkflowService {
             vatRate: Number(item.vatRate),
             vatAmount: Number(item.vatAmount),
             note: item.note,
-            materialRequirementVersionId: item.materialRequirementVersionId,
+            materialRequirementVersionId,
             plannedCost: itemPlannedCost,
             displayOrder: item.displayOrder,
             parameters: {
@@ -1227,15 +1393,14 @@ export class QuotationWorkflowService {
           },
         });
 
-        // Create OrderBOM if the quotation item had a material requirement version snapshotted.
         // Chỉ chứa các dòng đã qua Filter condition — vật tư không thuộc config
         // khách chọn (vd màu khác) không xuất hiện trong OrderBOM.
-        if (item.materialRequirementVersionId && bomLines.length > 0) {
+        if (bomLines.length > 0) {
           await tx.orderBOM.create({
             data: {
               salesOrderId: salesOrder.id,
               salesOrderItemId: soItem.id,
-              materialRequirementVersionId: item.materialRequirementVersionId,
+              materialRequirementVersionId,
               plannedCost: itemPlannedCost,
               items: {
                 create: bomLines.map((line) => ({
@@ -1389,5 +1554,107 @@ export class QuotationWorkflowService {
   // khấu và extend theo số lượng, không phải trên systemPrice gốc.
   private calcVatAmount(subtotal: number, vatRate: number): number {
     return Math.round(subtotal * (vatRate / 100));
+  }
+
+  // 022-gia-von-loi-nhuan-bao-gia.md — Giá vốn ƯỚC TÍNH (không phải snapshot)
+  // dùng cho tính năng xem lãi/lỗ của OWNER/ADMIN. Áp dụng cho MỌI trạng thái
+  // báo giá (kể cả Approved) — luôn tính bằng Material Requirement Version
+  // đang ACTIVE hiện tại của sản phẩm, KHÔNG đọc plannedCost đã snapshot trên
+  // SalesOrderItem (trước khi backfill, dữ liệu đó = 0 do bug đã fix ở Việc 1;
+  // sau backfill vẫn chỉ là số liệu tại một thời điểm, không phải "giá vốn
+  // hiện tại" nếu định mức đã đổi). Batch fetch theo productId để tránh N+1
+  // khi gọi cho nhiều dòng/nhiều báo giá cùng lúc (dùng chung cho cost-summary
+  // 1 báo giá lẫn danh sách nhiều báo giá).
+  private async estimateItemsCost(
+    inputs: Array<{
+      id: string;
+      productId: string;
+      quantity: number;
+      parameters: Array<{ name: string; value: string }>;
+    }>,
+  ): Promise<
+    Map<
+      string,
+      { costUnitPrice: number; totalCost: number; costAvailable: boolean }
+    >
+  > {
+    const result = new Map<
+      string,
+      { costUnitPrice: number; totalCost: number; costAvailable: boolean }
+    >();
+    if (inputs.length === 0) return result;
+
+    const productIds = [...new Set(inputs.map((i) => i.productId))];
+    const materialRequirements = await this.prisma.materialRequirement.findMany({
+      where: { productId: { in: productIds } },
+      include: {
+        versions: {
+          where: { status: VersionStatus.ACTIVE },
+          take: 1,
+        },
+        // ENUM param (vd "socanh") không được ép kiểu số khi coerceParameters()
+        // — cùng lý do đã sửa ở approve() (xem comment enumParamNamesByItem).
+        product: {
+          select: {
+            parameters: { where: { type: 'ENUM' }, select: { name: true } },
+          },
+        },
+      },
+    });
+    const activeVersionIdByProductId = new Map<string, string>();
+    const enumParamNamesByProductId = new Map<string, string[]>();
+    for (const mr of materialRequirements) {
+      const activeVersion = mr.versions[0];
+      if (activeVersion) {
+        activeVersionIdByProductId.set(mr.productId, activeVersion.id);
+      }
+      enumParamNamesByProductId.set(
+        mr.productId,
+        mr.product.parameters.map((p) => p.name),
+      );
+    }
+
+    const configCache = new Map<string, BomConfig>();
+    for (const input of inputs) {
+      const versionId = activeVersionIdByProductId.get(input.productId);
+      if (!versionId) {
+        // Sản phẩm chưa có Material Requirement Version ACTIVE (có thể xảy ra
+        // ở Draft/Sent — Approve mới bắt buộc) — không chặn, chỉ đánh dấu
+        // thiếu dữ liệu để FE hiện "—".
+        result.set(input.id, {
+          costUnitPrice: 0,
+          totalCost: 0,
+          costAvailable: false,
+        });
+        continue;
+      }
+
+      let config = configCache.get(versionId);
+      if (!config) {
+        config = await this.bomEngine.loadConfigForVersion(versionId);
+        configCache.set(versionId, config);
+      }
+
+      // BOM nhận KÍCH THƯỚC GỐC khách đặt — không bao giờ nhận billable params
+      // của Pricing Engine (nguyên tắc billable ≠ actual).
+      const rawParams = coerceParameters(
+        input.parameters,
+        enumParamNamesByProductId.get(input.productId),
+      );
+      const bomResult = this.bomEngine.calculateBom(
+        config,
+        rawParams,
+        input.quantity,
+      );
+
+      result.set(input.id, {
+        costUnitPrice:
+          input.quantity > 0 ? bomResult.plannedCost / input.quantity : 0,
+        totalCost: bomResult.plannedCost,
+        costAvailable: true,
+      });
+    }
+
+    return result;
   }
 }

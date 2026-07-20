@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock, RefreshCw, X } from "lucide-react";
+import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock, RefreshCw, X, TrendingUp } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -21,6 +21,9 @@ import { toast } from "sonner";
 import { QuotationStatusBadge } from "@/components/quotation/quotation-status-badge";
 import { QuotationItemDialog } from "@/components/quotation/quotation-item-dialog";
 import { QuotationItemTable } from "@/components/quotation/quotation-item-table";
+import {
+  QuotationMarginDialog, type QuotationCostSummary,
+} from "@/components/quotation/quotation-margin-dialog";
 import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -174,6 +177,11 @@ export default function QuotationDetailPage() {
   const [discountReasonInput, setDiscountReasonInput] = useState("");
   const [discountSaving, setDiscountSaving] = useState(false);
 
+  // Giá vốn/Lợi nhuận (022-gia-von-loi-nhuan-bao-gia.md) — chỉ OWNER/ADMIN.
+  const [costSummary, setCostSummary] = useState<QuotationCostSummary | null>(null);
+  const [marginDialogOpen, setMarginDialogOpen] = useState(false);
+  const canViewCost = hasPermission("quotation.view-cost");
+
   const fetchQuotation = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -187,7 +195,28 @@ export default function QuotationDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { fetchQuotation(); }, [fetchQuotation]);
+  const fetchCostSummary = useCallback(async () => {
+    if (!canViewCost) { setCostSummary(null); return; }
+    try {
+      const data = await apiGet<QuotationCostSummary>(`/quotations/${id}/cost-summary`);
+      setCostSummary(data);
+    } catch {
+      setCostSummary(null);
+    }
+  }, [id, canViewCost]);
+
+  // Refetch cả 2 sau mọi Action đổi dữ liệu báo giá (sản phẩm/số lượng đổi →
+  // giá vốn ước tính đổi theo).
+  const refresh = useCallback(() => {
+    fetchQuotation();
+    fetchCostSummary();
+  }, [fetchQuotation, fetchCostSummary]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const costByItemId = costSummary
+    ? new Map(costSummary.items.map((i) => [i.quotationItemId, i]))
+    : undefined;
 
   function openEditHeader() {
     if (!quotation) return;
@@ -214,7 +243,7 @@ export default function QuotationDetailPage() {
       });
       toast.success("Đã cập nhật.");
       setEditOpen(false);
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -230,7 +259,7 @@ export default function QuotationDetailPage() {
       setStaleItems(null);
       setRecalcChanges(null);
       toast.success("Đã duyệt báo giá. Đơn hàng và Phiếu sản xuất đã được tạo.");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       // Sprint 02 Task 02: Approve bị chặn vì giá tính bằng version cũ —
       // hiển thị cảnh báo + nút "Tính lại giá", không recalc âm thầm.
@@ -256,7 +285,7 @@ export default function QuotationDetailPage() {
       setStaleItems(null);
       setRecalcChanges(data.changes ?? []);
       toast.success("Đã tính lại giá theo phiên bản quy tắc giá hiện hành.");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -270,7 +299,7 @@ export default function QuotationDetailPage() {
     try {
       await apiPost(`/quotations/${id}/send`);
       toast.success("Đã gửi báo giá.");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -287,7 +316,7 @@ export default function QuotationDetailPage() {
       toast.success("Đã huỷ báo giá.");
       setCancelOpen(false);
       setCancelReason("");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -308,7 +337,7 @@ export default function QuotationDetailPage() {
       toast.success("Đã điều chỉnh trạng thái.");
       setOverrideOpen(false);
       setOverrideReason("");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -331,7 +360,7 @@ export default function QuotationDetailPage() {
       });
       toast.success("Đã áp dụng Giảm thêm.");
       setDiscountOpen(false);
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -344,14 +373,14 @@ export default function QuotationDetailPage() {
     try {
       await apiDelete(`/quotations/${id}/items/${itemId}`);
       toast.success("Đã xoá sản phẩm.");
-      fetchQuotation();
+      refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     }
   }
 
   if (loading) return <Loading />;
-  if (error || !quotation) return <ErrorState description={error ?? "Không tìm thấy báo giá."} onRetry={fetchQuotation} />;
+  if (error || !quotation) return <ErrorState description={error ?? "Không tìm thấy báo giá."} onRetry={refresh} />;
 
   const editable = isEditable(quotation.status);
   const canEditItems = editable && hasPermission("quotation.update");
@@ -409,6 +438,13 @@ export default function QuotationDetailPage() {
               >
                 <XCircle className="mr-2 h-4 w-4" />
                 Huỷ báo giá
+              </Button>
+            )}
+            {/* 022-gia-von-loi-nhuan-bao-gia.md — chỉ OWNER/ADMIN */}
+            {canViewCost && (
+              <Button variant="outline" onClick={() => setMarginDialogOpen(true)}>
+                <TrendingUp className="mr-2 h-4 w-4" />
+                Xem lãi/lỗ
               </Button>
             )}
             {/* Task 08: Manual Override */}
@@ -618,8 +654,17 @@ export default function QuotationDetailPage() {
           }}
           onDelete={deleteItem}
           discountAmount={Number(quotation.discountAmount ?? 0)}
+          costByItemId={costByItemId}
         />
       </div>
+
+      {/* 022-gia-von-loi-nhuan-bao-gia.md — bảng trực quan lãi/lỗ */}
+      <QuotationMarginDialog
+        open={marginDialogOpen}
+        onOpenChange={setMarginDialogOpen}
+        quotationCode={quotation.code}
+        summary={costSummary}
+      />
 
       {/* Edit Header Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -814,7 +859,7 @@ export default function QuotationDetailPage() {
         quotationId={id}
         customerId={quotation.customer.id}
         item={editingItem}
-        onSaved={fetchQuotation}
+        onSaved={refresh}
       />
 
       {/* Timeline Section (Task 08) */}

@@ -324,7 +324,11 @@ cancel
 override
 
 print
+
+view-cost
 ```
+
+**`view-cost` (Sprint 04 — 022):** xem giá vốn ước tính và lợi nhuận của báo giá (cột Giá vốn, nút Xem lãi/lỗ, cột Tổng giá vốn/Lợi nhuận ở danh sách). Đây là dữ liệu tài chính nhạy cảm, không phải Business Action, nên tách riêng khỏi `view`: chỉ OWNER và ADMIN có (qua `allKeys()`), SALES nhận toàn bộ action của resource `quotation` **trừ** `view-cost` (lọc tường minh trong seed). MANAGER/VIEWER không có. Backend enforce ở tầng API (`GET /quotations/:id/cost-summary` guard bằng permission này; `GET /quotations` chỉ đính kèm `totalCost`/`profit` khi role có quyền) — không dựa vào FE ẩn cột.
 
 ---
 

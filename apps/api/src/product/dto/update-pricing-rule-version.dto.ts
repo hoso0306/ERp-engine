@@ -4,5 +4,6 @@ export class UpdatePricingRuleVersionDto {
   priceRoundType?: string;
   priceRoundValue?: number | null;
   vatRate?: number;
+  matrixUnitLabel?: string | null;
   note?: string | null;
 }

@@ -32,14 +32,26 @@ export class QuotationController {
 
   @Get()
   @RequirePermission('quotation.view')
-  findAll(@Query() query: QuotationQueryDto) {
-    return this.workflow.findAll(query);
+  findAll(
+    @Query() query: QuotationQueryDto,
+    @Req() req: { user?: { roleId?: string } },
+  ) {
+    // roleId để service tự kiểm tra quotation.view-cost (022-gia-von-loi-nhuan-bao-gia.md
+    // Việc 5) — chỉ OWNER/ADMIN nhận thêm totalCost/profit trong response.
+    return this.workflow.findAll(query, req.user?.roleId ?? null);
   }
 
   @Get(':id')
   @RequirePermission('quotation.view')
   findOne(@Param('id') id: string) {
     return this.workflow.findOne(id);
+  }
+
+  // 022-gia-von-loi-nhuan-bao-gia.md — chỉ OWNER/ADMIN (dữ liệu tài chính nhạy cảm).
+  @Get(':id/cost-summary')
+  @RequirePermission('quotation.view-cost')
+  getCostSummary(@Param('id') id: string) {
+    return this.workflow.getCostSummary(id);
   }
 
   @Post()

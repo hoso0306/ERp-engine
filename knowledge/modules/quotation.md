@@ -371,6 +371,28 @@ Mọi thay đổi của dữ liệu gốc không được làm thay đổi các 
 
 ---
 
+# Xem Giá vốn / Lợi nhuận (Sprint 04 — 022)
+
+Chủ doanh nghiệp xem được lãi/lỗ ngay khi đang xem báo giá (thường trước khi khách duyệt) để quyết định thương lượng tiếp hay không.
+
+**Quyền:** chỉ role có `quotation.view-cost` (OWNER, ADMIN). Enforce ở tầng API, không dựa vào FE ẩn cột — xem `permission.md`.
+
+**Nguồn dữ liệu = ước tính real-time, KHÔNG phải snapshot:**
+
+- Giá vốn từng dòng tính bằng BOM Engine + Material Requirement Version đang **ACTIVE hiện tại** của sản phẩm (helper dùng chung `estimateItemsCost()` trong `quotation-workflow.service.ts`, batch fetch tránh N+1).
+- Áp dụng cho **mọi trạng thái** báo giá, kể cả Approved — hiển thị luôn là "ước tính", có thể lệch với `plannedCost` đã snapshot trên Sales Order nếu định mức/giá vật tư đổi sau Approve.
+- Sản phẩm chưa có Material Requirement Version ACTIVE → dòng đó `costAvailable = false`, hiện "—" kèm lý do, không chặn xem các dòng còn lại.
+- Không lưu giá vốn ước tính vào DB (Derived Data tính trực tiếp, chi phí thấp — CLAUDE.md mục 13).
+
+**API:**
+
+- `GET /quotations/:id/cost-summary` — chi tiết từng dòng (giá vốn, giá bán, lợi nhuận) + tổng; guard `quotation.view-cost`.
+- `GET /quotations` — đính kèm `totalCost`/`profit` per-quotation **chỉ khi** role có quyền; không có quyền thì omit hẳn field (không trả `null`).
+
+**Snapshot Rule ở trên không đổi:** giá vốn kế hoạch (`plannedCost`) vẫn snapshot tại Approve như cũ. Tính năng này chỉ là lớp xem ước tính, không thay thế snapshot.
+
+---
+
 # Production Rule
 
 Ngay khi Approve:

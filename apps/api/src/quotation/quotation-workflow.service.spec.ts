@@ -8,6 +8,7 @@ import { QuotationWorkflowService } from './quotation-workflow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
+import { PermissionService } from '../permission/permission.service';
 
 function makeItem(overrides: Record<string, unknown> = {}) {
   return {
@@ -37,6 +38,9 @@ function makeItem(overrides: Record<string, unknown> = {}) {
       productType: { name: 'Cửa lưới' },
       productionCenterId: 'pc-1',
       productionCenter: { id: 'pc-1', name: 'Xưởng A' },
+      // ENUM param names (022-gia-von-loi-nhuan-bao-gia.md) — mặc định không
+      // có param ENUM nào, test riêng override khi cần.
+      parameters: [],
       pricingRule: {
         versions: [{ id: 'prv-1' }],
       },
@@ -116,6 +120,7 @@ describe('QuotationWorkflowService.approve()', () => {
           provide: BomEngineService,
           useValue: new BomEngineService(bomPrisma as unknown as PrismaService),
         },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -183,7 +188,7 @@ describe('QuotationWorkflowService.approve()', () => {
   });
 
   it('chặn approve khi expression định mức lỗi — không sinh SalesOrder với plannedCost thiếu', async () => {
-    const item = makeItem({ materialRequirementVersionId: 'mrv-1' });
+    const item = makeItem();
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ items: [item] }),
     );
@@ -225,7 +230,6 @@ describe('QuotationWorkflowService.approve()', () => {
 
   it('condition trên dòng BOM lọc vật tư theo config khách chọn khi Approve', async () => {
     const item = makeItem({
-      materialRequirementVersionId: 'mrv-1',
       parameters: [
         {
           name: 'chieurong',
@@ -344,10 +348,15 @@ describe('QuotationWorkflowService.approve()', () => {
   // (dùng cho Receivable) đã trừ discountAmount đúng, nhưng plannedProfit bị
   // bỏ sót trước đây — test này khoá lại công thức đã sửa.
   it('trừ discountAmount (Giảm thêm cấp toàn báo giá) khỏi plannedProfit khi Approve', async () => {
-    const item = makeItem(); // subtotal 2.000.000, materialRequirementVersionId null → plannedCost 0
+    const item = makeItem(); // subtotal 2.000.000, BOM version 'mrv-1' không có Item nào → plannedCost 0
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ items: [item], discountAmount: 300_000 }),
     );
+    bomPrisma.materialRequirementVersion.findUnique.mockResolvedValue({
+      id: 'mrv-1',
+      items: [],
+      materialRequirement: { product: { derivedParameters: [] } },
+    });
 
     const tx = {
       runningNumber: {
@@ -391,6 +400,11 @@ describe('QuotationWorkflowService.approve()', () => {
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ expectedDeliveryDate: deliveryDate }),
     );
+    bomPrisma.materialRequirementVersion.findUnique.mockResolvedValue({
+      id: 'mrv-1',
+      items: [],
+      materialRequirement: { product: { derivedParameters: [] } },
+    });
 
     const tx = {
       runningNumber: {
@@ -492,6 +506,7 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
           provide: BomEngineService,
           useValue: { loadConfigForVersion: jest.fn() },
         },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -609,6 +624,7 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
           provide: BomEngineService,
           useValue: { loadConfigForVersion: jest.fn() },
         },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -770,6 +786,7 @@ describe('QuotationWorkflowService — snapshot valueLabel cho tham số ENUM', 
         { provide: PrismaService, useValue: prisma },
         { provide: PricingEngineService, useValue: pricingEngine },
         { provide: BomEngineService, useValue: { loadConfigForVersion: jest.fn() } },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -883,6 +900,7 @@ describe('QuotationWorkflowService.discount()', () => {
           provide: BomEngineService,
           useValue: { loadConfigForVersion: jest.fn() },
         },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -933,5 +951,167 @@ describe('QuotationWorkflowService.discount()', () => {
         }),
       }),
     );
+  });
+});
+
+// 022-gia-von-loi-nhuan-bao-gia.md — Việc 4/5. Giá vốn ước tính real-time
+// (không phải plannedCost snapshot), chỉ trả về qua endpoint/field gắn
+// quotation.view-cost — service tự nhận roleId, không tự ý gate ở đây (đã
+// gate ở controller cho cost-summary, và ở chính findAll cho list).
+describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    materialRequirement: { findMany: jest.Mock };
+  };
+  let bomEngine: {
+    loadConfigForVersion: jest.Mock;
+    calculateBom: jest.Mock;
+  };
+  let permissionService: { hasPermission: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
+      materialRequirement: { findMany: jest.fn() },
+    };
+    bomEngine = {
+      loadConfigForVersion: jest.fn(),
+      calculateBom: jest.fn(),
+    };
+    permissionService = { hasPermission: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: { calculate: jest.fn() } },
+        { provide: BomEngineService, useValue: bomEngine },
+        { provide: PermissionService, useValue: permissionService },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('getCostSummary(): tính đúng giá vốn/lợi nhuận từng dòng + tổng, đánh dấu costAvailable=false khi sản phẩm chưa có Material Requirement Version ACTIVE', async () => {
+    prisma.quotation.findUnique.mockResolvedValue({
+      items: [
+        {
+          id: 'item-1',
+          productId: 'prod-1',
+          productCode: 'SP000001',
+          productName: 'Cửa nhôm',
+          quantity: 2,
+          finalPrice: 300_000,
+          subtotal: 600_000,
+          parameters: [],
+        },
+        {
+          id: 'item-2',
+          productId: 'prod-2',
+          productCode: 'SP000002',
+          productName: 'Cửa lưới',
+          quantity: 1,
+          finalPrice: 200_000,
+          subtotal: 200_000,
+          parameters: [],
+        },
+      ],
+    });
+    prisma.materialRequirement.findMany.mockResolvedValue([
+      { productId: 'prod-1', versions: [{ id: 'mrv-1' }], product: { parameters: [] } },
+      // prod-2: không có version ACTIVE nào → costAvailable=false.
+    ]);
+    bomEngine.loadConfigForVersion.mockResolvedValue({
+      materialRequirementVersionId: 'mrv-1',
+      items: [],
+      derivedParameters: [],
+    });
+    bomEngine.calculateBom.mockReturnValue({
+      materialRequirementVersionId: 'mrv-1',
+      lines: [],
+      plannedCost: 250_000, // giá vốn cho 2 sản phẩm → đơn giá 125.000
+    });
+
+    const result = await service.getCostSummary('q-1');
+
+    expect(result.items).toHaveLength(2);
+    const item1 = result.items.find((i) => i.quotationItemId === 'item-1')!;
+    expect(item1.costAvailable).toBe(true);
+    expect(item1.totalCost).toBe(250_000);
+    expect(item1.costUnitPrice).toBe(125_000);
+    expect(item1.totalSale).toBe(600_000);
+    expect(item1.profit).toBe(350_000);
+
+    const item2 = result.items.find((i) => i.quotationItemId === 'item-2')!;
+    expect(item2.costAvailable).toBe(false);
+    expect(item2.totalCost).toBe(0);
+    expect(item2.profit).toBe(200_000);
+
+    expect(result.totals).toEqual({
+      totalCost: 250_000,
+      totalSale: 800_000,
+      profit: 550_000,
+    });
+    expect(result.hasIncompleteData).toBe(true);
+  });
+
+  it('findAll(): KHÔNG trả totalCost/profit khi role không có quotation.view-cost', async () => {
+    permissionService.hasPermission.mockResolvedValue(false);
+    prisma.quotation.findMany.mockResolvedValue([
+      { id: 'q-1', items: [{ id: 'item-1', subtotal: 600_000 }] },
+    ]);
+    prisma.quotation.count.mockResolvedValue(1);
+
+    const result = await service.findAll({}, 'role-sales');
+
+    expect(permissionService.hasPermission).toHaveBeenCalledWith(
+      'role-sales',
+      'quotation.view-cost',
+    );
+    expect(result.data[0]).not.toHaveProperty('totalCost');
+    expect(result.data[0]).not.toHaveProperty('profit');
+  });
+
+  it('findAll(): TRẢ totalCost/profit khi role có quotation.view-cost', async () => {
+    permissionService.hasPermission.mockResolvedValue(true);
+    prisma.quotation.findMany.mockResolvedValue([
+      {
+        id: 'q-1',
+        items: [
+          {
+            id: 'item-1',
+            productId: 'prod-1',
+            quantity: 2,
+            subtotal: 600_000,
+            parameters: [],
+          },
+        ],
+      },
+    ]);
+    prisma.quotation.count.mockResolvedValue(1);
+    prisma.materialRequirement.findMany.mockResolvedValue([
+      { productId: 'prod-1', versions: [{ id: 'mrv-1' }], product: { parameters: [] } },
+    ]);
+    bomEngine.loadConfigForVersion.mockResolvedValue({
+      materialRequirementVersionId: 'mrv-1',
+      items: [],
+      derivedParameters: [],
+    });
+    bomEngine.calculateBom.mockReturnValue({
+      materialRequirementVersionId: 'mrv-1',
+      lines: [],
+      plannedCost: 250_000,
+    });
+
+    const result = await service.findAll({}, 'role-owner');
+
+    expect((result.data[0] as { totalCost: number }).totalCost).toBe(250_000);
+    expect((result.data[0] as { profit: number }).profit).toBe(350_000);
   });
 });

@@ -35,6 +35,14 @@ interface QuotationItemRow {
   parameters: Parameter[];
 }
 
+// 022-gia-von-loi-nhuan-bao-gia.md — chỉ OWNER/ADMIN nhận được map này (page
+// cha chỉ fetch cost-summary khi hasPermission("quotation.view-cost")).
+interface ItemCostInfo {
+  costUnitPrice: number;
+  totalCost: number;
+  costAvailable: boolean;
+}
+
 interface QuotationItemTableProps {
   items: QuotationItemRow[];
   editable: boolean;
@@ -43,6 +51,8 @@ interface QuotationItemTableProps {
   // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026) — hiện dòng riêng
   // trước "Tổng thanh toán" nếu có.
   discountAmount?: number;
+  // Giá vốn ước tính theo dòng — undefined nếu không có quyền xem.
+  costByItemId?: Map<string, ItemCostInfo>;
 }
 
 function formatMoney(n: number) {
@@ -53,7 +63,7 @@ function formatNumber(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function QuotationItemTable({ items, editable, onEdit, onDelete, discountAmount = 0 }: QuotationItemTableProps) {
+export function QuotationItemTable({ items, editable, onEdit, onDelete, discountAmount = 0, costByItemId }: QuotationItemTableProps) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
@@ -62,9 +72,17 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
     );
   }
 
+  const showCost = !!costByItemId;
   const totalAmount = items.reduce((s, i) => s + Number(i.subtotal), 0);
   const totalVat = items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
-  const colSpan = editable ? 7 : 6;
+  const totalCost = costByItemId
+    ? items.reduce((s, i) => s + (costByItemId.get(i.id)?.totalCost ?? 0), 0)
+    : 0;
+  const hasIncompleteCost = costByItemId
+    ? items.some((i) => costByItemId.get(i.id)?.costAvailable === false)
+    : false;
+  const profit = totalAmount - totalCost;
+  const colSpan = (editable ? 7 : 6) + (showCost ? 1 : 0);
 
   return (
     <div className="rounded-md border">
@@ -79,6 +97,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
             <TableHead className="text-right">Thành tiền</TableHead>
             <TableHead className="text-right">VAT</TableHead>
             <TableHead>Chú thích</TableHead>
+            {showCost && <TableHead className="text-right">Giá vốn</TableHead>}
             {editable && <TableHead className="w-20" />}
           </TableRow>
         </TableHeader>
@@ -132,6 +151,19 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
                   {!item.warnings?.length && !item.note && "—"}
                 </div>
               </TableCell>
+              {showCost && (
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {(() => {
+                    const cost = costByItemId!.get(item.id);
+                    if (!cost || !cost.costAvailable) {
+                      return (
+                        <span title="Sản phẩm chưa có Định mức vật tư đang hoạt động">—</span>
+                      );
+                    }
+                    return formatMoney(cost.costUnitPrice);
+                  })()}
+                </TableCell>
+              )}
               {editable && (
                 <TableCell>
                   <div className="flex gap-1 justify-end">
@@ -146,6 +178,37 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, discount
               )}
             </TableRow>
           ))}
+          {showCost && (
+            <>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={colSpan} className="text-right text-sm text-muted-foreground">
+                  Tổng giá vốn (ước tính){hasIncompleteCost && " *"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatMoney(totalCost)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={colSpan} className="text-right text-sm font-semibold">
+                  Lợi nhuận (ước tính)
+                </TableCell>
+                <TableCell
+                  className={`text-right font-mono font-bold ${profit < 0 ? "text-destructive" : ""}`}
+                >
+                  {formatMoney(profit)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+              {hasIncompleteCost && (
+                <TableRow>
+                  <TableCell colSpan={colSpan + 1 + (editable ? 1 : 0)} className="text-xs text-muted-foreground text-right pt-0">
+                    * Một số sản phẩm chưa có Định mức vật tư đang hoạt động — giá vốn chưa đầy đủ.
+                  </TableCell>
+                </TableRow>
+              )}
+            </>
+          )}
           {totalVat > 0 || discountAmount > 0 ? (
             <>
               <TableRow className="bg-muted/50">
