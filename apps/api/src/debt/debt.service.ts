@@ -134,11 +134,15 @@ export class DebtService {
       // Concurrency Rule (debt.md): atomic increment/decrement — không đọc
       // remainingAmount ra tính rồi ghi đè. CHECK (remaining_amount >= 0) ở DB
       // chặn mọi trường hợp thu vượt công nợ, kể cả concurrent request.
+      // remainingAmountBeforeVat (023-cong-no-truoc-sau-vat) trừ ĐỒNG THỜI cùng
+      // số tiền — 1 Payment không tách được phần gốc/VAT. KHÔNG có CHECK >= 0
+      // cho field này, âm là trạng thái hợp lệ (đã trả vào phần VAT).
       const updatedReceivable = await tx.receivable.update({
         where: { id: receivable.id },
         data: {
           paidAmount: { increment: dto.amount },
           remainingAmount: { decrement: dto.amount },
+          remainingAmountBeforeVat: { decrement: dto.amount },
         },
       });
 

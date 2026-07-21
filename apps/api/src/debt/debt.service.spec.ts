@@ -205,6 +205,7 @@ describe('DebtService', () => {
         data: {
           paidAmount: { increment: 300000 },
           remainingAmount: { decrement: 300000 },
+          remainingAmountBeforeVat: { decrement: 300000 },
         },
       });
     });

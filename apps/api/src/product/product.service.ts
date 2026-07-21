@@ -61,6 +61,17 @@ export class ProductService {
     private readonly excel: ExcelService,
   ) {}
 
+  /**
+   * Sắp xếp A-Z không phân biệt hoa/thường (ORDER BY name ở DB dùng collation
+   * mặc định nên phân biệt hoa/thường — "kg", "m" bị đẩy xuống cuối sau mọi
+   * tên viết hoa). So sánh vẫn phân biệt dấu (Đ, ơ, ư... là chữ cái riêng).
+   */
+  private sortByNameAsc<T extends { name: string }>(items: T[]): T[] {
+    return [...items].sort((a, b) =>
+      a.name.localeCompare(b.name, 'vi', { sensitivity: 'accent' }),
+    );
+  }
+
   // ──────────────────────────────────────
   // Production Center
   // ──────────────────────────────────────
@@ -132,7 +143,8 @@ export class ProductService {
   // ──────────────────────────────────────
 
   async findAllUnits() {
-    return this.prisma.unit.findMany({ orderBy: { name: 'asc' } });
+    const units = await this.prisma.unit.findMany({ orderBy: { name: 'asc' } });
+    return this.sortByNameAsc(units);
   }
 
   async findOneUnit(id: string) {
@@ -270,31 +282,31 @@ export class ProductService {
       };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.material.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { code: 'asc' },
-        include: {
-          unit: { select: { id: true, name: true } },
-          // Giá nhập mặc định — hiển thị cạnh giá bán lẻ ở danh sách (Task 07
-          // sprint-02/002): lấy 1 giá isDefault mới nhất, không load cả bảng giá.
-          prices: {
-            where: { isDefault: true },
-            orderBy: { effectiveFrom: 'desc' },
-            take: 1,
-            select: { price: true },
-          },
-          productionCenters: {
-            select: {
-              productionCenter: { select: { id: true, name: true } },
-            },
+    // Sort A-Z không phân biệt hoa/thường phải làm ở tầng JS (DB collation mặc
+    // định phân biệt hoa/thường — xem sortByNameAsc) nên lấy hết rồi mới cắt
+    // trang, thay vì skip/take ở DB theo thứ tự có thể sai.
+    const all = await this.prisma.material.findMany({
+      where,
+      include: {
+        unit: { select: { id: true, name: true } },
+        // Giá nhập mặc định — hiển thị cạnh giá bán lẻ ở danh sách (Task 07
+        // sprint-02/002): lấy 1 giá isDefault mới nhất, không load cả bảng giá.
+        prices: {
+          where: { isDefault: true },
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+          select: { price: true },
+        },
+        productionCenters: {
+          select: {
+            productionCenter: { select: { id: true, name: true } },
           },
         },
-      }),
-      this.prisma.material.count({ where }),
-    ]);
+      },
+    });
+    const sorted = this.sortByNameAsc(all);
+    const total = sorted.length;
+    const data = sorted.slice(skip, skip + limit);
 
     return {
       data,
@@ -1799,7 +1811,7 @@ export class ProductService {
       where: { id: versionId },
       include: {
         items: {
-          orderBy: { displayOrder: 'asc' },
+          orderBy: { material: { name: 'asc' } },
           include: {
             material: {
               select: {
@@ -1815,6 +1827,9 @@ export class ProductService {
       },
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    version.items.sort((a, b) =>
+      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+    );
     return version;
   }
 
@@ -1848,7 +1863,7 @@ export class ProductService {
       },
       include: {
         items: {
-          orderBy: { displayOrder: 'asc' },
+          orderBy: { material: { name: 'asc' } },
           include: {
             material: {
               select: {
@@ -1881,12 +1896,12 @@ export class ProductService {
     if (dto.name !== undefined) data.name = dto.name?.trim() || null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
 
-    return this.prisma.materialRequirementVersion.update({
+    const updated = await this.prisma.materialRequirementVersion.update({
       where: { id },
       data,
       include: {
         items: {
-          orderBy: { displayOrder: 'asc' },
+          orderBy: { material: { name: 'asc' } },
           include: {
             material: {
               select: {
@@ -1901,6 +1916,10 @@ export class ProductService {
         materialRequirement: { select: { productId: true } },
       },
     });
+    updated.items.sort((a, b) =>
+      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+    );
+    return updated;
   }
 
   async activateMaterialRequirementVersion(id: string) {
@@ -1929,12 +1948,12 @@ export class ProductService {
         },
         data: { status: 'ARCHIVED' },
       });
-      return tx.materialRequirementVersion.update({
+      const activated = await tx.materialRequirementVersion.update({
         where: { id },
         data: { status: 'ACTIVE' },
         include: {
           items: {
-            orderBy: { displayOrder: 'asc' },
+            orderBy: { material: { name: 'asc' } },
             include: {
               material: {
                 select: {
@@ -1949,6 +1968,10 @@ export class ProductService {
           materialRequirement: { select: { productId: true } },
         },
       });
+      activated.items.sort((a, b) =>
+        a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      );
+      return activated;
     });
   }
 
@@ -2011,11 +2034,11 @@ export class ProductService {
         });
       }
 
-      return tx.materialRequirementVersion.findUnique({
+      const duplicated = await tx.materialRequirementVersion.findUnique({
         where: { id: newVersion.id },
         include: {
           items: {
-            orderBy: { displayOrder: 'asc' },
+            orderBy: { material: { name: 'asc' } },
             include: {
               material: {
                 select: {
@@ -2030,6 +2053,10 @@ export class ProductService {
           materialRequirement: { select: { productId: true } },
         },
       });
+      duplicated?.items.sort((a, b) =>
+        a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      );
+      return duplicated;
     });
   }
 
@@ -2177,12 +2204,15 @@ export class ProductService {
       where: { id: versionId },
       include: {
         items: {
-          orderBy: { displayOrder: 'asc' },
-          include: { material: { select: { code: true } } },
+          orderBy: { material: { name: 'asc' } },
+          include: { material: { select: { code: true, name: true } } },
         },
       },
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
+    version.items.sort((a, b) =>
+      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+    );
 
     const columns = [
       { header: 'Mã vật tư', key: 'materialCode', width: 16 },
@@ -2447,11 +2477,11 @@ export class ProductService {
       }
     });
 
-    return this.prisma.materialRequirementVersion.findUnique({
+    const saved = await this.prisma.materialRequirementVersion.findUnique({
       where: { id: versionId },
       include: {
         items: {
-          orderBy: { displayOrder: 'asc' },
+          orderBy: { material: { name: 'asc' } },
           include: {
             material: {
               select: {
@@ -2466,6 +2496,10 @@ export class ProductService {
         materialRequirement: { select: { productId: true } },
       },
     });
+    saved?.items.sort((a, b) =>
+      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+    );
+    return saved;
   }
 
   async previewMaterial(
@@ -2542,7 +2576,7 @@ export class ProductService {
           take: 1,
           include: {
             items: {
-              orderBy: { displayOrder: 'asc' },
+              orderBy: { material: { name: 'asc' } },
               include: {
                 material: {
                   select: {
@@ -2557,6 +2591,9 @@ export class ProductService {
         },
       },
     });
+    materialReq?.versions[0]?.items.sort((a, b) =>
+      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+    );
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ERP Engine';

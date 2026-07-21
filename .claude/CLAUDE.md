@@ -30,6 +30,19 @@ Không tối ưu quá sớm nếu chưa thật sự cần thiết.
 
 Nếu còn điểm chưa rõ phải hỏi người dùng trước khi tiếp tục.
 
+### Xác nhận hiểu Task trước khi làm (BẮT BUỘC — mọi Task, không ngoại lệ)
+
+Với MỌI yêu cầu người dùng giao (không phân biệt task đơn giản hay phức tạp):
+
+1. Trước tiên phải tóm tắt ngắn gọn những gì bạn hiểu về yêu cầu: phạm vi, mục tiêu, cách bạn dự định làm (kể cả các giả định/suy luận riêng bạn tự thêm vào, dù nhỏ).
+2. Dừng lại, không thực hiện hành động nào làm thay đổi dữ liệu/code/cấu hình.
+3. Chờ người dùng xác nhận rõ ràng (vd "đúng rồi", "làm đi", "ok").
+4. Chỉ bắt đầu thực hiện SAU KHI có xác nhận.
+
+Được phép đọc/điều tra (query DB, đọc code, kiểm tra trạng thái hiện tại) TRƯỚC khi tóm tắt, nếu cần để hiểu đúng bối cảnh — nhưng không được sửa/tạo/xoá bất cứ gì trước khi có xác nhận.
+
+Nếu trong lúc làm phát sinh quyết định không nằm trong phạm vi đã xác nhận (vd phải tự chọn cách xử lý một trường hợp chưa nói tới), phải dừng lại và hỏi lại, không tự quyết rồi làm tiếp.
+
 ---
 
 ## 2. Business First

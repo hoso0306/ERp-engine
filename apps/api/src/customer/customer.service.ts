@@ -166,10 +166,17 @@ export class CustomerService {
         customerId: id,
         salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
       },
-      _sum: { remainingAmount: true },
+      _sum: { remainingAmount: true, remainingAmountBeforeVat: true },
     });
 
-    return { totalRemaining: Number(totals._sum.remainingAmount ?? 0) };
+    return {
+      totalRemaining: Number(totals._sum.remainingAmount ?? 0),
+      // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — có thể âm
+      // hợp lệ nếu khách đã trả vào phần VAT, không clamp về 0.
+      totalRemainingBeforeVat: Number(
+        totals._sum.remainingAmountBeforeVat ?? 0,
+      ),
+    };
   }
 
   async update(id: string, dto: UpdateCustomerDto) {

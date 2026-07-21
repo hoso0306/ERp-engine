@@ -1204,6 +1204,9 @@ export class QuotationWorkflowService {
         'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
       );
     }
+    // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — Giảm thêm trừ
+    // vào cả 2 mức, nên chênh lệch giữa 2 track luôn đúng bằng totalVatAmount.
+    const totalAmountBeforeVat = totalAmount - Number(quotation.discountAmount);
 
     // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
     // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
@@ -1344,6 +1347,8 @@ export class QuotationWorkflowService {
           customerId: quotation.customerId,
           totalAmount: grandTotal,
           remainingAmount: grandTotal,
+          totalAmountBeforeVat,
+          remainingAmountBeforeVat: totalAmountBeforeVat,
           debtLimitSnapshot: Number(quotation.customer.debtLimit),
           debtTermDaysSnapshot: quotation.customer.debtTermDays,
         },

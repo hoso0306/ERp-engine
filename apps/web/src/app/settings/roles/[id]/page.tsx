@@ -30,6 +30,50 @@ interface Role {
   rolePermissions: { permissionId: string; permission: Permission }[];
 }
 
+// Nhãn tiếng Việt cho `resource`/`action` của Permission — chỉ đổi HIỂN THỊ,
+// không đổi giá trị gốc gửi lên API (permissionId vẫn dùng key gốc). Quyền
+// mới thêm ở DB mà chưa kịp bổ sung bản dịch sẽ tạm hiện mã gốc tiếng Anh
+// (fallback ở nơi dùng), không vỡ giao diện.
+const RESOURCE_LABELS: Record<string, string> = {
+  customer: "Khách hàng",
+  dashboard: "Trang tổng quan",
+  debt: "Công nợ",
+  product: "Sản phẩm",
+  production: "Sản xuất",
+  "production-center": "Xưởng sản xuất",
+  quotation: "Báo giá",
+  report: "Báo cáo",
+  return: "Hàng trả lại",
+  role: "Vai trò",
+  "sales-order": "Đơn hàng",
+  settings: "Cài đặt",
+  user: "Người dùng",
+  warehouse: "Kho",
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  view: "Xem",
+  create: "Tạo mới",
+  update: "Cập nhật",
+  delete: "Xoá",
+  export: "Xuất dữ liệu",
+  "create-payment": "Ghi nhận thanh toán",
+  activate: "Kích hoạt",
+  complete: "Hoàn thành",
+  start: "Bắt đầu sản xuất",
+  approve: "Duyệt",
+  cancel: "Huỷ",
+  override: "Ghi đè thủ công",
+  print: "In",
+  "view-cost": "Xem giá vốn",
+  dispose: "Thanh lý",
+  "mark-used": "Đánh dấu đã dùng lại",
+  disable: "Vô hiệu hoá",
+  deliver: "Khách nhận hàng",
+  ship: "Gửi xe",
+  receipt: "Nhập kho",
+};
+
 export default function RoleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -176,7 +220,7 @@ export default function RoleDetailPage() {
                     onCheckedChange={(v) => canEdit && toggleGroup(permissions.map((p) => p.id), v === true)}
                     disabled={!canEdit}
                   />
-                  <span className="font-medium text-sm">{resource}</span>
+                  <span className="font-medium text-sm">{RESOURCE_LABELS[resource] ?? resource}</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pl-6">
                   {permissions.map((p) => (
@@ -186,7 +230,7 @@ export default function RoleDetailPage() {
                         onCheckedChange={() => canEdit && toggle(p.id)}
                         disabled={!canEdit}
                       />
-                      {p.action}
+                      {ACTION_LABELS[p.action] ?? p.action}
                     </label>
                   ))}
                 </div>

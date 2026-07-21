@@ -88,7 +88,11 @@ interface SalesOrder {
   discountReason: string | null;
   grandTotal: number;
   items: SalesOrderItem[];
-  receivable: { remainingAmount: number } | null;
+  receivable: {
+    remainingAmount: number;
+    remainingAmountBeforeVat: number;
+    paidAmount: number;
+  } | null;
 }
 
 interface Company {
@@ -145,6 +149,7 @@ export default function QuotationPrintPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [terms, setTerms] = useState<string>("");
   const [debtTotalRemaining, setDebtTotalRemaining] = useState<number>(0);
+  const [debtTotalRemainingBeforeVat, setDebtTotalRemainingBeforeVat] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -172,8 +177,15 @@ export default function QuotationPrintPage() {
           document.title = `${data.code} - ${data.customer.name}`;
         }
 
-        apiGet<{ totalRemaining: number }>(`/customers/${data.customer.id}/debt-summary`)
-          .then((res) => { if (!cancelled) setDebtTotalRemaining(res.totalRemaining); })
+        apiGet<{ totalRemaining: number; totalRemainingBeforeVat: number }>(
+          `/customers/${data.customer.id}/debt-summary`,
+        )
+          .then((res) => {
+            if (!cancelled) {
+              setDebtTotalRemaining(res.totalRemaining);
+              setDebtTotalRemainingBeforeVat(res.totalRemainingBeforeVat);
+            }
+          })
           .catch(() => {});
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Không tìm thấy báo giá.");
@@ -273,6 +285,18 @@ export default function QuotationPrintPage() {
   const currentOrderRemaining = isOrder && order!.receivable ? Number(order!.receivable.remainingAmount) : grandTotal;
   const existingDebt = Math.max(0, debtTotalRemaining - (isOrder && order!.receivable ? currentOrderRemaining : 0));
   const totalToPay = existingDebt + currentOrderRemaining;
+
+  // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — khách trả tiền
+  // mặt không lấy hoá đơn thì chỉ cần trả mức này. "Đã thanh toán" trừ đều cả
+  // 2 mức (1 Payment không tách được phần gốc/VAT) nên dùng chung 1 số.
+  const totalAmountBeforeVat = totalAmount - discountAmount;
+  const paidAmount = isOrder && order!.receivable ? Number(order!.receivable.paidAmount) : 0;
+  const currentOrderRemainingBeforeVat =
+    isOrder && order!.receivable ? Number(order!.receivable.remainingAmountBeforeVat) : totalAmountBeforeVat;
+  // KHÔNG floor tại 0 — âm là trạng thái hợp lệ (đã trả vào phần VAT của đơn khác).
+  const existingDebtBeforeVat =
+    debtTotalRemainingBeforeVat - (isOrder && order!.receivable ? currentOrderRemainingBeforeVat : 0);
+  const totalToPayBeforeVat = existingDebtBeforeVat + currentOrderRemainingBeforeVat;
 
   const customerAddress = [quotation.customer.address, quotation.customer.district, quotation.customer.province]
     .filter(Boolean)
@@ -516,25 +540,43 @@ export default function QuotationPrintPage() {
           </div>
         )}
 
-        {/* Block 4b — Tình hình công nợ */}
+        {/* Block 4b — Tình hình công nợ (song song trước-VAT / sau-VAT — khách
+            trả tiền mặt không lấy hoá đơn thì chỉ cần trả mức trước-VAT). */}
         <div style={{ marginTop: 22, background: "#f7f8fa", border: "1px solid var(--border)", borderRadius: 4, padding: "14px 18px" }}>
           <div className="label" style={{ marginBottom: 8, color: "var(--navy)", fontWeight: 700 }}>Tình hình công nợ</div>
           <table>
+            <thead>
+              <tr>
+                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)" }} />
+                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)", textAlign: "right" }}>Trước VAT</td>
+                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)", textAlign: "right" }}>Sau VAT</td>
+              </tr>
+            </thead>
             <tbody>
               <tr>
-                <td style={{ padding: "3px 0", fontSize: 12.5 }}>Nợ hiện có (các đơn khác)</td>
+                <td style={{ padding: "3px 0", fontSize: 12.5 }}>{isOrder ? "Đơn hàng này" : "Báo giá này (nếu xác nhận)"}</td>
+                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(totalAmountBeforeVat)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
+              </tr>
+              <tr>
+                <td style={{ padding: "3px 0", fontSize: 12.5 }}>Nợ cũ (các đơn khác)</td>
+                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(existingDebtBeforeVat)} ₫</td>
                 <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(existingDebt)} ₫</td>
               </tr>
+              {paidAmount > 0 && (
+                <tr>
+                  <td style={{ padding: "3px 0", fontSize: 12.5 }}>Đã thanh toán</td>
+                  <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>−{fmt(paidAmount)} ₫</td>
+                  <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>−{fmt(paidAmount)} ₫</td>
+                </tr>
+              )}
               <tr>
-                <td style={{ padding: "3px 0", fontSize: 12.5 }}>{isOrder ? "Đơn hàng này" : "Báo giá này (nếu xác nhận)"}</td>
-                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(currentOrderRemaining)} ₫</td>
+                <td colSpan={3} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }} />
               </tr>
               <tr>
-                <td colSpan={2} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }} />
-              </tr>
-              <tr>
-                <td style={{ padding: "4px 0", fontSize: 16, fontWeight: 700, color: "var(--navy)" }}>TỔNG CẦN THANH TOÁN</td>
-                <td style={{ padding: "4px 0", fontSize: 20, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(totalToPay)} ₫</td>
+                <td style={{ padding: "4px 0", fontSize: 14, fontWeight: 700, color: "var(--navy)" }}>TỔNG PHẢI THANH TOÁN</td>
+                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(totalToPayBeforeVat)} ₫</td>
+                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(totalToPay)} ₫</td>
               </tr>
             </tbody>
           </table>

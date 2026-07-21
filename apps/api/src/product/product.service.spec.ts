@@ -266,6 +266,9 @@ describe('ProductService — duplicate version (Sửa = nhân bản)', () => {
         id: 'mrv-new-1',
         versionNumber: 3,
         status: 'DRAFT',
+        // Prisma luôn trả mảng cho include.items (rỗng nếu không có) — mock
+        // đúng shape thật để khớp .items.sort() trong service.
+        items: [],
       };
       prisma.materialRequirementVersion.findUnique.mockResolvedValueOnce(
         finalResult,

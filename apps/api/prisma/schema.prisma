@@ -1342,6 +1342,16 @@ model Receivable {
   // CHECK (remaining_amount >= 0) khai báo tay trong migration.sql.
   remainingAmount Decimal @map("remaining_amount") @db.Decimal(15, 0)
 
+  // Track song song trước-VAT (023-cong-no-truoc-sau-vat) — khách trả tiền mặt
+  // không lấy hoá đơn thì không cần đóng VAT, kế toán cần biết nợ ở CẢ 2 mức.
+  // Nguồn: SalesOrder.totalAmount - discountAmount tại Approve. Cập nhật ĐỒNG
+  // THỜI với remainingAmount trong DebtService.createPayment() (1 Payment
+  // không tách được phần gốc/VAT nên trừ đều cả 2 track).
+  // KHÔNG có CHECK >= 0 — có thể âm hợp lệ: khách trả nhiều hơn giá không-hoá-
+  // đơn, đang trả dần vào phần VAT của chính đơn này hoặc bù cho đơn khác.
+  totalAmountBeforeVat     Decimal @map("total_amount_before_vat") @db.Decimal(15, 0)
+  remainingAmountBeforeVat Decimal @map("remaining_amount_before_vat") @db.Decimal(15, 0)
+
   // Credit Policy Snapshot — copy từ Customer.debtLimit/debtTermDays tại thời điểm tạo.
   debtLimitSnapshot    Decimal @map("debt_limit_snapshot") @db.Decimal(15, 0)
   debtTermDaysSnapshot Int     @map("debt_term_days_snapshot")
