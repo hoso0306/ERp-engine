@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
-import { ProductFilter } from "@/components/product/product-filter";
+import { ProductFilter, type ProductSort } from "@/components/product/product-filter";
 import { ProductTable } from "@/components/product/product-table";
 import { ProductDeletedTable } from "@/components/product/product-deleted-table";
 import { apiGet } from "@/lib/api";
@@ -37,6 +37,8 @@ export default function ProductsPage() {
   const [status, setStatus] = useState(TAB_STATUS.active);
   const [productTypeId, setProductTypeId] = useState("all");
   const [productionCenterId, setProductionCenterId] = useState("all");
+  // Mặc định A-Z — lọc thủ công cho phép đổi sang "sản phẩm mới tạo".
+  const [sortBy, setSortBy] = useState<ProductSort>("name_asc");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export default function ProductsPage() {
       if (status !== "all") params.set("status", status);
       if (productTypeId !== "all") params.set("productTypeId", productTypeId);
       if (productionCenterId !== "all") params.set("productionCenterId", productionCenterId);
+      params.set("sortBy", sortBy);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -66,7 +69,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, productTypeId, productionCenterId, page]);
+  }, [search, status, productTypeId, productionCenterId, sortBy, page]);
 
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
@@ -98,7 +101,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, productTypeId, productionCenterId]);
+  }, [search, status, productTypeId, productionCenterId, sortBy]);
 
   useEffect(() => {
     if (tab === "deleted") {
@@ -147,6 +150,8 @@ export default function ProductsPage() {
               productionCenters={productionCenters}
               productionCenterId={productionCenterId}
               onProductionCenterChange={(v) => setProductionCenterId(v ?? "all")}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
             />
 
             {loading && <Loading />}

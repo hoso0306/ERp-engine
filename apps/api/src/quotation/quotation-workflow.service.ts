@@ -1673,18 +1673,31 @@ export class QuotationWorkflowService {
         input.parameters,
         enumParamNamesByProductId.get(input.productId),
       );
-      const bomResult = this.bomEngine.calculateBom(
-        config,
-        rawParams,
-        input.quantity,
-      );
 
-      result.set(input.id, {
-        costUnitPrice:
-          input.quantity > 0 ? bomResult.plannedCost / input.quantity : 0,
-        totalCost: bomResult.plannedCost,
-        costAvailable: true,
-      });
+      // Version ACTIVE hiện tại có thể lệch tham số so với snapshot của báo
+      // giá cũ (sản phẩm bị sửa/đổi tên tham số sau khi báo giá đã tạo) —
+      // calculateBom() ném lỗi trong trường hợp đó. Không chặn cả danh sách,
+      // chỉ đánh dấu thiếu dữ liệu cho riêng dòng này (cùng cách xử lý với
+      // "chưa có Material Requirement Version ACTIVE" ở trên).
+      try {
+        const bomResult = this.bomEngine.calculateBom(
+          config,
+          rawParams,
+          input.quantity,
+        );
+        result.set(input.id, {
+          costUnitPrice:
+            input.quantity > 0 ? bomResult.plannedCost / input.quantity : 0,
+          totalCost: bomResult.plannedCost,
+          costAvailable: true,
+        });
+      } catch {
+        result.set(input.id, {
+          costUnitPrice: 0,
+          totalCost: 0,
+          costAvailable: false,
+        });
+      }
     }
 
     return result;

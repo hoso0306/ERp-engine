@@ -520,26 +520,40 @@ export class ProductService {
       where.productionCenterId = query.productionCenterId;
     }
 
-    const [rows, total] = await Promise.all([
-      this.prisma.product.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          productType: { select: { id: true, name: true } },
-          unit: { select: { id: true, name: true } },
-          productionCenter: { select: { id: true, code: true, name: true } },
-          pricingRule: {
-            select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
-          },
-          materialRequirement: {
-            select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
-          },
-        },
-      }),
-      this.prisma.product.count({ where }),
-    ]);
+    const include = {
+      productType: { select: { id: true, name: true } },
+      unit: { select: { id: true, name: true } },
+      productionCenter: { select: { id: true, code: true, name: true } },
+      pricingRule: {
+        select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+      },
+      materialRequirement: {
+        select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+      },
+    } satisfies Prisma.ProductInclude;
+
+    let rows: Prisma.ProductGetPayload<{ include: typeof include }>[];
+    let total: number;
+
+    if (query.sortBy === 'created_desc') {
+      [rows, total] = await Promise.all([
+        this.prisma.product.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include,
+        }),
+        this.prisma.product.count({ where }),
+      ]);
+    } else {
+      // Mặc định A-Z (Sprint 04) — cùng lý do/cách làm với findAllMaterials:
+      // collation DB phân biệt hoa/thường nên sort ở JS, lấy hết rồi mới cắt trang.
+      const all = await this.prisma.product.findMany({ where, include });
+      const sorted = this.sortByNameAsc(all);
+      total = sorted.length;
+      rows = sorted.slice(skip, skip + limit);
+    }
 
     const data = rows.map(({ pricingRule, materialRequirement, ...product }) => ({
       ...product,

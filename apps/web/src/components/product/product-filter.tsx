@@ -8,7 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { Search, Filter } from "lucide-react";
+
+export type ProductSort = "name_asc" | "created_desc";
 
 interface FilterOption {
   id: string;
@@ -30,6 +32,8 @@ interface ProductFilterProps {
   productionCenters: ProductionCenterOption[];
   productionCenterId: string;
   onProductionCenterChange: (value: string | null) => void;
+  sortBy: ProductSort;
+  onSortByChange: (value: ProductSort) => void;
 }
 
 export function ProductFilter({
@@ -41,6 +45,8 @@ export function ProductFilter({
   productionCenters,
   productionCenterId,
   onProductionCenterChange,
+  sortBy,
+  onSortByChange,
 }: ProductFilterProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -79,6 +85,20 @@ export function ProductFilter({
               {c.name}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={sortBy}
+        onValueChange={(v) => onSortByChange((v as ProductSort) ?? "name_asc")}
+      >
+        <SelectTrigger className="w-48">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <SelectValue placeholder="Sắp xếp" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="name_asc">Tên A-Z</SelectItem>
+          <SelectItem value="created_desc">Sản phẩm mới tạo</SelectItem>
         </SelectContent>
       </Select>
     </div>
