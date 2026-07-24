@@ -17,7 +17,8 @@ export class CreateCustomerDto {
   debtLimit?: number;
   debtTermDays?: number;
   note?: string;
-  // Thông tin nhà xe mặc định (chốt 24/07/2026) — chỉ để tham khảo.
+  // Thông tin nhà xe mặc định (chốt 24/07/2026) — auto-snapshot vào
+  // SalesOrder.carrier* khi Approve báo giá (fix 24/07/2026).
   defaultCarrierName?: string;
   defaultCarrierPhone?: string;
   defaultCarrierNote?: string;

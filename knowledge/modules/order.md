@@ -164,6 +164,9 @@ SalesOrder
   deliveryProvince            // String? — snapshot từ Customer.province tại Approve — có thể sửa sau
   deliveryDistrict            // String? — snapshot từ Customer.district tại Approve — có thể sửa sau
   deliveryWard                // String? — snapshot từ Customer.ward tại Approve — có thể sửa sau
+  carrierName                 // String? — snapshot từ Customer.defaultCarrierName tại Approve (fix 24/07/2026) — có thể sửa sau qua CarrierInfoDialog
+  carrierPhone                // String? — snapshot từ Customer.defaultCarrierPhone tại Approve — có thể sửa sau
+  carrierNote                 // String? — snapshot từ Customer.defaultCarrierNote tại Approve — có thể sửa sau
   status                      // SalesOrderStatus
   paymentStatus               // PaymentStatus
   totalAmount                 // doanh thu kế hoạch

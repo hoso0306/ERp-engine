@@ -1313,6 +1313,15 @@ export class QuotationWorkflowService {
           deliveryProvince: quotation.customer.province,
           deliveryDistrict: quotation.customer.district,
           deliveryWard: quotation.customer.ward,
+          // Thông tin nhà xe mặc định (chốt 24/07/2026) — auto copy từ
+          // Customer.defaultCarrier* tại Approve nếu khách có sẵn, giống hệt
+          // cách deliveryAddress hoạt động. Customer không có default thì vẫn
+          // để trống như trước, người dùng tự nhập qua CarrierInfoDialog. Sau
+          // Approve không đọc lại Customer nữa — sửa được qua carrier info
+          // dialog ở từng đơn.
+          carrierName: quotation.customer.defaultCarrierName,
+          carrierPhone: quotation.customer.defaultCarrierPhone,
+          carrierNote: quotation.customer.defaultCarrierNote,
           // Hạn giao hàng (fix 19/07/2026) — snapshot từ Quotation.expectedDeliveryDate
           // (nhập tay lúc tạo/sửa báo giá) tại Approve, không đọc lại Quotation sau đó.
           expectedDeliveryDate: quotation.expectedDeliveryDate,

@@ -235,7 +235,7 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
 
       <fieldset className="space-y-4">
         <legend className="text-sm font-medium text-muted-foreground">
-          Thông tin giao hàng <span className="text-xs">(nhà xe mặc định, chỉ để tham khảo)</span>
+          Thông tin giao hàng <span className="text-xs">(nhà xe mặc định — tự điền vào đơn hàng mới khi duyệt báo giá)</span>
         </legend>
 
         <div className="grid grid-cols-2 gap-4">

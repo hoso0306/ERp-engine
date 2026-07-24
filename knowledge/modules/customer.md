@@ -161,7 +161,7 @@ status          CustomerStatus  Default ACTIVE
 debt_limit      Decimal         Default 0 (VNĐ)
 debt_term_days  Int             Default 30 (Ngày)
 note            String?
-default_carrier_name   String?  Nhà xe mặc định — chỉ để tham khảo (thêm 24/07/2026), KHÔNG snapshot vào SalesOrder
+default_carrier_name   String?  Nhà xe mặc định (thêm 24/07/2026) — auto-snapshot vào SalesOrder.carrier* lúc Approve báo giá (fix 24/07/2026), sửa riêng từng đơn được qua CarrierInfoDialog
 default_carrier_phone  String?  SĐT nhà xe mặc định
 default_carrier_note   String?  Ghi chú giao hàng mặc định
 created_by      String?         FK → users
