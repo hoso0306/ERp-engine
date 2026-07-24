@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,14 +11,25 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ProductTypeahead, ProductOption } from "@/components/quotation/product-typeahead";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { apiPost, apiPatch, ApiError } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api";
+
+interface ProductTypeOption {
+  id: string;
+  name: string;
+}
 
 interface CustomerProductDiscount {
   id: string;
   discountPercent: number;
-  product: ProductOption;
+  productType: ProductTypeOption;
 }
 
 interface CustomerProductDiscountDialogProps {
@@ -29,8 +40,9 @@ interface CustomerProductDiscountDialogProps {
   onSaved: () => void;
 }
 
-// Thêm/sửa % chiết khấu cho 1 sản phẩm của khách hàng (Sprint 04, chốt
-// 16/07/2026) — sản phẩm chỉ chọn được khi thêm mới, không đổi khi sửa.
+// Thêm/sửa % chiết khấu cho 1 loại sản phẩm của khách hàng (Sprint 04, chốt
+// 16/07/2026; đổi từ theo sản phẩm sang theo loại sản phẩm, chốt 24/07/2026)
+// — loại sản phẩm chỉ chọn được khi thêm mới, không đổi khi sửa.
 export function CustomerProductDiscountDialog({
   open,
   onOpenChange,
@@ -40,13 +52,19 @@ export function CustomerProductDiscountDialog({
 }: CustomerProductDiscountDialogProps) {
   const isEdit = !!discount;
   const [submitting, setSubmitting] = useState(false);
-  const [product, setProduct] = useState<ProductOption | null>(discount?.product ?? null);
+  const [productTypes, setProductTypes] = useState<ProductTypeOption[]>([]);
+  const [productTypeId, setProductTypeId] = useState(discount?.productType.id ?? "");
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    apiGet<ProductTypeOption[]>("/product-types").then(setProductTypes).catch(() => {});
+  }, [open, isEdit]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (!isEdit && !product) {
-      toast.error("Vui lòng chọn sản phẩm.");
+    if (!isEdit && !productTypeId) {
+      toast.error("Vui lòng chọn loại sản phẩm.");
       return;
     }
 
@@ -61,7 +79,7 @@ export function CustomerProductDiscountDialog({
         });
       } else {
         await apiPost(`/customers/${customerId}/product-discounts`, {
-          productId: product!.id,
+          productTypeId,
           discountPercent,
         });
       }
@@ -80,19 +98,29 @@ export function CustomerProductDiscountDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Chỉnh sửa chiết khấu" : "Thêm chiết khấu sản phẩm"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Chỉnh sửa chiết khấu" : "Thêm chiết khấu loại sản phẩm"}</DialogTitle>
         </DialogHeader>
 
         <form id="customer-product-discount-form" onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Sản phẩm *</Label>
+            <Label>Loại sản phẩm *</Label>
             {isEdit ? (
-              <div className="rounded-lg border px-3 py-2 text-sm">
-                <span className="font-mono text-muted-foreground">{discount.product.code}</span>
-                <span className="ml-2 font-medium">{discount.product.name}</span>
+              <div className="rounded-lg border px-3 py-2 text-sm font-medium">
+                {discount.productType.name}
               </div>
             ) : (
-              <ProductTypeahead value={product} onChange={setProduct} />
+              <Select value={productTypeId} onValueChange={(v) => setProductTypeId(v ?? "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại sản phẩm" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productTypes.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 

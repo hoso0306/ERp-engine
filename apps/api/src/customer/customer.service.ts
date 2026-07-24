@@ -881,7 +881,7 @@ export class CustomerService {
     await this.findOne(customerId);
     return this.prisma.customerProductDiscount.findMany({
       where: { customerId },
-      include: { product: { select: { id: true, code: true, name: true } } },
+      include: { productType: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -892,8 +892,8 @@ export class CustomerService {
   ) {
     await this.findOne(customerId);
 
-    if (!dto.productId) {
-      throw new BadRequestException('Sản phẩm là bắt buộc.');
+    if (!dto.productTypeId) {
+      throw new BadRequestException('Loại sản phẩm là bắt buộc.');
     }
     if (
       dto.discountPercent === undefined ||
@@ -903,29 +903,29 @@ export class CustomerService {
       throw new BadRequestException('Chiết khấu phải từ 0 đến 100.');
     }
 
-    const product = await this.prisma.product.findFirst({
-      where: { id: dto.productId, deletedAt: null },
+    const productType = await this.prisma.productType.findUnique({
+      where: { id: dto.productTypeId },
     });
-    if (!product) {
-      throw new NotFoundException('Sản phẩm không tồn tại.');
+    if (!productType) {
+      throw new NotFoundException('Loại sản phẩm không tồn tại.');
     }
 
     const existing = await this.prisma.customerProductDiscount.findUnique({
       where: {
-        customerId_productId: { customerId, productId: dto.productId },
+        customerId_productTypeId: { customerId, productTypeId: dto.productTypeId },
       },
     });
     if (existing) {
-      throw new ConflictException('Sản phẩm này đã được cấu hình chiết khấu.');
+      throw new ConflictException('Loại sản phẩm này đã được cấu hình chiết khấu.');
     }
 
     return this.prisma.customerProductDiscount.create({
       data: {
         customerId,
-        productId: dto.productId,
+        productTypeId: dto.productTypeId,
         discountPercent: dto.discountPercent,
       },
-      include: { product: { select: { id: true, code: true, name: true } } },
+      include: { productType: { select: { id: true, name: true } } },
     });
   }
 
@@ -951,7 +951,7 @@ export class CustomerService {
     return this.prisma.customerProductDiscount.update({
       where: { id },
       data: { discountPercent: dto.discountPercent },
-      include: { product: { select: { id: true, code: true, name: true } } },
+      include: { productType: { select: { id: true, name: true } } },
     });
   }
 
@@ -965,10 +965,21 @@ export class CustomerService {
     return this.prisma.customerProductDiscount.delete({ where: { id } });
   }
 
-  // Lookup dùng khi thêm dòng báo giá — 0% nếu chưa cấu hình (không throw).
+  // Lookup dùng khi thêm dòng báo giá — nhận productId (sản phẩm đang chọn),
+  // tự suy ra productTypeId để tìm cấu hình. 0% nếu chưa cấu hình (không throw).
   async lookupProductDiscount(customerId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { productTypeId: true },
+    });
+    if (!product) {
+      throw new NotFoundException('Sản phẩm không tồn tại.');
+    }
+
     const discount = await this.prisma.customerProductDiscount.findUnique({
-      where: { customerId_productId: { customerId, productId } },
+      where: {
+        customerId_productTypeId: { customerId, productTypeId: product.productTypeId },
+      },
     });
     return { discountPercent: discount ? Number(discount.discountPercent) : 0 };
   }

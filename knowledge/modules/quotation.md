@@ -154,7 +154,7 @@ Mỗi dòng (QuotationItem) bao gồm:
 - Số lượng
 - **QuotationItemParameter** — snapshot giá trị thông số tại thời điểm nhập (không phải FK)
 - Giá hệ thống (tính từ Pricing Engine, lưu tại thời điểm thêm/sửa)
-- Chiết khấu Khách hàng × Sản phẩm (%) — snapshot từ `CustomerProductDiscount` (xem mục Discount Engine)
+- Chiết khấu Khách hàng × Loại sản phẩm (%) — snapshot từ `CustomerProductDiscount` (xem mục Discount Engine)
 - Giá bán cuối
 - Thành tiền
 - VAT (%) + tiền VAT — snapshot từ Pricing Rule Version, tính SAU Discount Engine
@@ -227,7 +227,7 @@ Giá **khoá cứng** khi Approve. Từ thời điểm đó trở đi, dù Prici
 
 ```text
 systemPrice
-    × (1 − discountPercent%)   ← Chiết khấu Khách hàng × Sản phẩm, snapshot
+    × (1 − discountPercent%)   ← Chiết khấu Khách hàng × Loại sản phẩm, snapshot
 = finalPrice
     × quantity
 = subtotal
@@ -237,14 +237,20 @@ systemPrice
 
 `finalPrice` phải ≥ 0. Hệ thống không cho lưu nếu kết quả âm.
 
-## Chiết khấu Khách hàng × Sản phẩm
+## Chiết khấu Khách hàng × Loại sản phẩm
 
-Master Data riêng — `CustomerProductDiscount(customerId, productId, discountPercent)`,
+> Đổi từ cấu hình theo **Sản phẩm** sang theo **Loại sản phẩm** (`ProductType`),
+> chốt 24/07/2026 — xem `customer.md` mục "Chiết khấu loại sản phẩm".
+
+Master Data riêng — `CustomerProductDiscount(customerId, productTypeId, discountPercent)`,
 quản lý qua `/customers/:id/product-discounts` (module Customer). Cấu hình
-theo từng cặp khách hàng × sản phẩm, không theo nhóm khách. Mặc định 0% nếu
-chưa cấu hình.
+theo từng cặp khách hàng × loại sản phẩm (vd "Rèm cầu vồng"), áp dụng cho mọi
+sản phẩm cùng loại — không theo nhóm khách, không theo từng sản phẩm riêng lẻ.
+Mặc định 0% nếu chưa cấu hình.
 
-Khi thêm/sửa dòng báo giá, hệ thống lookup và **snapshot** % này vào
+Khi thêm/sửa dòng báo giá, hệ thống lookup theo `Product.productTypeId` của
+sản phẩm đang chọn (`GET /customers/:id/product-discounts/lookup?productId=`
+vẫn nhận `productId`, backend tự suy ra loại) và **snapshot** % vào
 `QuotationItem.discountPercent` tại thời điểm thêm dòng — sửa cấu hình Master
 Data sau đó không ảnh hưởng báo giá đã tạo. Sửa dòng (không đổi sản phẩm)
 **không** lookup lại, dùng nguyên snapshot cũ.

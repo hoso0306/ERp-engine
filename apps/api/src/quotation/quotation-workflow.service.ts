@@ -426,15 +426,16 @@ export class QuotationWorkflowService {
       parameters: dto.parameters,
     });
 
-    // Snapshot % Chiết khấu Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026)
-    // — THAY THẾ HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm"). Mặc định
-    // 0% nếu chưa cấu hình.
+    // Snapshot % Chiết khấu Khách hàng × Loại sản phẩm (Sprint 04, chốt
+    // 16/07/2026; đổi từ theo Sản phẩm sang theo Loại sản phẩm, chốt
+    // 24/07/2026) — THAY THẾ HOÀN TOÀN CustomerGroup.discountPercent ("CK
+    // nhóm"). Mặc định 0% nếu chưa cấu hình.
     const customerProductDiscount =
       await this.prisma.customerProductDiscount.findUnique({
         where: {
-          customerId_productId: {
+          customerId_productTypeId: {
             customerId: quotation.customerId,
-            productId: dto.productId,
+            productTypeId: product.productTypeId,
           },
         },
       });

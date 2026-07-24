@@ -583,9 +583,9 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
 });
 
 // Sprint 04 (005-chiet-khau-khach-hang-vat-bao-gia.md) — Discount Engine mới:
-// snapshot discountPercent từ CustomerProductDiscount(customerId, productId),
-// THAY THẾ HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm") + chiết khấu
-// bổ sung cấp dòng cũ.
+// snapshot discountPercent từ CustomerProductDiscount(customerId, productTypeId)
+// (đổi từ productId sang productTypeId, chốt 24/07/2026), THAY THẾ HOÀN TOÀN
+// CustomerGroup.discountPercent ("CK nhóm") + chiết khấu bổ sung cấp dòng cũ.
 describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
   let service: QuotationWorkflowService;
   let prisma: {
@@ -639,6 +639,7 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
       id: 'prod-1',
       code: 'SP000001',
       name: 'Cửa nhôm',
+      productTypeId: 'pt-1',
       parameters: [],
     });
     prisma.customerProductDiscount.findUnique.mockResolvedValue({
@@ -658,7 +659,9 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
     });
 
     expect(prisma.customerProductDiscount.findUnique).toHaveBeenCalledWith({
-      where: { customerId_productId: { customerId: 'cust-1', productId: 'prod-1' } },
+      where: {
+        customerId_productTypeId: { customerId: 'cust-1', productTypeId: 'pt-1' },
+      },
     });
     expect(prisma.quotationItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -678,6 +681,7 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
       id: 'prod-1',
       code: 'SP000001',
       name: 'Cửa nhôm',
+      productTypeId: 'pt-1',
       parameters: [],
     });
     prisma.customerProductDiscount.findUnique.mockResolvedValue(null);

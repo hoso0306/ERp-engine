@@ -5,6 +5,15 @@
 
 ---
 
+> **Follow-up (24/07/2026):** Đổi `CustomerProductDiscount` từ cấu hình theo
+> **Sản phẩm** (`productId`) sang theo **Loại sản phẩm** (`productTypeId`) —
+> 1 dòng cấu hình áp dụng cho mọi sản phẩm cùng loại (vd "Rèm cầu vồng"),
+> không cấu hình riêng từng sản phẩm nữa. Migration backfill từ dữ liệu cũ
+> (`20260724105330_customer_discount_by_product_type`), không mất dữ liệu (chỉ
+> có 1 dòng tại thời điểm đổi, không xung đột unique). Lookup khi thêm dòng
+> báo giá vẫn nhận `productId` — backend tự suy ra `productTypeId`. Đã cập
+> nhật `customer.md`, `quotation.md` mục Discount Engine.
+
 # Bối cảnh
 
 Từ câu hỏi về cột "Giá hệ thống" trên trang chi tiết báo giá, người dùng yêu cầu tái cấu trúc khá sâu Discount Engine của module Báo giá. Đã trao đổi và chốt các quyết định sau (16/07/2026):

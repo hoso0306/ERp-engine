@@ -232,16 +232,19 @@ Hiển thị:
 * Danh sách đơn hàng
 * Công nợ
 * Ghi chú
-* Chiết khấu sản phẩm (xem mục riêng bên dưới)
+* Chiết khấu loại sản phẩm (xem mục riêng bên dưới)
 
-## Chiết khấu sản phẩm
+## Chiết khấu loại sản phẩm
 
 > Sprint 04 (chốt 16/07/2026) — THAY THẾ HOÀN TOÀN `CustomerGroup.discountPercent`
-> ("CK nhóm") đã xoá khỏi hệ thống.
+> ("CK nhóm") đã xoá khỏi hệ thống. Đổi từ cấu hình theo **Sản phẩm** sang theo
+> **Loại sản phẩm** (chốt 24/07/2026) — migration backfill `productTypeId` từ
+> `product_id` cũ, không mất dữ liệu (thời điểm đổi chỉ có 1 dòng cấu hình).
 
-Cấu hình chiết khấu riêng theo **từng cặp Khách hàng × Sản phẩm** — khách A
-mua sản phẩm X được giảm bao nhiêu %, sản phẩm Y có thể không được giảm gì.
-Chỉ dùng đơn vị %, mặc định 0% nếu chưa cấu hình.
+Cấu hình chiết khấu riêng theo **từng cặp Khách hàng × Loại sản phẩm** — khách
+A mua sản phẩm thuộc loại "Rèm cầu vồng" được giảm bao nhiêu %, loại "Cửa xếp"
+có thể không được giảm gì. Áp dụng cho mọi sản phẩm cùng loại, không cấu hình
+riêng từng sản phẩm. Chỉ dùng đơn vị %, mặc định 0% nếu chưa cấu hình.
 
 Bảng riêng `CustomerProductDiscount` — Master Data, không versioned (giống
 Pricing Rule ở cấp đơn giản, không có khái niệm DRAFT/ACTIVE/ARCHIVED).
@@ -249,21 +252,21 @@ Pricing Rule ở cấp đơn giản, không có khái niệm DRAFT/ACTIVE/ARCHIV
 ```
 id                String   PK, cuid()
 customer_id       String   FK → customers
-product_id        String   FK → products
+product_type_id   String   FK → product_types
 discount_percent  Decimal  0–100 (%)
 created_at        DateTime
 updated_at        DateTime
 
-@@unique([customer_id, product_id])
+@@unique([customer_id, product_type_id])
 ```
 
 API nested dưới Customer:
 
 * `GET /customers/:id/product-discounts` — danh sách chiết khấu đã cấu hình
-* `POST /customers/:id/product-discounts` — thêm mới `{ productId, discountPercent }`
-* `PATCH /customers/:id/product-discounts/:discountId` — sửa % (không đổi được sản phẩm)
+* `POST /customers/:id/product-discounts` — thêm mới `{ productTypeId, discountPercent }`
+* `PATCH /customers/:id/product-discounts/:discountId` — sửa % (không đổi được loại sản phẩm)
 * `DELETE /customers/:id/product-discounts/:discountId` — xoá
-* `GET /customers/:id/product-discounts/lookup?productId=` — trả `{ discountPercent }` (0 nếu chưa cấu hình), dùng khi Quotation module thêm dòng báo giá
+* `GET /customers/:id/product-discounts/lookup?productId=` — nhận `productId` (sản phẩm đang chọn khi thêm dòng báo giá), backend tự suy ra `productTypeId` để tìm % — trả `{ discountPercent }` (0 nếu chưa cấu hình)
 
 **Ranh giới kiến trúc:** Không gộp vào Pricing Engine — Pricing Rule chỉ dùng
 để tính giá bán (`systemPrice`), chiết khấu là chuyện của khách hàng

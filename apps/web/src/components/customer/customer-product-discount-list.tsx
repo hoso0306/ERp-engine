@@ -19,7 +19,7 @@ import { apiDelete, ApiError } from "@/lib/api";
 interface CustomerProductDiscount {
   id: string;
   discountPercent: number;
-  product: { id: string; code: string; name: string };
+  productType: { id: string; name: string };
 }
 
 interface CustomerProductDiscountListProps {
@@ -28,8 +28,9 @@ interface CustomerProductDiscountListProps {
   onChanged: () => void;
 }
 
-// Card "Chiết khấu sản phẩm" trên trang chi tiết khách hàng (Sprint 04, chốt
-// 16/07/2026) — THAY THẾ CK nhóm, cấu hình riêng khách × sản phẩm.
+// Card "Chiết khấu loại sản phẩm" trên trang chi tiết khách hàng (Sprint 04,
+// chốt 16/07/2026; đổi từ theo sản phẩm sang theo loại sản phẩm, chốt
+// 24/07/2026) — THAY THẾ CK nhóm, cấu hình riêng khách × loại sản phẩm.
 export function CustomerProductDiscountList({
   customerId,
   discounts,
@@ -53,7 +54,7 @@ export function CustomerProductDiscountList({
   return (
     <div className="rounded-lg border p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-muted-foreground">Chiết khấu sản phẩm</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">Chiết khấu loại sản phẩm</h3>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="mr-1 h-4 w-4" />
           Thêm chiết khấu
@@ -61,14 +62,13 @@ export function CustomerProductDiscountList({
       </div>
 
       {discounts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Chưa cấu hình chiết khấu cho sản phẩm nào.</p>
+        <p className="text-sm text-muted-foreground">Chưa cấu hình chiết khấu cho loại sản phẩm nào.</p>
       ) : (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Mã SP</TableHead>
-                <TableHead>Tên sản phẩm</TableHead>
+                <TableHead>Loại sản phẩm</TableHead>
                 <TableHead className="text-right">Chiết khấu</TableHead>
                 <TableHead className="w-20" />
               </TableRow>
@@ -76,10 +76,7 @@ export function CustomerProductDiscountList({
             <TableBody>
               {discounts.map((d) => (
                 <TableRow key={d.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {d.product.code}
-                  </TableCell>
-                  <TableCell className="font-medium">{d.product.name}</TableCell>
+                  <TableCell className="font-medium">{d.productType.name}</TableCell>
                   <TableCell className="text-right">{Number(d.discountPercent)}%</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
@@ -118,7 +115,7 @@ export function CustomerProductDiscountList({
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Xoá chiết khấu"
-        description={`Bạn có chắc muốn xoá chiết khấu cho sản phẩm "${deleteTarget?.product.name}"?`}
+        description={`Bạn có chắc muốn xoá chiết khấu cho loại sản phẩm "${deleteTarget?.productType.name}"?`}
         confirmLabel="Xoá"
         variant="destructive"
         onConfirm={handleDelete}

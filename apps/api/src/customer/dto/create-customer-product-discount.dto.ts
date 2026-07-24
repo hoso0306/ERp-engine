@@ -1,4 +1,4 @@
 export class CreateCustomerProductDiscountDto {
-  productId: string;
+  productTypeId: string;
   discountPercent: number;
 }

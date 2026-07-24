@@ -187,8 +187,9 @@ export function QuotationItemDialog({
     return () => clearTimeout(timer);
   }, [open, productId, paramValues, calculatePrice]);
 
-  // Lookup % chiết khấu Khách hàng × Sản phẩm — chỉ khi THÊM MỚI. Sửa dòng
-  // giữ nguyên discountPercent đã snapshot (không lookup lại).
+  // Lookup % chiết khấu Khách hàng × Loại sản phẩm (theo productId đang chọn,
+  // backend tự suy ra loại) — chỉ khi THÊM MỚI. Sửa dòng giữ nguyên
+  // discountPercent đã snapshot (không lookup lại).
   useEffect(() => {
     if (isEdit) return;
     if (!productId || !customerId) {
@@ -342,14 +343,14 @@ export function QuotationItemDialog({
             />
           </div>
 
-          {/* Chiết khấu Khách hàng × Sản phẩm (Sprint 04) — read-only, lookup từ Master Data */}
+          {/* Chiết khấu Khách hàng × Loại sản phẩm (Sprint 04) — read-only, lookup từ Master Data */}
           <Separator />
           <div className="space-y-1.5">
             <Label className="text-sm">Chiết khấu</Label>
             <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
               {discountPercent > 0
-                ? `${discountPercent}% (theo cấu hình khách hàng × sản phẩm)`
-                : "Chưa cấu hình chiết khấu cho sản phẩm này"}
+                ? `${discountPercent}% (theo cấu hình khách hàng × loại sản phẩm)`
+                : "Chưa cấu hình chiết khấu cho loại sản phẩm này"}
             </div>
           </div>
 

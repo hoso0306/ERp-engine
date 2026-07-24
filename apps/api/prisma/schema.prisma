@@ -348,22 +348,24 @@ model CustomerGroup {
   @@map("customer_groups")
 }
 
-// Chiết khấu theo Khách hàng × Sản phẩm (Sprint 04, chốt 16/07/2026) — THAY THẾ
+// Chiết khấu theo Khách hàng × Loại sản phẩm (Sprint 04, chốt 16/07/2026;
+// đổi từ theo Sản phẩm sang theo Loại sản phẩm, chốt 24/07/2026) — THAY THẾ
 // HOÀN TOÀN CustomerGroup.discountPercent ("CK nhóm"). Master Data, không
-// versioned — khi thêm/sửa dòng báo giá, hệ thống snapshot % này vào
+// versioned — khi thêm/sửa dòng báo giá, hệ thống lookup theo
+// Product.productTypeId của sản phẩm đang thêm và snapshot % vào
 // QuotationItem.discountPercent (xem quotation.md mục "Discount Engine").
 model CustomerProductDiscount {
   id              String   @id @default(cuid())
   customerId      String   @map("customer_id")
-  productId       String   @map("product_id")
+  productTypeId   String   @map("product_type_id")
   discountPercent Decimal  @map("discount_percent") @db.Decimal(5, 2)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  customer Customer @relation(fields: [customerId], references: [id])
-  product  Product  @relation(fields: [productId], references: [id])
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  productType ProductType @relation(fields: [productTypeId], references: [id])
 
-  @@unique([customerId, productId])
+  @@unique([customerId, productTypeId])
   @@map("customer_product_discounts")
 }
 
@@ -438,7 +440,8 @@ model ProductType {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  products Product[]
+  products          Product[]
+  customerDiscounts CustomerProductDiscount[]
 
   @@map("product_types")
 }
@@ -521,7 +524,6 @@ model Product {
   quotationItems      QuotationItem[]
   validationRules     ValidationRule[]
   derivedParameters   DerivedParameter[]
-  customerDiscounts   CustomerProductDiscount[]
 
   @@index([productTypeId])
   @@index([productionCenterId])
@@ -888,9 +890,10 @@ model QuotationItem {
   // — null khi sản phẩm không dùng Matrix (Expression fallback). Chỉ để hiển
   // thị trên bản in ("Giá bán"), không dùng để tính lại systemPrice/subtotal.
   unitPrice       Decimal? @map("unit_price") @db.Decimal(15, 0)
-  // Snapshot % từ CustomerProductDiscount(customerId, productId) tại thời điểm
-  // thêm/sửa dòng (Sprint 04, chốt 16/07/2026) — THAY THẾ groupDiscount
-  // ("CK nhóm") + additionalDiscountPercent/Amount/discountReason/discountBy cũ.
+  // Snapshot % từ CustomerProductDiscount(customerId, productTypeId) tại thời
+  // điểm thêm/sửa dòng (Sprint 04, chốt 16/07/2026; đổi productId →
+  // productTypeId 24/07/2026) — THAY THẾ groupDiscount ("CK nhóm") +
+  // additionalDiscountPercent/Amount/discountReason/discountBy cũ.
   discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
   // Phụ phí cộng SAU khi áp discountPercent (PricingRuleVersion.surchargeExpression,
   // Sprint 04 — 023). Snapshot tại thời điểm thêm/sửa dòng, không tính lại khi

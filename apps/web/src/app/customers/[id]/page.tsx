@@ -42,7 +42,7 @@ interface Customer {
 interface ProductDiscount {
   id: string;
   discountPercent: number;
-  product: { id: string; code: string; name: string };
+  productType: { id: string; name: string };
 }
 
 const priorityLabels: Record<string, string> = { LOW: "Thấp", MEDIUM: "Trung bình", HIGH: "Cao" };
