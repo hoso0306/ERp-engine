@@ -382,6 +382,82 @@ export class QuotationWorkflowService {
       data.note = dto.note?.trim() ?? null;
     }
 
+    // Đổi khách hàng (chốt 24/07/2026) — chỉ cho phép khi đang Nháp, chặt hơn
+    // EDITABLE_STATUSES chung (không cho đổi lúc Đã gửi). Check dựa vào status
+    // HIỆN TẠI nên báo giá bị Manual Override từ Đã gửi về lại Nháp vẫn đổi
+    // được khách hàng.
+    if (
+      dto.customerId !== undefined &&
+      dto.customerId !== quotation.customerId
+    ) {
+      if (quotation.status !== QuotationStatus.DRAFT) {
+        throw new ForbiddenException(
+          'Chỉ có thể đổi khách hàng khi báo giá ở trạng thái Nháp.',
+        );
+      }
+
+      const newCustomer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, deletedAt: null },
+      });
+      if (!newCustomer) {
+        throw new NotFoundException('Khách hàng không tồn tại.');
+      }
+
+      data.customer = { connect: { id: dto.customerId } };
+
+      // Đổi khách hàng thì snapshot lại % Chiết khấu Khách hàng × Loại sản
+      // phẩm cho TẤT CẢ dòng đã có theo khách hàng mới — quyết định chốt
+      // 24/07/2026, tránh dòng cũ giữ chiết khấu của khách cũ.
+      if (quotation.items.length > 0) {
+        const productIds = [...new Set(quotation.items.map((i) => i.productId))];
+        const products = await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, productTypeId: true },
+        });
+        const productTypeIdByProductId = new Map(
+          products.map((p) => [p.id, p.productTypeId]),
+        );
+
+        const productTypeIds = [...new Set(products.map((p) => p.productTypeId))];
+        const discounts = await this.prisma.customerProductDiscount.findMany({
+          where: {
+            customerId: dto.customerId,
+            productTypeId: { in: productTypeIds },
+          },
+        });
+        const discountPercentByProductTypeId = new Map(
+          discounts.map((d) => [d.productTypeId, Number(d.discountPercent)]),
+        );
+
+        return this.prisma.$transaction(async (tx) => {
+          for (const item of quotation.items) {
+            const productTypeId = productTypeIdByProductId.get(item.productId);
+            const discountPercent = productTypeId
+              ? (discountPercentByProductTypeId.get(productTypeId) ?? 0)
+              : 0;
+            const finalPrice = this.calcFinalPrice(
+              Number(item.systemPrice),
+              discountPercent,
+              Number(item.surchargeAfterDiscount),
+            );
+            const subtotal = this.calcSubtotal(finalPrice, Number(item.quantity));
+            const vatAmount = this.calcVatAmount(subtotal, Number(item.vatRate));
+
+            await tx.quotationItem.update({
+              where: { id: item.id },
+              data: { discountPercent, finalPrice, subtotal, vatAmount },
+            });
+          }
+
+          return tx.quotation.update({
+            where: { id },
+            data,
+            include: QUOTATION_INCLUDE,
+          });
+        });
+      }
+    }
+
     return this.prisma.quotation.update({
       where: { id },
       data,

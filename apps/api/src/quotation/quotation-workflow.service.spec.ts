@@ -734,6 +734,151 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
   });
 });
 
+// Chốt 24/07/2026 — update() cho đổi customerId khi Nháp, tự động snapshot
+// lại discountPercent cho các dòng đã có theo khách hàng mới.
+describe('QuotationWorkflowService.update() — đổi khách hàng', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotation: { findUnique: jest.Mock; update: jest.Mock };
+    quotationItem: { update: jest.Mock };
+    customer: { findFirst: jest.Mock };
+    product: { findMany: jest.Mock };
+    customerProductDiscount: { findMany: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      quotation: { findUnique: jest.fn(), update: jest.fn() },
+      quotationItem: { update: jest.fn() },
+      customer: { findFirst: jest.fn() },
+      product: { findMany: jest.fn() },
+      customerProductDiscount: { findMany: jest.fn() },
+      $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: { calculate: jest.fn() } },
+        { provide: BomEngineService, useValue: { loadConfigForVersion: jest.fn() } },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('đang SENT → chặn đổi khách hàng', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'SENT' }),
+    );
+
+    await expect(
+      service.update('q-1', { customerId: 'cust-2' }),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(prisma.quotation.update).not.toHaveBeenCalled();
+  });
+
+  it('đang DRAFT, khách hàng mới không tồn tại → NotFoundException', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.customer.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update('q-1', { customerId: 'cust-2' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('đang DRAFT, đã có dòng sản phẩm → snapshot lại discountPercent theo khách hàng mới', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({
+        status: 'DRAFT',
+        items: [
+          makeItem({
+            productId: 'prod-1',
+            systemPrice: 1_000_000,
+            surchargeAfterDiscount: 0,
+            quantity: 2,
+            vatRate: 0,
+            discountPercent: 10, // % cũ của khách cũ
+          }),
+        ],
+      }),
+    );
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-2' });
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'prod-1', productTypeId: 'pt-1' },
+    ]);
+    prisma.customerProductDiscount.findMany.mockResolvedValue([
+      { productTypeId: 'pt-1', discountPercent: 25 },
+    ]);
+    prisma.quotation.update.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+
+    await service.update('q-1', { customerId: 'cust-2' });
+
+    expect(prisma.customerProductDiscount.findMany).toHaveBeenCalledWith({
+      where: { customerId: 'cust-2', productTypeId: { in: ['pt-1'] } },
+    });
+    expect(prisma.quotationItem.update).toHaveBeenCalledWith({
+      where: { id: 'item-1' },
+      data: {
+        discountPercent: 25,
+        finalPrice: 750_000, // 1.000.000 × (1 − 25%)
+        subtotal: 1_500_000, // 750.000 × 2
+        vatAmount: 0,
+      },
+    });
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'q-1' },
+        data: expect.objectContaining({
+          customer: { connect: { id: 'cust-2' } },
+        }),
+      }),
+    );
+  });
+
+  it('đang DRAFT, khách hàng mới chưa cấu hình chiết khấu cho loại sản phẩm → discountPercent = 0', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({
+        status: 'DRAFT',
+        items: [
+          makeItem({
+            productId: 'prod-1',
+            systemPrice: 1_000_000,
+            surchargeAfterDiscount: 0,
+            quantity: 1,
+            vatRate: 0,
+            discountPercent: 10,
+          }),
+        ],
+      }),
+    );
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-2' });
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'prod-1', productTypeId: 'pt-1' },
+    ]);
+    prisma.customerProductDiscount.findMany.mockResolvedValue([]);
+    prisma.quotation.update.mockResolvedValue(makeQuotation({ status: 'DRAFT' }));
+
+    await service.update('q-1', { customerId: 'cust-2' });
+
+    expect(prisma.quotationItem.update).toHaveBeenCalledWith({
+      where: { id: 'item-1' },
+      data: {
+        discountPercent: 0,
+        finalPrice: 1_000_000,
+        subtotal: 1_000_000,
+        vatAmount: 0,
+      },
+    });
+  });
+});
+
 // 009-in-phieu-san-xuat.md (workbench/sprint-04) — snapshot valueLabel (nhãn hiển thị option
 // ENUM đã chọn) tại addItem/updateItem, để bản in không phải hiện mã thô.
 describe('QuotationWorkflowService — snapshot valueLabel cho tham số ENUM', () => {

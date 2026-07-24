@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { QuotationStatusBadge } from "@/components/quotation/quotation-status-badge";
+import { CustomerTypeahead, type CustomerOption } from "@/components/quotation/customer-typeahead";
 import { QuotationItemDialog } from "@/components/quotation/quotation-item-dialog";
 import { QuotationItemTable } from "@/components/quotation/quotation-item-table";
 import {
@@ -149,6 +150,7 @@ export default function QuotationDetailPage() {
   const [editExpiry, setEditExpiry] = useState("");
   const [editExpectedDelivery, setEditExpectedDelivery] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editCustomer, setEditCustomer] = useState<CustomerOption | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
   // Item dialog
@@ -235,18 +237,29 @@ export default function QuotationDetailPage() {
         : "",
     );
     setEditNote(quotation.note ?? "");
+    setEditCustomer(quotation.customer);
     setEditOpen(true);
   }
 
   async function saveHeader(e: React.FormEvent) {
     e.preventDefault();
+    if (quotation?.status === "DRAFT" && !editCustomer) {
+      toast.error("Vui lòng chọn khách hàng.");
+      return;
+    }
     setEditSaving(true);
     try {
-      await apiPatch(`/quotations/${id}`, {
+      const body: Record<string, unknown> = {
         note: editNote.trim() || null,
         expiryDate: editExpiry || null,
         expectedDeliveryDate: editExpectedDelivery || null,
-      });
+      };
+      // Chỉ gửi customerId khi đang Nháp — SENT không được đổi khách hàng
+      // (chặn ở BE nữa, chặn sớm ở FE cho gọn).
+      if (quotation?.status === "DRAFT" && editCustomer) {
+        body.customerId = editCustomer.id;
+      }
+      await apiPatch(`/quotations/${id}`, body);
       toast.success("Đã cập nhật.");
       setEditOpen(false);
       refresh();
@@ -703,6 +716,19 @@ export default function QuotationDetailPage() {
             <DialogTitle>Sửa thông tin báo giá</DialogTitle>
           </DialogHeader>
           <form id="edit-header-form" onSubmit={saveHeader} className="space-y-4">
+            {quotation.status === "DRAFT" ? (
+              <div className="space-y-2">
+                <Label>Khách hàng *</Label>
+                <CustomerTypeahead value={editCustomer} onChange={setEditCustomer} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Khách hàng</Label>
+                <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                  {quotation.customer.name} — chỉ đổi được khách hàng khi báo giá ở trạng thái Nháp.
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-expiry">Ngày hết hạn</Label>
               <Input
