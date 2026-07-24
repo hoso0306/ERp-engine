@@ -65,8 +65,8 @@ export function DeliveryAddressDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!deliveryName.trim() || !deliveryPhone.trim()) {
-      toast.error("Vui lòng nhập tên và số điện thoại nhận hàng.");
+    if (!deliveryName.trim()) {
+      toast.error("Vui lòng nhập tên người nhận hàng.");
       return;
     }
     setSaving(true);
@@ -116,12 +116,11 @@ export function DeliveryAddressDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`delivery-phone-${salesOrderId}`}>Số điện thoại *</Label>
+                <Label htmlFor={`delivery-phone-${salesOrderId}`}>Số điện thoại</Label>
                 <Input
                   id={`delivery-phone-${salesOrderId}`}
                   value={deliveryPhone}
                   onChange={(e) => setDeliveryPhone(e.target.value)}
-                  required
                 />
               </div>
             </div>
@@ -167,7 +166,7 @@ export function DeliveryAddressDialog({
             <Button
               type="submit"
               form={`delivery-form-${salesOrderId}`}
-              disabled={saving || !deliveryName.trim() || !deliveryPhone.trim()}
+              disabled={saving || !deliveryName.trim()}
             >
               {saving ? "Đang lưu..." : "Lưu địa chỉ"}
             </Button>

@@ -244,9 +244,6 @@ export class SalesOrderService {
     if (!dto.deliveryName?.trim()) {
       throw new BadRequestException('Tên người nhận hàng là bắt buộc.');
     }
-    if (!dto.deliveryPhone?.trim()) {
-      throw new BadRequestException('Số điện thoại nhận hàng là bắt buộc.');
-    }
 
     const salesOrder = await this.findOne(id);
 

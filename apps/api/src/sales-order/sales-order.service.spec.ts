@@ -268,10 +268,11 @@ describe('SalesOrderService — actor name snapshot', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('bắt buộc deliveryPhone', async () => {
+    it('không bắt buộc deliveryPhone', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
       await expect(
         service.updateDeliveryAddress('so-1', { ...dto, deliveryPhone: '' }, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
+      ).resolves.toBeDefined();
     });
 
     it('không bắt buộc lý do (khác Manual Override)', async () => {
