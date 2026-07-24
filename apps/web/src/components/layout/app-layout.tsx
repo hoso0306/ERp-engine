@@ -46,7 +46,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               layout shell ngoài — xem cách làm tương tự ở print/page.tsx báo
               giá). Áp dụng chung cho mọi trang qua layout thay vì lặp lại ở
               từng page. */}
-          <main className="relative isolate flex-1 overflow-auto p-6">
+          {/* min-w-0: <main> là flex-item cạnh Sidebar — mặc định flex-item
+              không co nhỏ hơn nội dung bên trong (bảng rộng), nên khi mở
+              rộng sidebar trên màn hẹp, cả TRANG bị đẩy ngang thay vì chỉ
+              bảng bên trong tự cuộn. min-w-0 cho phép <main> co lại đúng
+              khổ còn lại, overflow-auto sẽ tự hiện thanh cuộn ngang cục bộ. */}
+          <main className="relative isolate flex-1 min-w-0 overflow-auto p-6">
             {branding?.logo && (
               // eslint-disable-next-line @next/next/no-img-element
               <img

@@ -223,7 +223,11 @@ function Sidebar({
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
+            : // max-xl: dưới 1280px (màn laptop), gap luôn giữ bề rộng "icon"
+              // dù sidebar đang mở rộng hay thu gọn — chỉ panel thật (bên
+              // dưới, fixed) mới giãn hết cỡ, đè lên nội dung thay vì đẩy.
+              // Màn ≥1280px vẫn đẩy layout bình thường như desktop rộng.
+              "group-data-[collapsible=icon]:w-(--sidebar-width-icon) max-xl:w-(--sidebar-width-icon)"
         )}
       />
       <div
@@ -234,7 +238,7 @@ function Sidebar({
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l max-xl:shadow-xl",
           className
         )}
         {...props}
@@ -307,7 +311,11 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        // min-w-0: đây mới thực sự là flex-item cạnh Sidebar trong hàng flex
+        // ngoài cùng — thiếu min-w-0 ở ĐÂY thì fix min-w-0 ở <main> con bên
+        // trong (app-layout.tsx) không có tác dụng gì, vì tầng này đã không
+        // chịu co lại trước rồi, kéo cả trang tràn ngang khi có bảng rộng.
+        "relative flex w-full min-w-0 flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
