@@ -541,14 +541,39 @@ export class CustomerService {
     await this.excel.export(res, 'mau-import-khach-hang', columns, sampleRows);
   }
 
-  // Import Excel (viết lại 24/07/2026) — mỗi dòng lỗi CHỈ bị bỏ qua riêng
-  // dòng đó, không chặn cả file nữa. SĐT trùng với khách đã có trong DB
-  // (chưa xoá) → CẬP NHẬT khách đó thay vì báo lỗi, nhưng chỉ điền field
-  // đang trống (không đè dữ liệu đã có), không đổi code/name/phone.
-  async importExcel(buffer: Buffer) {
+  // Nhãn hiển thị field cho bảng Preview import (chốt 24/07/2026) — field nào
+  // không có trong map này (priority/status/debtLimit/debtTermDays) không
+  // bao giờ xuất hiện trong changedFields vì không nằm trong SCALAR_MERGE_FIELDS.
+  private readonly IMPORT_FIELD_LABELS: Record<string, string> = {
+    email: 'Email',
+    companyName: 'Tên công ty',
+    taxCode: 'Mã số thuế',
+    province: 'Tỉnh/TP',
+    district: 'Quận/Huyện',
+    ward: 'Phường/Xã',
+    address: 'Địa chỉ',
+    note: 'Ghi chú',
+    defaultCarrierName: 'Nhà xe',
+    defaultCarrierPhone: 'SĐT nhà xe',
+    defaultCarrierNote: 'Ghi chú giao hàng',
+    customerGroupId: 'Nhóm KH',
+    deliveryRouteId: 'Tuyến GH',
+  };
+
+  // Parse + validate + so khớp DB — dùng chung cho Preview (chỉ đọc) và Import
+  // thật (có ghi DB), đảm bảo preview thấy đúng những gì sẽ xảy ra (chốt
+  // 24/07/2026). Mỗi dòng lỗi CHỈ bị bỏ qua riêng dòng đó, không chặn cả
+  // file. SĐT trùng khách đã có trong DB (chưa xoá) → CẬP NHẬT thay vì báo
+  // lỗi, nhưng chỉ điền field đang trống (không đè dữ liệu đã có).
+  private async resolveImport(buffer: Buffer) {
     const sheet = await this.excel.readFile(buffer);
     const errors: { row: number; message: string }[] = [];
-    const rowsData: { row: number; dto: CreateCustomerDto }[] = [];
+    const rowsData: {
+      row: number;
+      dto: CreateCustomerDto;
+      groupName: string;
+      routeName: string;
+    }[] = [];
 
     const allGroups = await this.prisma.customerGroup.findMany();
     const allRoutes = await this.prisma.deliveryRoute.findMany();
@@ -655,6 +680,8 @@ export class CustomerService {
 
       rowsData.push({
         row: rowNumber,
+        groupName,
+        routeName,
         dto: {
           name,
           phone,
@@ -681,7 +708,7 @@ export class CustomerService {
 
     // SĐT trùng trong cùng file — giữ dòng đầu tiên, các dòng sau bị bỏ qua.
     const seenPhones = new Map<string, number>();
-    const uniqueRows: { row: number; dto: CreateCustomerDto }[] = [];
+    const uniqueRows: typeof rowsData = [];
     for (const item of rowsData) {
       const firstRow = seenPhones.get(item.dto.phone);
       if (firstRow !== undefined) {
@@ -722,37 +749,100 @@ export class CustomerService {
       'defaultCarrierNote',
     ] as const;
 
-    let created = 0;
-    let updated = 0;
+    const toCreate: { row: number; dto: CreateCustomerDto }[] = [];
+    const toUpdate: {
+      row: number;
+      dto: CreateCustomerDto;
+      existingId: string;
+      updateData: Prisma.CustomerUpdateInput;
+      changedFields: { label: string; newValue: string }[];
+    }[] = [];
 
-    for (const { dto } of uniqueRows) {
+    for (const { row, dto, groupName, routeName } of uniqueRows) {
       const existing = existingByPhone.get(dto.phone);
 
       if (existing) {
-        const data: Prisma.CustomerUpdateInput = {};
+        const updateData: Prisma.CustomerUpdateInput = {};
+        const changedFields: { label: string; newValue: string }[] = [];
         for (const field of SCALAR_MERGE_FIELDS) {
           const current = existing[field];
           const incoming = dto[field];
           if ((current === null || current === undefined) && incoming) {
-            (data as Record<string, unknown>)[field] = incoming;
+            (updateData as Record<string, unknown>)[field] = incoming;
+            changedFields.push({
+              label: this.IMPORT_FIELD_LABELS[field],
+              newValue: String(incoming),
+            });
           }
         }
         if (!existing.customerGroupId && dto.customerGroupId) {
-          data.customerGroup = { connect: { id: dto.customerGroupId } };
+          updateData.customerGroup = { connect: { id: dto.customerGroupId } };
+          changedFields.push({ label: 'Nhóm KH', newValue: groupName });
         }
         if (!existing.deliveryRouteId && dto.deliveryRouteId) {
-          data.deliveryRoute = { connect: { id: dto.deliveryRouteId } };
+          updateData.deliveryRoute = { connect: { id: dto.deliveryRouteId } };
+          changedFields.push({ label: 'Tuyến GH', newValue: routeName });
         }
-        if (Object.keys(data).length > 0) {
-          await this.prisma.customer.update({
-            where: { id: existing.id },
-            data,
-          });
-        }
-        updated++;
-        continue;
+        toUpdate.push({
+          row,
+          dto,
+          existingId: existing.id,
+          updateData,
+          changedFields,
+        });
+      } else {
+        toCreate.push({ row, dto });
       }
+    }
 
+    return { errors, toCreate, toUpdate };
+  }
+
+  // Preview import (chốt 24/07/2026) — chạy toàn bộ logic thật (validate +
+  // so khớp DB) nhưng KHÔNG ghi DB, để người dùng thấy trước chính xác dòng
+  // nào tạo mới, dòng nào cập nhật (kèm field nào sẽ được điền) trước khi
+  // bấm xác nhận.
+  async previewImportExcel(buffer: Buffer) {
+    const { errors, toCreate, toUpdate } = await this.resolveImport(buffer);
+
+    const items = [
+      ...toCreate.map((r) => ({
+        row: r.row,
+        action: 'create' as const,
+        name: r.dto.name,
+        phone: r.dto.phone,
+        changedFields: [],
+      })),
+      ...toUpdate.map((r) => ({
+        row: r.row,
+        action: 'update' as const,
+        name: r.dto.name,
+        phone: r.dto.phone,
+        changedFields: r.changedFields,
+      })),
+    ].sort((a, b) => a.row - b.row);
+
+    return {
+      toCreate: toCreate.length,
+      toUpdate: toUpdate.length,
+      errors,
+      items,
+    };
+  }
+
+  async importExcel(buffer: Buffer) {
+    const { errors, toCreate, toUpdate } = await this.resolveImport(buffer);
+
+    for (const { existingId, updateData } of toUpdate) {
+      if (Object.keys(updateData).length > 0) {
+        await this.prisma.customer.update({
+          where: { id: existingId },
+          data: updateData,
+        });
+      }
+    }
+
+    for (const { dto } of toCreate) {
       const code = await this.generateCode('CUSTOMER');
       await this.prisma.customer.create({
         data: {
@@ -778,10 +868,9 @@ export class CustomerService {
           defaultCarrierNote: dto.defaultCarrierNote || null,
         },
       });
-      created++;
     }
 
-    return { created, updated, errors };
+    return { created: toCreate.length, updated: toUpdate.length, errors };
   }
 
   // ──────────────────────────────────────

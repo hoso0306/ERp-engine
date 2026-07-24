@@ -83,6 +83,13 @@ export class CustomerController {
     return this.customerService.create(dto);
   }
 
+  @Post('import/preview')
+  @RequirePermission('customer.create')
+  @UseInterceptors(FileInterceptor('file'))
+  previewImportExcel(@UploadedFile() file: Express.Multer.File) {
+    return this.customerService.previewImportExcel(file.buffer);
+  }
+
   @Post('import')
   @RequirePermission('customer.create')
   @UseInterceptors(FileInterceptor('file'))
