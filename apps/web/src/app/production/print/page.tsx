@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
@@ -148,13 +148,58 @@ function otherParamsText(item: ProductionOrderItem): string {
 // Cột "Ghi chú" gộp (mẫu Xưởng) chỉ có 1 dòng cao cố định — thay vì cho ô
 // cao dần theo nội dung (phá vỡ chiều cao các dòng khác cùng hàng), chữ tự
 // NHỎ LẠI khi gõ dài hơn để luôn vừa trong 1 dòng, đọc rõ khi gõ ngắn.
-function noteFontSize(text: string): number {
-  const len = text.length;
-  if (len <= 12) return 13;
-  if (len <= 24) return 11;
-  if (len <= 40) return 9.5;
-  if (len <= 60) return 8.5;
-  return 7.5;
+//
+// Đo bằng canvas thay vì đoán theo số ký tự (cách cũ co nhỏ quá sớm, chưa
+// gõ hết nửa cột đã giảm) — chỉ giảm cỡ chữ khi bề rộng chữ thật sự chạm
+// hết bề rộng ô, gõ tiếp mới giảm thêm.
+const NOTE_MAX_FONT_SIZE = 22;
+const NOTE_MIN_FONT_SIZE = 7;
+const NOTE_FONT_FAMILY = "Inter, Roboto, Arial, sans-serif";
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureContext(): CanvasRenderingContext2D {
+  if (!measureCtx) {
+    measureCtx = document.createElement("canvas").getContext("2d");
+  }
+  return measureCtx!;
+}
+
+// Cỡ chữ lớn nhất (bội số 0.5) để text vừa đúng `availableWidth` (px).
+function fitNoteFontSize(text: string, availableWidth: number): number {
+  const ctx = getMeasureContext();
+  let size = NOTE_MAX_FONT_SIZE;
+  while (size > NOTE_MIN_FONT_SIZE) {
+    ctx.font = `${size}px ${NOTE_FONT_FAMILY}`;
+    if (ctx.measureText(text).width <= availableWidth) break;
+    size -= 0.5;
+  }
+  return size;
+}
+
+// Ô ghi chú tự co giãn — đo lại mỗi khi nội dung đổi, dựa trên chiều rộng
+// thật của chính textarea (đã trừ padding qua box-sizing: border-box).
+function NoteCell({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [fontSize, setFontSize] = useState(NOTE_MAX_FONT_SIZE);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const available = el.clientWidth - 6; // trừ padding ngang 3px x 2 của .note-textarea
+    if (available <= 0) return;
+    setFontSize(fitNoteFontSize(value, available));
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      className="note-textarea"
+      rows={1}
+      style={{ fontSize }}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }
 
 function fmtDate(d: string) {
@@ -294,6 +339,7 @@ function ProductionOrderPrintContent() {
           padding: 5px 3px;
           overflow: hidden;
           field-sizing: content;
+          text-decoration: underline;
         }
       `}</style>
 
@@ -667,19 +713,16 @@ function WorkshopOrderContent({
                     )}
                     <td style={tdBigStyle}>{paramValue(item, WIDTH_PARAM_NAME)}</td>
                     <td style={tdBigStyle}>{paramValue(item, HEIGHT_PARAM_NAME)}</td>
-                    <td style={{ ...tdStyle, fontWeight: 700 }}>{Number(item.quantity)}</td>
+                    <td style={tdBigStyle}>{Number(item.quantity)}</td>
                     {itemIdx === 0 && (
                       <td
                         rowSpan={group.items.length}
                         style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top" }}
                       >
-                        <textarea
-                          className="note-textarea"
-                          rows={1}
-                          style={{ fontSize: noteFontSize(noteOverrides[group.items[0].id] ?? "") }}
+                        <NoteCell
                           value={noteOverrides[group.items[0].id] ?? ""}
-                          onChange={(e) =>
-                            setNoteOverrides((prev) => ({ ...prev, [group.items[0].id]: e.target.value }))
+                          onChange={(value) =>
+                            setNoteOverrides((prev) => ({ ...prev, [group.items[0].id]: value }))
                           }
                         />
                       </td>
@@ -691,7 +734,7 @@ function WorkshopOrderContent({
           })()}
           <tr>
             <td colSpan={4} style={{ ...tdStyle, fontWeight: 700 }}>TỔNG CỘNG</td>
-            <td style={{ ...tdStyle, fontWeight: 700 }}>{totalQuantity}</td>
+            <td style={tdBigStyle}>{totalQuantity}</td>
             <td style={{ border: WORKSHOP_BORDER }} />
           </tr>
         </tbody>
