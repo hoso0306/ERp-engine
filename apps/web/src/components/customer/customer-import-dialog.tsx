@@ -58,20 +58,26 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
     formData.append("file", file);
 
     try {
-      const json = await apiPost<{ success: number; errors: ImportError[] }>(
+      const json = await apiPost<{ created: number; updated: number; errors: ImportError[] }>(
         "/customers/import",
         formData,
       );
 
+      setErrors(json.errors ?? []);
+
+      const parts: string[] = [];
+      if (json.created > 0) parts.push(`Tạo mới ${json.created}`);
+      if (json.updated > 0) parts.push(`Cập nhật ${json.updated}`);
+      const summary = parts.length > 0 ? parts.join(", ") : "Không có khách hàng nào được import";
+
       if (json.errors?.length > 0) {
-        setErrors(json.errors);
-        toast.error(`Import thất bại: ${json.errors.length} lỗi.`);
-        return;
+        toast.error(`${summary}. Còn ${json.errors.length} dòng lỗi bên dưới.`);
+      } else {
+        toast.success(`${summary}.`);
+        onOpenChange(false);
       }
 
-      toast.success(`Đã import ${json.success} khách hàng.`);
-      onOpenChange(false);
-      onImported();
+      if (json.created > 0 || json.updated > 0) onImported();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -81,7 +87,7 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); setErrors([]); }}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Import khách hàng từ Excel</DialogTitle>
           <DialogDescription>
@@ -102,7 +108,7 @@ export function CustomerImportDialog({ open, onOpenChange, onImported }: Custome
         <Input ref={fileRef} type="file" accept=".xlsx,.xls" />
 
         {errors.length > 0 && (
-          <div className="max-h-40 overflow-auto rounded-md bg-red-50 p-3 text-sm dark:bg-red-900/20">
+          <div className="max-h-96 overflow-auto rounded-md bg-red-50 p-4 text-sm dark:bg-red-900/20">
             {errors.map((err, i) => (
               <p key={i} className="text-red-700 dark:text-red-400">
                 {err.row > 0 ? `Dòng ${err.row}: ` : ""}{err.message}

@@ -29,6 +29,9 @@ interface Customer {
   debtLimit: string;
   debtTermDays: number;
   note: string | null;
+  defaultCarrierName: string | null;
+  defaultCarrierPhone: string | null;
+  defaultCarrierNote: string | null;
   createdAt: string;
   updatedAt: string;
   customerGroup: { id: string; name: string } | null;
@@ -149,6 +152,17 @@ export default function CustomerDetailPage() {
           <Field label="Thời hạn công nợ" value={`${customer.debtTermDays} ngày`} />
         </dl>
       </div>
+
+      {(customer.defaultCarrierName || customer.defaultCarrierPhone || customer.defaultCarrierNote) && (
+        <div className="rounded-lg border p-6">
+          <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin giao hàng</h3>
+          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <Field label="Nhà xe" value={customer.defaultCarrierName} />
+            <Field label="SĐT nhà xe" value={customer.defaultCarrierPhone} />
+            <Field label="Ghi chú giao hàng" value={customer.defaultCarrierNote} />
+          </dl>
+        </div>
+      )}
 
       <CustomerProductDiscountList
         customerId={customer.id}

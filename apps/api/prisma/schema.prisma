@@ -729,7 +729,9 @@ model MaterialRequirementItem {
 
 // Ràng buộc kích thước/cấu hình khi tạo báo giá. Expression mô tả điều kiện
 // VI PHẠM (true → cảnh báo/chặn). Ví dụ hệ xích: height > 2 * width.
-// Nghiệp vụ hiện tại chỉ dùng WARN (chốt 10/07/2026); BLOCK để sẵn cho tương lai.
+// WARN dùng cho auto-điều chỉnh kích thước (diện tích/chiều rộng dưới sàn tự
+// nâng lên và tính tiền theo sàn). BLOCK dùng khi không thể tự suy ra giá trị
+// thay thế hợp lý, ví dụ hết hàng màu (audit 22/07/2026, xem SP000052).
 model ValidationRule {
   id           String             @id @default(cuid())
   productId    String             @map("product_id")
@@ -793,6 +795,13 @@ model Customer {
   debtLimit    Decimal        @default(0) @map("debt_limit") @db.Decimal(15, 0)
   debtTermDays Int            @default(30) @map("debt_term_days")
   note         String?
+
+  // Thông tin nhà xe mặc định của khách (chốt 24/07/2026) — chỉ để tham khảo
+  // khi tạo đơn, KHÔNG tự snapshot vào SalesOrder.carrier* (người dùng vẫn tự
+  // nhập qua CarrierInfoDialog ở từng đơn như trước).
+  defaultCarrierName  String? @map("default_carrier_name")
+  defaultCarrierPhone String? @map("default_carrier_phone")
+  defaultCarrierNote  String? @map("default_carrier_note")
 
   createdBy String?   @map("created_by")
   updatedBy String?   @map("updated_by")

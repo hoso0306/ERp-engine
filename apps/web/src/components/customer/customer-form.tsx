@@ -42,7 +42,10 @@ export function CustomerForm() {
       phone: form.get("phone"),
     };
 
-    const optional = ["email", "companyName", "taxCode", "province", "district", "ward", "address", "note"];
+    const optional = [
+      "email", "companyName", "taxCode", "province", "district", "ward", "address", "note",
+      "defaultCarrierName", "defaultCarrierPhone", "defaultCarrierNote",
+    ];
     for (const key of optional) {
       const val = form.get(key);
       if (val && String(val).trim()) body[key] = String(val).trim();
@@ -186,6 +189,28 @@ export function CustomerForm() {
         <div className="space-y-2">
           <Label htmlFor="debtLimit">Hạn mức công nợ (VNĐ)</Label>
           <Input id="debtLimit" name="debtLimit" type="number" min={0} defaultValue={0} />
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className="text-sm font-medium text-muted-foreground">
+          Thông tin giao hàng <span className="text-xs">(nhà xe mặc định, chỉ để tham khảo)</span>
+        </legend>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="defaultCarrierName">Nhà xe</Label>
+            <Input id="defaultCarrierName" name="defaultCarrierName" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="defaultCarrierPhone">SĐT nhà xe</Label>
+            <Input id="defaultCarrierPhone" name="defaultCarrierPhone" />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="defaultCarrierNote">Ghi chú giao hàng</Label>
+          <Input id="defaultCarrierNote" name="defaultCarrierNote" />
         </div>
       </fieldset>
 

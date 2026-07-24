@@ -14,6 +14,9 @@ import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-
 import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
 import { Prisma, SalesOrderStatus } from '@prisma/client';
 
+const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
+const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
+
 @Injectable()
 export class CustomerService {
   constructor(
@@ -121,6 +124,9 @@ export class CustomerService {
         debtLimit: dto.debtLimit ?? 0,
         debtTermDays: dto.debtTermDays ?? 30,
         note: dto.note?.trim() || null,
+        defaultCarrierName: dto.defaultCarrierName?.trim() || null,
+        defaultCarrierPhone: dto.defaultCarrierPhone?.trim() || null,
+        defaultCarrierNote: dto.defaultCarrierNote?.trim() || null,
       },
       include: {
         customerGroup: { select: { id: true, name: true } },
@@ -221,6 +227,12 @@ export class CustomerService {
     if (dto.ward !== undefined) data.ward = dto.ward?.trim() || null;
     if (dto.address !== undefined) data.address = dto.address?.trim() || null;
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
+    if (dto.defaultCarrierName !== undefined)
+      data.defaultCarrierName = dto.defaultCarrierName?.trim() || null;
+    if (dto.defaultCarrierPhone !== undefined)
+      data.defaultCarrierPhone = dto.defaultCarrierPhone?.trim() || null;
+    if (dto.defaultCarrierNote !== undefined)
+      data.defaultCarrierNote = dto.defaultCarrierNote?.trim() || null;
     if (dto.priority !== undefined) data.priority = dto.priority;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.debtLimit !== undefined) data.debtLimit = dto.debtLimit;
@@ -345,6 +357,8 @@ export class CustomerService {
       },
     });
 
+    const { groupNames, routeNames } = await this.getGroupRouteNames();
+
     const columns = [
       { header: 'Mã KH', key: 'code', width: 12 },
       { header: 'Tên khách hàng', key: 'name', width: 25 },
@@ -355,10 +369,30 @@ export class CustomerService {
       { header: 'Quận/Huyện', key: 'district', width: 15 },
       { header: 'Phường/Xã', key: 'ward', width: 15 },
       { header: 'Địa chỉ', key: 'address', width: 30 },
-      { header: 'Nhóm KH', key: 'groupName', width: 15 },
-      { header: 'Tuyến GH', key: 'routeName', width: 15 },
-      { header: 'Ưu tiên', key: 'priority', width: 10 },
-      { header: 'Trạng thái', key: 'status', width: 12 },
+      {
+        header: 'Nhóm KH',
+        key: 'groupName',
+        width: 15,
+        validationList: groupNames,
+      },
+      {
+        header: 'Tuyến GH',
+        key: 'routeName',
+        width: 15,
+        validationList: routeNames,
+      },
+      {
+        header: 'Ưu tiên',
+        key: 'priority',
+        width: 10,
+        validationList: PRIORITY_VALUES,
+      },
+      {
+        header: 'Trạng thái',
+        key: 'status',
+        width: 12,
+        validationList: STATUS_VALUES,
+      },
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
@@ -366,6 +400,11 @@ export class CustomerService {
       // thứ tự cột cũ để file import/export cũ không bị lệch cột.
       { header: 'Tên công ty', key: 'companyName', width: 25 },
       { header: 'Mã số thuế', key: 'taxCode', width: 15, numFmt: '@' },
+      // Thông tin nhà xe mặc định thêm CUỐI (chốt 24/07/2026) — cùng lý do
+      // giữ tương thích file cũ.
+      { header: 'Nhà xe', key: 'carrierName', width: 20 },
+      { header: 'SĐT nhà xe', key: 'carrierPhone', width: 15, numFmt: '@' },
+      { header: 'Ghi chú giao hàng', key: 'carrierNote', width: 25 },
     ];
 
     const rows = customers.map((c) => ({
@@ -386,12 +425,28 @@ export class CustomerService {
       debtLimit: Number(c.debtLimit),
       debtTermDays: c.debtTermDays,
       note: c.note || '',
+      carrierName: c.defaultCarrierName || '',
+      carrierPhone: c.defaultCarrierPhone || '',
+      carrierNote: c.defaultCarrierNote || '',
     }));
 
     await this.excel.export(res, 'khach-hang', columns, rows);
   }
 
+  private async getGroupRouteNames() {
+    const [groups, routes] = await Promise.all([
+      this.prisma.customerGroup.findMany({ orderBy: { name: 'asc' } }),
+      this.prisma.deliveryRoute.findMany({ orderBy: { name: 'asc' } }),
+    ]);
+    return {
+      groupNames: groups.map((g) => g.name),
+      routeNames: routes.map((r) => r.name),
+    };
+  }
+
   async exportTemplate(res: Response) {
+    const { groupNames, routeNames } = await this.getGroupRouteNames();
+
     const columns = [
       { header: 'Tên khách hàng *', key: 'name', width: 25 },
       // numFmt '@' — cột Text để Excel không cắt số 0 đầu khi nhập liệu.
@@ -401,10 +456,30 @@ export class CustomerService {
       { header: 'Quận/Huyện', key: 'district', width: 15 },
       { header: 'Phường/Xã', key: 'ward', width: 15 },
       { header: 'Địa chỉ', key: 'address', width: 30 },
-      { header: 'Nhóm KH', key: 'groupName', width: 15 },
-      { header: 'Tuyến GH', key: 'routeName', width: 15 },
-      { header: 'Ưu tiên', key: 'priority', width: 10 },
-      { header: 'Trạng thái', key: 'status', width: 12 },
+      {
+        header: 'Nhóm KH',
+        key: 'groupName',
+        width: 15,
+        validationList: groupNames,
+      },
+      {
+        header: 'Tuyến GH',
+        key: 'routeName',
+        width: 15,
+        validationList: routeNames,
+      },
+      {
+        header: 'Ưu tiên',
+        key: 'priority',
+        width: 10,
+        validationList: PRIORITY_VALUES,
+      },
+      {
+        header: 'Trạng thái',
+        key: 'status',
+        width: 12,
+        validationList: STATUS_VALUES,
+      },
       { header: 'Hạn mức CN', key: 'debtLimit', width: 15 },
       { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 18 },
       { header: 'Ghi chú', key: 'note', width: 30 },
@@ -412,6 +487,10 @@ export class CustomerService {
       // (15 cột) vẫn import được, 2 cột cuối coi như trống.
       { header: 'Tên công ty', key: 'companyName', width: 25 },
       { header: 'Mã số thuế', key: 'taxCode', width: 15, numFmt: '@' },
+      // Thông tin nhà xe mặc định thêm CUỐI (chốt 24/07/2026).
+      { header: 'Nhà xe', key: 'carrierName', width: 20 },
+      { header: 'SĐT nhà xe', key: 'carrierPhone', width: 15, numFmt: '@' },
+      { header: 'Ghi chú giao hàng', key: 'carrierNote', width: 25 },
     ];
 
     const sampleRows = [
@@ -432,6 +511,9 @@ export class CustomerService {
         note: '',
         companyName: '',
         taxCode: '',
+        carrierName: '',
+        carrierPhone: '',
+        carrierNote: '',
       },
       {
         name: 'Trần Thị B',
@@ -450,24 +532,28 @@ export class CustomerService {
         note: 'Khách VIP',
         companyName: 'Công ty TNHH B',
         taxCode: '0101234567',
+        carrierName: 'Nhà xe Thành Công',
+        carrierPhone: '0912345678',
+        carrierNote: 'Giao trước 10h sáng',
       },
     ];
 
     await this.excel.export(res, 'mau-import-khach-hang', columns, sampleRows);
   }
 
+  // Import Excel (viết lại 24/07/2026) — mỗi dòng lỗi CHỈ bị bỏ qua riêng
+  // dòng đó, không chặn cả file nữa. SĐT trùng với khách đã có trong DB
+  // (chưa xoá) → CẬP NHẬT khách đó thay vì báo lỗi, nhưng chỉ điền field
+  // đang trống (không đè dữ liệu đã có), không đổi code/name/phone.
   async importExcel(buffer: Buffer) {
     const sheet = await this.excel.readFile(buffer);
     const errors: { row: number; message: string }[] = [];
-    const toCreate: CreateCustomerDto[] = [];
+    const rowsData: { row: number; dto: CreateCustomerDto }[] = [];
 
     const allGroups = await this.prisma.customerGroup.findMany();
     const allRoutes = await this.prisma.deliveryRoute.findMany();
     const groupMap = new Map(allGroups.map((g) => [g.name, g.id]));
     const routeMap = new Map(allRoutes.map((r) => [r.name, r.id]));
-
-    const validPriorities = ['LOW', 'MEDIUM', 'HIGH'];
-    const validStatuses = ['ACTIVE', 'INACTIVE'];
 
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -488,6 +574,15 @@ export class CustomerService {
         return s;
       };
 
+      // Bỏ qua dòng hoàn toàn trống (VD dòng thừa cuối file mẫu).
+      if (
+        row.values === undefined ||
+        (Array.isArray(row.values) &&
+          row.values.every((v) => v === null || v === undefined || v === ''))
+      ) {
+        return;
+      }
+
       const name = cell(1);
       const phone = phoneCell(2);
       const email = cell(3) || undefined;
@@ -502,6 +597,9 @@ export class CustomerService {
       let taxCode: string | undefined =
         cell(16).replace(/\s/g, '') || undefined;
       if (taxCode && /^\d{9}$/.test(taxCode)) taxCode = '0' + taxCode;
+      const defaultCarrierName = cell(17) || undefined;
+      const defaultCarrierPhone = phoneCell(18) || undefined;
+      const defaultCarrierNote = cell(19) || undefined;
 
       if (!name) {
         errors.push({ row: rowNumber, message: 'Tên khách hàng là bắt buộc.' });
@@ -540,77 +638,121 @@ export class CustomerService {
         });
         return;
       }
-      if (priority && !validPriorities.includes(priority)) {
+      if (priority && !PRIORITY_VALUES.includes(priority)) {
         errors.push({
           row: rowNumber,
           message: `Ưu tiên "${priority}" không hợp lệ (LOW/MEDIUM/HIGH).`,
         });
         return;
       }
-      if (status && !validStatuses.includes(status)) {
+      if (status && !STATUS_VALUES.includes(status)) {
         errors.push({
           row: rowNumber,
           message: `Trạng thái "${status}" không hợp lệ (ACTIVE/INACTIVE).`,
         });
         return;
       }
-      toCreate.push({
-        name,
-        phone,
-        email,
-        province: cell(4) || undefined,
-        district: cell(5) || undefined,
-        ward: cell(6) || undefined,
-        address: cell(7) || undefined,
-        customerGroupId: groupName ? groupMap.get(groupName) : undefined,
-        deliveryRouteId: routeName ? routeMap.get(routeName) : undefined,
-        priority: (priority as 'LOW' | 'MEDIUM' | 'HIGH') || undefined,
-        status: (status as 'ACTIVE' | 'INACTIVE') || undefined,
-        debtLimit,
-        debtTermDays,
-        note: cell(14) || undefined,
-        companyName,
-        taxCode,
+
+      rowsData.push({
+        row: rowNumber,
+        dto: {
+          name,
+          phone,
+          email,
+          province: cell(4) || undefined,
+          district: cell(5) || undefined,
+          ward: cell(6) || undefined,
+          address: cell(7) || undefined,
+          customerGroupId: groupName ? groupMap.get(groupName) : undefined,
+          deliveryRouteId: routeName ? routeMap.get(routeName) : undefined,
+          priority: (priority as 'LOW' | 'MEDIUM' | 'HIGH') || undefined,
+          status: (status as 'ACTIVE' | 'INACTIVE') || undefined,
+          debtLimit,
+          debtTermDays,
+          note: cell(14) || undefined,
+          companyName,
+          taxCode,
+          defaultCarrierName,
+          defaultCarrierPhone,
+          defaultCarrierNote,
+        },
       });
     });
 
-    if (errors.length > 0) {
-      return { success: 0, errors };
+    // SĐT trùng trong cùng file — giữ dòng đầu tiên, các dòng sau bị bỏ qua.
+    const seenPhones = new Map<string, number>();
+    const uniqueRows: { row: number; dto: CreateCustomerDto }[] = [];
+    for (const item of rowsData) {
+      const firstRow = seenPhones.get(item.dto.phone);
+      if (firstRow !== undefined) {
+        errors.push({
+          row: item.row,
+          message: `Số điện thoại "${item.dto.phone}" trùng với dòng ${firstRow} trong file.`,
+        });
+        continue;
+      }
+      seenPhones.set(item.dto.phone, item.row);
+      uniqueRows.push(item);
     }
 
-    // Check duplicate phones in file
-    const phones = toCreate.map((c) => c.phone);
-    const uniquePhones = new Set(phones);
-    if (uniquePhones.size !== phones.length) {
-      const duplicates = phones.filter((p, i) => phones.indexOf(p) !== i);
-      return {
-        success: 0,
-        errors: [
-          {
-            row: 0,
-            message: `Số điện thoại trùng trong file: ${[...new Set(duplicates)].join(', ')}`,
-          },
-        ],
-      };
-    }
-
-    // Check against database
     const existingCustomers = await this.prisma.customer.findMany({
-      where: { phone: { in: phones }, deletedAt: null },
-      select: { phone: true },
+      where: {
+        phone: { in: uniqueRows.map((r) => r.dto.phone) },
+        deletedAt: null,
+      },
     });
-    if (existingCustomers.length > 0) {
-      return {
-        success: 0,
-        errors: existingCustomers.map((c) => ({
-          row: 0,
-          message: `Số điện thoại "${c.phone}" đã tồn tại trong hệ thống.`,
-        })),
-      };
-    }
+    const existingByPhone = new Map(existingCustomers.map((c) => [c.phone, c]));
+
+    // Field cho phép merge khi cập nhật khách đã tồn tại — chỉ điền field
+    // đang trống, không đè dữ liệu đã có (chốt 24/07/2026). Không gồm
+    // priority/status/debtLimit/debtTermDays vì các field này luôn có giá
+    // trị mặc định sẵn (không bao giờ "trống"), tránh import sửa nhầm hạn
+    // mức công nợ.
+    const SCALAR_MERGE_FIELDS = [
+      'email',
+      'companyName',
+      'taxCode',
+      'province',
+      'district',
+      'ward',
+      'address',
+      'note',
+      'defaultCarrierName',
+      'defaultCarrierPhone',
+      'defaultCarrierNote',
+    ] as const;
 
     let created = 0;
-    for (const dto of toCreate) {
+    let updated = 0;
+
+    for (const { dto } of uniqueRows) {
+      const existing = existingByPhone.get(dto.phone);
+
+      if (existing) {
+        const data: Prisma.CustomerUpdateInput = {};
+        for (const field of SCALAR_MERGE_FIELDS) {
+          const current = existing[field];
+          const incoming = dto[field];
+          if ((current === null || current === undefined) && incoming) {
+            (data as Record<string, unknown>)[field] = incoming;
+          }
+        }
+        if (!existing.customerGroupId && dto.customerGroupId) {
+          data.customerGroup = { connect: { id: dto.customerGroupId } };
+        }
+        if (!existing.deliveryRouteId && dto.deliveryRouteId) {
+          data.deliveryRoute = { connect: { id: dto.deliveryRouteId } };
+        }
+        if (Object.keys(data).length > 0) {
+          await this.prisma.customer.update({
+            where: { id: existing.id },
+            data,
+          });
+        }
+        updated++;
+        continue;
+      }
+
       const code = await this.generateCode('CUSTOMER');
       await this.prisma.customer.create({
         data: {
@@ -631,12 +773,15 @@ export class CustomerService {
           debtLimit: dto.debtLimit ?? 0,
           debtTermDays: dto.debtTermDays ?? 30,
           note: dto.note || null,
+          defaultCarrierName: dto.defaultCarrierName || null,
+          defaultCarrierPhone: dto.defaultCarrierPhone || null,
+          defaultCarrierNote: dto.defaultCarrierNote || null,
         },
       });
       created++;
     }
 
-    return { success: created, errors: [] };
+    return { created, updated, errors };
   }
 
   // ──────────────────────────────────────

@@ -40,6 +40,9 @@ interface CustomerData {
   debtLimit: string;
   debtTermDays: number;
   note: string | null;
+  defaultCarrierName: string | null;
+  defaultCarrierPhone: string | null;
+  defaultCarrierNote: string | null;
 }
 
 interface CustomerEditFormProps {
@@ -75,6 +78,9 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
       note: form.get("note") || null,
       priority: form.get("priority"),
       status: form.get("status"),
+      defaultCarrierName: form.get("defaultCarrierName") || null,
+      defaultCarrierPhone: form.get("defaultCarrierPhone") || null,
+      defaultCarrierNote: form.get("defaultCarrierNote") || null,
     };
 
     const customerGroupId = form.get("customerGroupId");
@@ -224,6 +230,28 @@ export function CustomerEditForm({ customer }: CustomerEditFormProps) {
         <div className="space-y-2">
           <Label htmlFor="debtLimit">Hạn mức công nợ (VNĐ)</Label>
           <Input id="debtLimit" name="debtLimit" type="number" min={0} defaultValue={Number(customer.debtLimit)} />
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className="text-sm font-medium text-muted-foreground">
+          Thông tin giao hàng <span className="text-xs">(nhà xe mặc định, chỉ để tham khảo)</span>
+        </legend>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="defaultCarrierName">Nhà xe</Label>
+            <Input id="defaultCarrierName" name="defaultCarrierName" defaultValue={customer.defaultCarrierName ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="defaultCarrierPhone">SĐT nhà xe</Label>
+            <Input id="defaultCarrierPhone" name="defaultCarrierPhone" defaultValue={customer.defaultCarrierPhone ?? ""} />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="defaultCarrierNote">Ghi chú giao hàng</Label>
+          <Input id="defaultCarrierNote" name="defaultCarrierNote" defaultValue={customer.defaultCarrierNote ?? ""} />
         </div>
       </fieldset>
 

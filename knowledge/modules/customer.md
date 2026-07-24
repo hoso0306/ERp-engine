@@ -161,6 +161,9 @@ status          CustomerStatus  Default ACTIVE
 debt_limit      Decimal         Default 0 (VNĐ)
 debt_term_days  Int             Default 30 (Ngày)
 note            String?
+default_carrier_name   String?  Nhà xe mặc định — chỉ để tham khảo (thêm 24/07/2026), KHÔNG snapshot vào SalesOrder
+default_carrier_phone  String?  SĐT nhà xe mặc định
+default_carrier_note   String?  Ghi chú giao hàng mặc định
 created_by      String?         FK → users
 updated_by      String?         FK → users
 created_at      DateTime
@@ -279,6 +282,24 @@ Yêu cầu:
 * Kiểm tra dữ liệu.
 * Báo lỗi theo từng dòng.
 * Không import dữ liệu lỗi.
+
+Cột Nhóm KH / Tuyến GH / Ưu tiên / Trạng thái có dropdown Excel Data
+Validation (chốt 24/07/2026, áp dụng cả file Mẫu và file Export) để hạn chế
+gõ sai giá trị.
+
+**Hành vi theo dòng (chốt 24/07/2026)** — không còn kiểu "cả file ăn cả, ngã
+về không":
+
+* Dòng nào lỗi (thiếu tên/SĐT, sai định dạng, Nhóm KH/Tuyến GH không tồn
+  tại, Ưu tiên/Trạng thái không hợp lệ) → chỉ bỏ qua riêng dòng đó, báo lỗi
+  kèm số dòng. Các dòng khác vẫn import bình thường.
+* SĐT trùng trong cùng file → giữ dòng đầu tiên, các dòng trùng sau đó bị
+  bỏ qua + báo lỗi.
+* SĐT trùng với khách đã có trong hệ thống (chưa xoá) → **cập nhật** khách
+  đó, nhưng chỉ điền vào field đang trống (không đè dữ liệu đã có), không
+  đổi `code`/`name`/`phone`, không đụng `priority`/`status`/`debtLimit`/
+  `debtTermDays`. Không tạo khách mới, không báo lỗi.
+* Kết quả trả về `{ created, updated, errors[] }`.
 
 ## Export Excel
 
