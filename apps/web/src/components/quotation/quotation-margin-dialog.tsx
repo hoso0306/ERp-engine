@@ -30,23 +30,60 @@ export interface QuotationCostSummary {
   hasIncompleteData: boolean;
 }
 
+interface QuotationMarginItemParam {
+  name: string;
+  label: string;
+  value: string;
+  valueLabel: string | null;
+  unit: string | null;
+}
+
+// Chi tiết dòng lấy từ GET /quotations/:id (đã fetch sẵn ở trang cha) — API
+// cost-summary không trả unitPrice/systemPrice/discountPercent/
+// surchargeAfterDiscount/parameters, nên ghép thêm từ đây theo id để hiển thị
+// đúng cột Giá bán/CK/Phụ phí/Thông số giống tab ngoài, không gọi thêm API.
+export interface QuotationMarginItemDetail {
+  id: string;
+  unitPrice: number | null;
+  systemPrice: number;
+  discountPercent: number;
+  surchargeAfterDiscount: number;
+  parameters: QuotationMarginItemParam[];
+}
+
 interface QuotationMarginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotationCode: string;
   summary: QuotationCostSummary | null;
+  items: QuotationMarginItemDetail[];
 }
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " ₫";
 }
 
+function formatNumber(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
+}
+
+// Thông số rút gọn — giống bản in báo giá: chỉ giá trị (ưu tiên valueLabel
+// của option ENUM), không kèm nhãn, nối bằng dấu phẩy. Khác bản in sản xuất
+// (loại trừ Rộng/Cao) vì dialog này không có cột Rộng/Cao riêng.
+function paramsAbbrev(parameters: QuotationMarginItemParam[]): string {
+  return parameters
+    .map((p) => p.valueLabel || (p.unit ? `${p.value} ${p.unit}` : p.value))
+    .join(", ");
+}
+
 export function QuotationMarginDialog({
-  open, onOpenChange, quotationCode, summary,
+  open, onOpenChange, quotationCode, summary, items,
 }: QuotationMarginDialogProps) {
+  const detailById = new Map(items.map((i) => [i.id, i]));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Lãi/lỗ báo giá {quotationCode}</DialogTitle>
         </DialogHeader>
@@ -71,59 +108,82 @@ export function QuotationMarginDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10 text-center">STT</TableHead>
                     <TableHead>Sản phẩm</TableHead>
-                    <TableHead className="text-right">SL</TableHead>
-                    <TableHead className="text-right">Giá vốn</TableHead>
                     <TableHead className="text-right">Giá bán</TableHead>
-                    <TableHead className="text-right">Tổng giá vốn</TableHead>
+                    <TableHead className="text-center">CK</TableHead>
+                    <TableHead className="text-right">Phụ phí</TableHead>
+                    <TableHead className="text-right">SL</TableHead>
                     <TableHead className="text-right">Tổng giá bán</TableHead>
+                    <TableHead className="text-right">Tổng giá vốn</TableHead>
                     <TableHead className="text-right">Lợi nhuận</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.items.map((item) => (
-                    <TableRow key={item.quotationItemId}>
-                      <TableCell>
-                        <div className="font-medium">{item.productName}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
-                      </TableCell>
-                      <TableCell className="text-right text-sm">{item.quantity}</TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {item.costAvailable ? formatMoney(item.costUnitPrice) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {formatMoney(item.saleUnitPrice)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {item.costAvailable ? formatMoney(item.totalCost) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatMoney(item.totalSale)}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-mono text-sm font-semibold ${
-                          item.profit < 0 ? "text-destructive" : ""
-                        }`}
-                      >
-                        {formatMoney(item.profit)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {summary.items.map((item, idx) => {
+                    const detail = detailById.get(item.quotationItemId);
+                    const abbrevParams = detail ? paramsAbbrev(detail.parameters) : "";
+                    return (
+                      <TableRow key={item.quotationItemId}>
+                        <TableCell className="text-center text-sm text-muted-foreground">{idx + 1}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{item.productName}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
+                          {abbrevParams && (
+                            <div className="text-xs text-muted-foreground mt-0.5">{abbrevParams}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {detail?.unitPrice != null ? (
+                            <>
+                              <div className="font-semibold">{formatNumber(Number(detail.unitPrice))}</div>
+                              <div className="text-xs text-muted-foreground font-sans">đ/m²</div>
+                            </>
+                          ) : (
+                            formatMoney(Number(detail?.systemPrice ?? 0))
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">
+                          {detail && Number(detail.discountPercent) > 0 ? `${detail.discountPercent}%` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {detail && Number(detail.surchargeAfterDiscount) > 0
+                            ? formatMoney(Number(detail.surchargeAfterDiscount))
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">{item.quantity}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatMoney(item.totalSale)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {item.costAvailable ? formatMoney(item.totalCost) : "—"}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-mono text-sm font-semibold ${
+                            item.profit < 0 ? "text-destructive" : ""
+                          }`}
+                        >
+                          {formatMoney(item.profit)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="bg-muted/50">
-                    <TableCell colSpan={4} className="text-right text-sm font-semibold">
+                    <TableCell colSpan={6} className="text-right text-sm font-semibold">
                       Tổng cộng
                     </TableCell>
-                    <TableCell className="text-right font-mono font-semibold">
-                      {formatMoney(summary.totals.totalCost)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-semibold">
+                    <TableCell className="text-right font-mono font-semibold text-foreground">
                       {formatMoney(summary.totals.totalSale)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-semibold text-green-400">
+                      {formatMoney(summary.totals.totalCost)}
                     </TableCell>
                     <TableCell
                       className={`text-right font-mono font-bold ${
-                        summary.totals.profit < 0 ? "text-destructive" : ""
+                        summary.totals.profit < 0 ? "text-destructive" : "text-green-700"
                       }`}
                     >
+                      {summary.totals.profit >= 0 ? "+" : ""}
                       {formatMoney(summary.totals.profit)}
                     </TableCell>
                   </TableRow>

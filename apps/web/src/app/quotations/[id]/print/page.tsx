@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
+import { ExportQuotationMenu } from "@/components/quotation/export-quotation-menu";
 
 interface ItemParam {
   name: string;
   label: string;
   value: string;
+  // Nhãn hiển thị của option ENUM đã chọn (vd "Cửa sổ" thay vì mã gốc
+  // "cuaso") — API đã snapshot sẵn (quotation-workflow.service.ts), null với
+  // tham số không phải ENUM hoặc dữ liệu cũ tạo trước khi có field này.
+  valueLabel: string | null;
   unit: string | null;
 }
 
@@ -137,8 +142,54 @@ function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n));
 }
 
+function fmt2(n: number) {
+  return n.toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Rộng/Cao — 3 chữ số sau dấu phẩy (vd "1,200"), khớp độ chính xác nhập liệu
+// mét cho phép số thập phân (product.md mục "Quy ước đơn vị kích thước").
+function fmt3(n: number) {
+  return n.toLocaleString("vi-VN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+// Tên thật của 2 tham số kích thước trong dữ liệu (giống production/print/page.tsx)
+// — nhập theo MÉT, cho phép số thập phân (product.md mục "Quy ước đơn vị kích
+// thước"), không cần quy đổi.
+const WIDTH_PARAM_NAME = "chieurong";
+const HEIGHT_PARAM_NAME = "chieucao";
+
+function paramNumber(params: ItemParam[], name: string): number | null {
+  const raw = params.find((p) => p.name === name)?.value;
+  const n = raw !== undefined ? parseFloat(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+// Gộp dòng bảng theo cùng mã sản phẩm + cùng toàn bộ thông số KHÁC Rộng/Cao
+// (giống rule mẫu Xưởng Cửa Lưới, production/print/page.tsx groupKeyFor) —
+// Rộng/Cao vẫn hiển thị riêng từng dòng trong nhóm.
+function groupItemsForDisplay<T extends { productCode: string; parameters: ItemParam[] }>(items: T[]): T[][] {
+  const groups: T[][] = [];
+  const indexByKey = new Map<string, number>();
+  for (const item of items) {
+    const otherParamsKey = item.parameters
+      .filter((p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME)
+      .map((p) => `${p.name}:${p.value}`)
+      .sort()
+      .join("|");
+    const key = `${item.productCode}::${otherParamsKey}`;
+    let idx = indexByKey.get(key);
+    if (idx === undefined) {
+      idx = groups.length;
+      indexByKey.set(key, idx);
+      groups.push([]);
+    }
+    groups[idx].push(item);
+  }
+  return groups;
 }
 
 
@@ -307,6 +358,26 @@ export default function QuotationPrintPage() {
   const customerDisplayName = quotation.customer.companyName || quotation.customer.name;
   const contactPerson = quotation.customer.companyName ? quotation.customer.name : null;
 
+  // Bố cục theo mẫu "Hóa đơn bán hàng" thực tế công ty đang dùng (ảnh tham
+  // khảo 24/07/2026): header công ty + tiêu đề xếp chồng giữa trang, tông
+  // xanh dương/đỏ. Tổng đơn + công nợ tách thành 2 khối riêng bên dưới bảng
+  // sản phẩm (chốt 24/07/2026 theo phản hồi), không gộp vào bảng.
+  const HEAD_BG = "#dbe9f7";
+  const TOTAL_ROW_BG = "#fef3c7";
+  const DEBT_COLOR = "#b91c1c";
+  const PAID_COLOR = "#15803d";
+  const GRAND_COLOR = "#1155cc";
+  const BORDER = "1px solid #333";
+  const thStyle: CSSProperties = {
+    padding: "6px 5px", fontSize: 10, fontWeight: 700, border: BORDER, textAlign: "center",
+  };
+  const tdStyle: CSSProperties = { padding: "5px", fontSize: 11.5, border: BORDER };
+  // Header "Trước VAT"/"Sau VAT" dùng chung cho cả khối Tổng đơn và Công nợ.
+  const vatColHeaderStyle: CSSProperties = {
+    padding: "2px 0 6px", fontSize: 11, fontWeight: 700, textDecoration: "underline", color: GRAND_COLOR, textAlign: "right",
+  };
+  const itemGroups = groupItemsForDisplay(items);
+
   return (
     <>
       <style>{`
@@ -316,23 +387,20 @@ export default function QuotationPrintPage() {
           @page { size: A4; margin: 15mm 14mm 15mm 14mm; }
         }
         :root {
-          --navy: #17375e;
-          --border: #d5d9e0;
           --grey: #667085;
         }
         body { font-family: "Inter", "Roboto", Arial, sans-serif; font-size: 12.5px; color: #101828; }
         table { border-collapse: collapse; width: 100%; }
-        .label { font-size: 10.5px; color: var(--grey); text-transform: uppercase; letter-spacing: 0.04em; }
       `}</style>
 
       {/* Print button — hidden in print */}
-      <div className="no-print fixed top-4 right-4 flex gap-2 z-50">
-        <button
-          onClick={() => window.print()}
-          style={{ background: "#17375e", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", fontSize: 14, cursor: "pointer", fontWeight: 600 }}
-        >
-          In / Tải PDF
-        </button>
+      <div className="no-print fixed top-4 right-4 flex items-center gap-2 z-50">
+        <ExportQuotationMenu
+          quotationId={quotation.id}
+          quotationCode={code}
+          mode="inline"
+          onExportPdf={() => window.print()}
+        />
         <button
           onClick={() => window.close()}
           style={{ background: "#6b7280", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 14, cursor: "pointer" }}
@@ -342,10 +410,15 @@ export default function QuotationPrintPage() {
       </div>
 
       {/* Page content */}
-      {/* zIndex:0 (không phải "auto") tạo stacking context riêng, cô lập —
-          watermark bên trong dùng zIndex:-1 chỉ nằm dưới nội dung của DIV
-          NÀY, không phụ thuộc ancestor bên ngoài. */}
-      <div style={{ maxWidth: 780, margin: "0 auto", padding: "20px 24px", position: "relative", zIndex: 0 }}>
+      {/* Không cần khớp khổ A4 để in — chủ yếu dùng chụp ảnh (Ctrl+V gửi Zalo)
+          nên nới rộng thoải mái hơn cho bảng đỡ chật, @page A4 chỉ còn ý
+          nghĩa khi bấm "Xuất PDF". */}
+      <div
+        id="quotation-print-content"
+        style={{ position: "relative", isolation: "isolate", maxWidth: 980, margin: "0 auto", padding: "20px 24px", color: "#101828" }}
+      >
+        {/* Watermark logo mờ nền — giống hệt cách làm ở AppLayout (trang chủ
+            và mọi trang trong app), xem components/layout/app-layout.tsx. */}
         {company?.logo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -353,230 +426,238 @@ export default function QuotationPrintPage() {
             alt=""
             style={{
               position: "absolute",
-              top: 300,
+              top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
-              width: 340,
-              height: 340,
+              width: 600,
+              height: 600,
               objectFit: "contain",
-              opacity: 0.1,
+              opacity: 0.08,
               zIndex: -1,
               pointerEvents: "none",
             }}
           />
         )}
-        {/* Block 1 — Thông tin công ty + tiêu đề chứng từ */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid var(--navy)", paddingBottom: 14, marginBottom: 20 }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", maxWidth: 380 }}>
-            {company?.logo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={company.logo} alt="" style={{ maxHeight: 52, maxWidth: 120, objectFit: "contain" }} />
-            )}
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{company?.companyName ?? "..."}</div>
-              <div style={{ fontSize: 11, color: "var(--grey)", marginTop: 4, lineHeight: 1.6 }}>
-                {company?.address && <div>{company.address}</div>}
-                {(company?.phone || company?.email) && (
-                  <div>{[company?.phone && `ĐT: ${company.phone}`, company?.email].filter(Boolean).join(" · ")}</div>
-                )}
-                {company?.website && <div>{company.website}</div>}
-                {company?.taxCode && <div>MST: {company.taxCode}</div>}
-              </div>
-            </div>
+        {/* 1. Header — logo lệch trái tuyệt đối (không tính vào canh giữa),
+            khối chữ công ty + tiêu đề chứng từ căn giữa độc lập theo tâm
+            trang, thẳng hàng với "BÁO GIÁ". */}
+        <div style={{ position: "relative", textAlign: "center", marginBottom: 16 }}>
+          {company?.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={company.logo}
+              alt=""
+              style={{ position: "absolute", left: 0, top: 0, height: 56, maxWidth: 130, objectFit: "contain" }}
+            />
+          )}
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#c00000" }}>{company?.companyName ?? "..."}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3 }}>
+            {company?.address && <>Địa chỉ: {company.address}</>}
+            {company?.phone && <>{company?.address ? " · " : ""}SDT:{company.phone}</>}
+          </div>
+          <div style={{ fontSize: 9.5, color: "var(--grey)", marginTop: 2 }}>
+            {[company?.email, company?.website].filter(Boolean).join(" · ")}
+            {company?.taxCode && <> · MST: {company.taxCode}</>}
           </div>
 
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 21, fontWeight: 700, color: "var(--navy)", textTransform: "uppercase", letterSpacing: 1 }}>
-              {title}
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{code}</div>
-            <div style={{ fontSize: 11.5, color: "var(--grey)", marginTop: 6, lineHeight: 1.7 }}>
-              <div>Ngày lập: {fmtDate(documentDate)}</div>
-              {!isOrder && quotation.expiryDate && <div>Hiệu lực đến: {fmtDate(quotation.expiryDate)}</div>}
-              {ownerName && <div>Người phụ trách: {ownerName}</div>}
-            </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#1155cc", marginTop: 12, textTransform: "uppercase" }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--grey)", marginTop: 4 }}>
+            Ngày lập: {fmtDate(documentDate)}
+            {!isOrder && quotation.expiryDate && <> · Hiệu lực đến: {fmtDate(quotation.expiryDate)}</>}
+            {ownerName && <> · Người phụ trách: {ownerName}</>}
           </div>
         </div>
 
-        {/* Block 2 — Thông tin khách hàng */}
-        <div style={{ marginBottom: 20 }}>
-          <div className="label" style={{ marginBottom: 6 }}>Thông tin khách hàng</div>
-          <table style={{ fontSize: 12.5 }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: "2px 0", width: "50%" }}><strong>{customerDisplayName}</strong> <span style={{ color: "var(--grey)", fontSize: 11 }}>({quotation.customer.code})</span></td>
-                <td style={{ padding: "2px 0" }}>Điện thoại: {quotation.customer.phone}</td>
-              </tr>
-              {(contactPerson || quotation.customer.email) && (
-                <tr>
-                  <td style={{ padding: "2px 0" }}>{contactPerson && <>Người liên hệ: {contactPerson}</>}</td>
-                  <td style={{ padding: "2px 0" }}>{quotation.customer.email && <>Email: {quotation.customer.email}</>}</td>
-                </tr>
-              )}
-              {(customerAddress || quotation.customer.customerGroup) && (
-                <tr>
-                  <td style={{ padding: "2px 0" }}>{customerAddress && <>Địa chỉ: {customerAddress}</>}</td>
-                  <td style={{ padding: "2px 0" }}>{quotation.customer.customerGroup && <>Nhóm khách hàng: {quotation.customer.customerGroup.name}</>}</td>
-                </tr>
-              )}
-              {quotation.customer.taxCode && (
-                <tr>
-                  <td style={{ padding: "2px 0" }} colSpan={2}>MST: {quotation.customer.taxCode}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* 2. Tên khách hàng (trái) đối diện Mã báo giá (phải). */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+          <div style={{ fontSize: 13.5 }}>
+            <strong>Khách hàng: </strong>{customerDisplayName}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>
+            {isOrder ? "Mã đơn hàng" : "Mã báo giá"}: {code}
+          </div>
+        </div>
+        {/* Chi tiết liên hệ nhỏ bên dưới. */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: "var(--grey)", marginTop: 2, lineHeight: 1.6 }}>
+            SĐT: {quotation.customer.phone}
+            {contactPerson && <> · Người liên hệ: {contactPerson}</>}
+            {quotation.customer.email && <> · Email: {quotation.customer.email}</>}
+            {customerAddress && <> · Địa chỉ: {customerAddress}</>}
+            {quotation.customer.customerGroup && <> · Nhóm khách hàng: {quotation.customer.customerGroup.name}</>}
+            {quotation.customer.taxCode && <> · MST: {quotation.customer.taxCode}</>}
+          </div>
         </div>
 
-        {/* Block 3 — Chi tiết sản phẩm */}
-        {/* table-layout: fixed để các width dưới đây là tỉ lệ cố định — tránh
-            browser tự co giãn theo nội dung khiến cột Thông số bị bóp hẹp. */}
+        {/* 3. Bảng chi tiết — Rộng/Cao/M2 tách cột riêng (đơn vị mét, không
+            quy đổi — product.md mục "Quy ước đơn vị kích thước"). Công nợ
+            hiển thị ở khối riêng bên dưới bảng, không gộp vào đây. */}
         <table style={{ marginBottom: 4, tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 28 }} /><col style={{ width: 175 }} /><col style={{ width: 55 }} />
+            <col style={{ width: 55 }} /><col style={{ width: 36 }} /><col style={{ width: 55 }} />
+            <col style={{ width: 95 }} /><col style={{ width: 100 }} /><col style={{ width: 65 }} />
+            <col style={{ width: 80 }} /><col style={{ width: 125 }} /><col style={{ width: 82 }} />
+          </colgroup>
           <thead>
-            <tr style={{ background: "var(--navy)", color: "#fff" }}>
-              <th style={{ width: 26, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "center", border: "1px solid var(--navy)" }}>STT</th>
-              <th style={{ width: 118, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Sản phẩm</th>
-              <th style={{ width: 150, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Thông số</th>
-              <th style={{ width: 88, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Giá bán</th>
-              <th style={{ width: 46, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "center", border: "1px solid var(--navy)" }}>CK</th>
-              <th style={{ width: 55, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Phụ phí</th>
-              <th style={{ width: 38, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>SL</th>
-              <th style={{ width: 95, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>Thành tiền</th>
-              <th style={{ width: 70, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "right", border: "1px solid var(--navy)" }}>VAT</th>
-              <th style={{ width: 70, padding: "7px 6px", fontSize: 11, fontWeight: 600, textAlign: "left", border: "1px solid var(--navy)" }}>Ghi chú</th>
+            <tr style={{ background: HEAD_BG }}>
+              <th style={thStyle}>STT</th>
+              <th style={{ ...thStyle, textAlign: "left" }}>Sản phẩm</th>
+              <th style={thStyle}>Rộng</th>
+              <th style={thStyle}>Cao</th>
+              <th style={thStyle}>SL</th>
+              <th style={thStyle}>M2</th>
+              <th style={thStyle}>Đơn giá</th>
+              <th style={thStyle}>Thành Tiền</th>
+              <th style={thStyle}>Mức thuế VAT</th>
+              <th style={thStyle}>Tiền Thuế</th>
+              <th style={thStyle}>Thành tiền<br />(bao gồm VAT)</th>
+              <th style={thStyle}>Chú thích</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item, idx) => {
-              const noteParts = [
-                ...(item.warnings ?? []).map((w) => `⚠ ${w}`),
-                ...(item.note ? [item.note] : []),
-              ];
+            {(() => {
+              let stt = 0;
+              return itemGroups.map((group) =>
+                group.map((item, itemIdx) => {
+                  stt += 1;
+                  const rong = paramNumber(item.parameters, WIDTH_PARAM_NAME);
+                  const cao = paramNumber(item.parameters, HEIGHT_PARAM_NAME);
+                  const m2 = rong !== null && cao !== null ? rong * cao * item.quantity : null;
+                  const otherParams = item.parameters.filter(
+                    (p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME,
+                  );
+                  const hasWarnings = !!item.warnings && item.warnings.length > 0;
 
-              return (
-                <tr key={item.id}>
-                  <td style={{ textAlign: "center", padding: "6px", fontSize: 12, border: "1px solid var(--border)" }}>{idx + 1}</td>
-                  <td style={{ padding: "6px", fontSize: 12, border: "1px solid var(--border)", overflowWrap: "break-word" }}>
-                    <div style={{ fontWeight: 600 }}>{item.productName}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--grey)" }}>{item.productCode}</div>
-                  </td>
-                  <td style={{ padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
-                    {item.parameters.length > 0 ? (
-                      item.parameters.map((p) => (
-                        <div key={p.name}>
-                          <span style={{ color: "var(--grey)" }}>{p.label}: </span>
-                          {p.value}
-                          {p.unit ? ` ${p.unit}` : ""}
-                        </div>
-                      ))
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right", padding: "6px", fontSize: 12, border: "1px solid var(--border)" }}>
-                    {item.unitPrice !== null ? (
-                      <>
-                        <div style={{ fontWeight: 600 }}>{fmt(item.unitPrice)}</div>
-                        <div style={{ fontSize: 10.5, color: "var(--grey)" }}>đ/m²</div>
-                      </>
-                    ) : (
-                      fmt(item.systemPrice)
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center", padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
-                    {item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
-                    {item.surchargeAfterDiscount > 0 ? fmt(item.surchargeAfterDiscount) : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", padding: "6px", fontSize: 12, border: "1px solid var(--border)" }}>{item.quantity}</td>
-                  <td style={{ textAlign: "right", padding: "6px", fontSize: 12, fontWeight: 700, border: "1px solid var(--border)" }}>{fmt(item.subtotal)}</td>
-                  <td style={{ textAlign: "right", padding: "6px", fontSize: 11, border: "1px solid var(--border)" }}>
-                    {item.vatRate > 0 ? <>{item.vatRate}%<br />{fmt(item.vatAmount)}</> : "—"}
-                  </td>
-                  <td style={{ padding: "6px", fontSize: 10.5, border: "1px solid var(--border)", overflowWrap: "break-word" }}>
-                    {noteParts.length > 0 ? noteParts.join("; ") : "—"}
-                  </td>
-                </tr>
+                  return (
+                    <tr key={item.id}>
+                      <td style={{ ...tdStyle, textAlign: "center" }}>{stt}</td>
+                      {/* Gộp theo cùng mã sản phẩm + cùng thông số khác Rộng/Cao
+                          (rule "Cửa Lưới", production/print/page.tsx groupKeyFor)
+                          — chỉ dòng đầu nhóm render ô này, rowSpan hết cả nhóm.
+                          Style cùng cách trình bày cột "Tên sản phẩm" mẫu Xưởng:
+                          tên nhỏ màu xám, thông số đậm không kèm nhãn. */}
+                      {itemIdx === 0 && (
+                        <td
+                          rowSpan={group.length}
+                          style={{ ...tdStyle, overflowWrap: "break-word", verticalAlign: "top" }}
+                        >
+                          <div style={{ fontSize: 10.5, fontWeight: 500, color: "#444" }}>{item.productName}</div>
+                          {otherParams.length > 0 && (
+                            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>
+                              {otherParams.map((p) => p.valueLabel || (p.unit ? `${p.value} ${p.unit}` : p.value)).join(", ")}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{rong !== null ? fmt3(rong) : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{cao !== null ? fmt3(cao) : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{item.quantity}</td>
+                      <td style={{ ...tdStyle, textAlign: "center" }}>{m2 !== null ? fmt2(m2) : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <div>{item.unitPrice !== null ? `${fmt(item.unitPrice)}/m²` : fmt(item.systemPrice)}</div>
+                        {(item.discountPercent > 0 || item.surchargeAfterDiscount > 0) && (
+                          <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
+                            {item.discountPercent > 0 && `CK ${item.discountPercent}%`}
+                            {item.discountPercent > 0 && item.surchargeAfterDiscount > 0 && " · "}
+                            {item.surchargeAfterDiscount > 0 && `+${fmt(item.surchargeAfterDiscount)}`}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)}</td>
+                      <td style={{ ...tdStyle, textAlign: "center" }}>{item.vatRate > 0 ? `${item.vatRate}%` : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>{item.vatRate > 0 ? fmt(item.vatAmount) : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal + item.vatAmount)}</td>
+                      {/* Cột Chú thích — cảnh báo Validation Rule (WARN) + Ghi chú
+                          người dùng, luôn theo TỪNG dòng (kể cả khi cột Sản
+                          phẩm đã gộp) vì đây là cột duy nhất Báo giá có để ghi chú. */}
+                      <td style={{ ...tdStyle, fontSize: 9, overflowWrap: "break-word" }}>
+                        {hasWarnings && item.warnings!.map((w, i) => <div key={`w${i}`} style={{ color: "#b45309" }}>⚠ {w}</div>)}
+                        {item.note && <div style={{ fontStyle: "italic", color: "var(--grey)" }}>Ghi chú: {item.note}</div>}
+                        {!hasWarnings && !item.note && "—"}
+                      </td>
+                    </tr>
+                  );
+                }),
               );
-            })}
+            })()}
+
+            {/* Dòng đệm tạo khoảng cách cho dễ nhìn trước dòng Tổng — không
+                viền, không nội dung. */}
+            <tr>
+              <td colSpan={12} style={{ border: "none", height: 10 }} />
+            </tr>
+            {/* Hàng Tổng — chữ "TỔNG" ở cột Đơn giá, số liệu là tổng cộng
+                nguyên trạng của cột Thành Tiền / Tiền Thuế / Thành tiền (bao
+                gồm VAT) — không trừ Giảm thêm cấp báo giá (số đó đã phản ánh
+                trong khối Tình hình công nợ bên dưới, dòng "Báo giá này"). */}
+            <tr>
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>TỔNG</td>
+              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalAmount)}</td>
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalVat)}</td>
+              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG, color: GRAND_COLOR, fontSize: 13 }}>
+                {fmt(totalAmount + totalVat)}
+              </td>
+              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+            </tr>
           </tbody>
         </table>
 
-        {/* Block 4a — Tổng tiền đơn hàng (tách biệt hoàn toàn khỏi công nợ) */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-          <table style={{ width: 300 }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: "3px 0", fontSize: 12 }}>Tổng tiền hàng</td>
-                <td style={{ padding: "3px 0", fontSize: 12, textAlign: "right" }}>{fmt(totalAmount)} ₫</td>
-              </tr>
-              {discountAmount > 0 && (
-                <tr>
-                  <td style={{ padding: "3px 0", fontSize: 12 }}>Giảm thêm</td>
-                  <td style={{ padding: "3px 0", fontSize: 12, textAlign: "right" }}>−{fmt(discountAmount)} ₫</td>
-                </tr>
-              )}
-              {totalVat > 0 && (
-                <tr>
-                  <td style={{ padding: "3px 0", fontSize: 12 }}>VAT</td>
-                  <td style={{ padding: "3px 0", fontSize: 12, textAlign: "right" }}>{fmt(totalVat)} ₫</td>
-                </tr>
-              )}
-              <tr>
-                <td colSpan={2} style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }} />
-              </tr>
-              <tr>
-                <td style={{ padding: "3px 0", fontSize: 13.5, fontWeight: 700, color: "var(--navy)" }}>THÀNH TIỀN ĐƠN HÀNG</td>
-                <td style={{ padding: "3px 0", fontSize: 15, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
         {discountAmount > 0 && discountReason && (
-          <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--grey)", marginTop: 2 }}>
+          <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--grey)", marginTop: 4 }}>
             <em>Lý do giảm thêm: {discountReason}</em>
           </div>
         )}
 
-        {/* Block 4b — Tình hình công nợ (song song trước-VAT / sau-VAT — khách
-            trả tiền mặt không lấy hoá đơn thì chỉ cần trả mức trước-VAT). */}
-        <div style={{ marginTop: 22, background: "#f7f8fa", border: "1px solid var(--border)", borderRadius: 4, padding: "14px 18px" }}>
-          <div className="label" style={{ marginBottom: 8, color: "var(--navy)", fontWeight: 700 }}>Tình hình công nợ</div>
+        {/* Tình hình công nợ — khối riêng (chốt 24/07/2026 theo phản hồi,
+            không gộp vào bảng sản phẩm nữa). Trước VAT / Sau VAT song song —
+            khách trả tiền mặt không lấy hoá đơn thì chỉ cần trả mức trước-VAT. */}
+        <div style={{ marginTop: 16, border: BORDER, borderRadius: 6, padding: "14px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GRAND_COLOR, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
+            Tình hình công nợ
+          </div>
           <table>
             <thead>
               <tr>
-                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)" }} />
-                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)", textAlign: "right" }}>Trước VAT</td>
-                <td style={{ padding: "2px 0 6px", fontSize: 11, color: "var(--grey)", textAlign: "right" }}>Sau VAT</td>
+                <td style={{ padding: "2px 0 6px" }} />
+                <td style={vatColHeaderStyle}>Trước VAT</td>
+                <td style={vatColHeaderStyle}>Sau VAT</td>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td style={{ padding: "3px 0", fontSize: 12.5 }}>{isOrder ? "Đơn hàng này" : "Báo giá này (nếu xác nhận)"}</td>
-                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(totalAmountBeforeVat)} ₫</td>
-                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(totalAmountBeforeVat)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
               </tr>
               <tr>
-                <td style={{ padding: "3px 0", fontSize: 12.5 }}>Nợ cũ (các đơn khác)</td>
-                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(existingDebtBeforeVat)} ₫</td>
-                <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>{fmt(existingDebt)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 12.5 }}>Công nợ cũ (các đơn khác)</td>
+                <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: DEBT_COLOR, fontWeight: 700 }}>{fmt(existingDebtBeforeVat)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: DEBT_COLOR, fontWeight: 700 }}>{fmt(existingDebt)} ₫</td>
               </tr>
               {paidAmount > 0 && (
                 <tr>
                   <td style={{ padding: "3px 0", fontSize: 12.5 }}>Đã thanh toán</td>
-                  <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>−{fmt(paidAmount)} ₫</td>
-                  <td style={{ padding: "3px 0", fontSize: 12.5, textAlign: "right" }}>−{fmt(paidAmount)} ₫</td>
+                  <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: PAID_COLOR, fontWeight: 700 }}>−{fmt(paidAmount)} ₫</td>
+                  <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: PAID_COLOR, fontWeight: 700 }}>−{fmt(paidAmount)} ₫</td>
                 </tr>
               )}
               <tr>
-                <td colSpan={3} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }} />
+                <td colSpan={3} style={{ borderTop: BORDER, paddingTop: 8 }} />
               </tr>
               <tr>
-                <td style={{ padding: "4px 0", fontSize: 14, fontWeight: 700, color: "var(--navy)" }}>TỔNG PHẢI THANH TOÁN</td>
-                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(totalToPayBeforeVat)} ₫</td>
-                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 700, color: "var(--navy)", textAlign: "right" }}>{fmt(totalToPay)} ₫</td>
+                <td style={{ padding: "4px 0", fontSize: 14, fontWeight: 700 }}>TỔNG PHẢI THANH TOÁN</td>
+                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 800, textAlign: "right", color: GRAND_COLOR }}>{fmt(totalToPayBeforeVat)} ₫</td>
+                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 800, textAlign: "right", color: GRAND_COLOR }}>{fmt(totalToPay)} ₫</td>
               </tr>
             </tbody>
           </table>
@@ -588,10 +669,12 @@ export default function QuotationPrintPage() {
           </div>
         )}
 
-        {/* Block 5 — Thông tin thanh toán */}
+        {/* Thông tin thanh toán — chuyển khoản. */}
         {(company?.bankName || company?.bankAccountNumber) && (
-          <div style={{ marginTop: 18, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-            <div className="label" style={{ marginBottom: 6 }}>Thông tin thanh toán</div>
+          <div style={{ marginTop: 16, borderTop: BORDER, paddingTop: 10 }}>
+            <div style={{ fontSize: 10.5, color: "var(--grey)", textTransform: "uppercase", letterSpacing: 0.04, marginBottom: 4 }}>
+              Thông tin thanh toán
+            </div>
             <div style={{ fontSize: 12, lineHeight: 1.8 }}>
               {company?.bankName && <div>Ngân hàng: {company.bankName}</div>}
               {company?.bankAccountNumber && <div>Số tài khoản: {company.bankAccountNumber}</div>}
@@ -602,13 +685,16 @@ export default function QuotationPrintPage() {
         )}
 
         {terms && (
-          <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 12, fontSize: 11, whiteSpace: "pre-line", color: "var(--grey)" }}>
+          <div style={{ marginTop: 16, borderTop: BORDER, paddingTop: 12, fontSize: 11, whiteSpace: "pre-line", color: "var(--grey)" }}>
             <strong style={{ color: "#101828" }}>Điều khoản:</strong> {terms}
           </div>
         )}
 
-        {/* Chữ ký */}
-        <div style={{ marginTop: 40 }}>
+        {/* 4. Chữ ký — Khách hàng xác nhận / Đại diện công ty đóng dấu, giữ
+            nguyên (khác "Người lập phiếu/Người nhận hàng" của ảnh mẫu — vì
+            đây là bước khách DUYỆT báo giá/đơn hàng, không phải phiếu giao
+            nhận hàng nội bộ). */}
+        <div style={{ marginTop: 36 }}>
           <table>
             <tbody>
               <tr>

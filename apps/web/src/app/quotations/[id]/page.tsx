@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, FileDown, Settings2, Clock, RefreshCw, X, TrendingUp } from "lucide-react";
+import { AlertCircle, Pencil, Plus, ArrowLeft, Send, XCircle, CheckCircle, Printer, Settings2, Clock, RefreshCw, X, TrendingUp } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -31,6 +31,11 @@ interface QuotationItemParam {
   name: string;
   label: string;
   value: string;
+  // Nhãn hiển thị của option ENUM đã chọn (vd "Cửa sổ" thay vì mã gốc
+  // "cuaso") — API đã snapshot sẵn, null với tham số không phải ENUM hoặc dữ
+  // liệu cũ tạo trước khi có field này. Dùng cho thông số rút gọn trong dialog
+  // Lãi/lỗ (giống cách bản in báo giá hiển thị).
+  valueLabel: string | null;
   unit: string | null;
 }
 
@@ -380,6 +385,24 @@ export default function QuotationDetailPage() {
     }
   }
 
+  // Nhân đôi dòng — gọi lại đúng POST /items như thêm dòng mới bình thường
+  // (productId/quantity/parameters/note), để BE tự tính giá/chiết khấu/VAT
+  // theo cấu hình hiện tại (không copy nguyên số đã snapshot của dòng gốc).
+  async function duplicateItem(item: QuotationItem) {
+    try {
+      await apiPost(`/quotations/${id}/items`, {
+        productId: item.productId,
+        quantity: item.quantity,
+        parameters: item.parameters.map((p) => ({ name: p.name, value: p.value })),
+        note: item.note,
+      });
+      toast.success("Đã nhân đôi sản phẩm.");
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    }
+  }
+
   if (loading) return <Loading />;
   if (error || !quotation) return <ErrorState description={error ?? "Không tìm thấy báo giá."} onRetry={refresh} />;
 
@@ -406,12 +429,16 @@ export default function QuotationDetailPage() {
                 Sửa thông tin
               </Button>
             )}
-            {/* Task 07: PDF download */}
+            {/* Task 07: In đơn — mở trang /print (nút Sao chép ảnh báo giá /
+                Xuất PDF / Xuất cả nằm trong trang đó, xem export-quotation-menu.tsx). */}
             {quotation.status !== "CANCELLED" && hasPermission("quotation.print") && (
               <a href={`/quotations/${id}/print`} target="_blank" rel="noreferrer">
-                <Button variant="outline">
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Tải PDF
+                <Button
+                  variant="outline"
+                  className="animate-pulse border-2 border-blue-600 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-950/60"
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  In Đơn
                 </Button>
               </a>
             )}
@@ -654,6 +681,7 @@ export default function QuotationDetailPage() {
             setItemDialogOpen(true);
           }}
           onDelete={deleteItem}
+          onDuplicate={duplicateItem}
           discountAmount={Number(quotation.discountAmount ?? 0)}
           costByItemId={costByItemId}
         />
@@ -665,6 +693,7 @@ export default function QuotationDetailPage() {
         onOpenChange={setMarginDialogOpen}
         quotationCode={quotation.code}
         summary={costSummary}
+        items={quotation.items}
       />
 
       {/* Edit Header Dialog */}
