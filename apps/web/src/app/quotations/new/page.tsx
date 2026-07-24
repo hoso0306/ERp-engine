@@ -14,11 +14,28 @@ import {
 import { toast } from "sonner";
 import { apiPost, ApiError } from "@/lib/api";
 
+// Định dạng "YYYY-MM-DD" theo giờ LOCAL cho <input type="date"> — không dùng
+// toISOString() vì nó quy đổi sang UTC, có thể lệch ngày tuỳ múi giờ máy.
+function toDateInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return toDateInputValue(d);
+}
+
 export default function NewQuotationPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
-  const [expiryDate, setExpiryDate] = useState("");
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  // Mặc định Ngày hết hạn +1 ngày, Hạn giao hàng +2 ngày từ lúc tạo — vẫn sửa
+  // được bình thường qua onChange bên dưới.
+  const [expiryDate, setExpiryDate] = useState(() => addDays(1));
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(() => addDays(2));
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
