@@ -122,6 +122,17 @@ function paramValue(item: ProductionOrderItem, name: string): string {
   return item.parameters.find((p) => p.name === name)?.value ?? "—";
 }
 
+// Chuẩn hoá hiển thị Rộng/Cao — luôn hiện đủ 3 chữ số thập phân (vd "1,200",
+// "11,000") cho đồng nhất giữa các dòng trên phiếu, dù dữ liệu gốc nhập
+// thiếu số 0 (vd "1.2") hay dùng dấu chấm/phẩy khác nhau. Không sửa dữ liệu
+// gốc đã lưu (đúng nguyên tắc Snapshot) — chỉ chuẩn hoá lúc hiển thị. Giá
+// trị không parse được số thì hiện nguyên văn.
+function formatDimension(raw: string): string {
+  const num = Number(raw.replace(",", "."));
+  if (Number.isNaN(num)) return raw;
+  return num.toLocaleString("vi-VN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 // Mẫu Xưởng (009-in-phieu-san-xuat.md) — dòng mô tả dưới tên sản phẩm gồm
 // các thông số KHÁC Rộng/Cao (loại cửa, số cánh, màu khung...), CHỈ hiển thị
 // giá trị + đơn vị (bỏ nhãn — "Cửa sổ" thay vì "Loại cửa cuaso"), nối bằng dấu
@@ -469,7 +480,8 @@ function GenericOrderContent({
                     {item.parameters.map((p) => (
                       <span key={p.name} style={{ marginRight: 8 }}>
                         <span style={{ color: "var(--grey)" }}>{p.label}: </span>
-                        {p.valueLabel ?? p.value}{p.unit ? ` ${p.unit}` : ""}
+                        {p.valueLabel ?? (p.name === WIDTH_PARAM_NAME || p.name === HEIGHT_PARAM_NAME ? formatDimension(p.value) : p.value)}
+                        {p.unit ? ` ${p.unit}` : ""}
                       </span>
                     ))}
                   </div>
@@ -711,8 +723,8 @@ function WorkshopOrderContent({
                         )}
                       </td>
                     )}
-                    <td style={tdBigStyle}>{paramValue(item, WIDTH_PARAM_NAME)}</td>
-                    <td style={tdBigStyle}>{paramValue(item, HEIGHT_PARAM_NAME)}</td>
+                    <td style={tdBigStyle}>{formatDimension(paramValue(item, WIDTH_PARAM_NAME))}</td>
+                    <td style={tdBigStyle}>{formatDimension(paramValue(item, HEIGHT_PARAM_NAME))}</td>
                     <td style={tdBigStyle}>{Number(item.quantity)}</td>
                     {itemIdx === 0 && (
                       <td
