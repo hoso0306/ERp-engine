@@ -105,7 +105,7 @@ export default function DebtsByOrderPage() {
             Theo dõi công nợ phải thu và ghi nhận thanh toán
             <br />
             <Link href="/vat-settlements" className="text-primary underline underline-offset-2">
-              Xem VAT Settlement (đơn đã thu tiền mặt, nay xin xuất hoá đơn) →
+              Xem Quyết toán VAT (đơn đã thu tiền mặt, nay xin xuất hoá đơn) →
             </Link>
           </>
         }

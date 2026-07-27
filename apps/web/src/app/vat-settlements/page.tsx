@@ -37,7 +37,7 @@ export default function VatSettlementsPage() {
       setSettlements(json.data);
       setMeta(json.meta);
     } catch {
-      setError("Không thể tải danh sách VAT Settlement.");
+      setError("Không thể tải danh sách Quyết toán VAT.");
     } finally {
       setLoading(false);
     }
@@ -50,7 +50,7 @@ export default function VatSettlementsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="VAT Settlement"
+        title="Quyết toán VAT"
         description={
           <>
             Các đơn đã thu tiền mặt không xuất hoá đơn, nay khách quay lại yêu cầu xuất hoá đơn
@@ -67,8 +67,8 @@ export default function VatSettlementsPage() {
       {error && <ErrorState description={error} onRetry={fetchVatSettlements} />}
       {!loading && !error && settlements.length === 0 && (
         <EmptyState
-          title="Chưa có VAT Settlement"
-          description="Tạo VAT Settlement từ trang chi tiết công nợ đã đóng theo chế độ tiền mặt không xuất hóa đơn."
+          title="Chưa có Quyết toán VAT"
+          description="Tạo Quyết toán VAT từ trang chi tiết công nợ đã đóng theo chế độ tiền mặt không xuất hóa đơn."
         />
       )}
       {!loading && !error && settlements.length > 0 && (

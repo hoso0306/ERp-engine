@@ -101,7 +101,10 @@ export function OpeningBalanceSection({
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{b.note || "—"}</TableCell>
                     <TableCell>
-                      {isOpen && canManage && (
+                      {/* Rà soát mô hình công nợ lần 2 (chốt 28/07/2026): không ẩn
+                          theo isOpen nữa — backend/client validation đã báo lỗi rõ
+                          ràng khi bấm lúc đã tất toán hết. */}
+                      {canManage && (
                         <div className="flex justify-end gap-1">
                           <Button variant="outline" size="sm" render={<Link href={`/vat-settlements/new-from-opening-balance?openingBalanceId=${b.id}`} />}>
                             <FileText className="mr-1 h-3.5 w-3.5" />

@@ -68,7 +68,7 @@ export function VatSettlementTable({ settlements, meta, onPageChange }: VatSettl
 
       <div className="flex items-center justify-between px-2 py-4">
         <p className="text-sm text-muted-foreground">
-          Hiển thị {settlements.length} / {meta.total} VAT Settlement
+          Hiển thị {settlements.length} / {meta.total} Quyết toán VAT
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>

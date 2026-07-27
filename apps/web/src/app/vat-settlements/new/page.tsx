@@ -101,7 +101,7 @@ export default function NewVatSettlementPage() {
         customerId: customer.id,
         receivableIds: Array.from(selected),
       });
-      toast.success("Đã tạo VAT Settlement.");
+      toast.success("Đã tạo Quyết toán VAT.");
       router.push(`/vat-settlements/${settlement.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -116,7 +116,7 @@ export default function NewVatSettlementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Tạo VAT Settlement"
+        title="Tạo Quyết toán VAT"
         description={`Khách hàng ${customer.name}`}
         actions={
           <Button variant="outline" onClick={() => router.back()}>Quay lại</Button>
@@ -167,7 +167,7 @@ export default function NewVatSettlementPage() {
 
       <div className="flex justify-end">
         <Button onClick={handleSubmit} disabled={saving || selected.size === 0}>
-          {saving ? "Đang tạo..." : "Tạo VAT Settlement"}
+          {saving ? "Đang tạo..." : "Tạo Quyết toán VAT"}
         </Button>
       </div>
     </div>

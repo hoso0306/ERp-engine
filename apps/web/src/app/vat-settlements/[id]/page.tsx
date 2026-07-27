@@ -69,7 +69,7 @@ interface VatSettlementDetail {
 }
 
 const TIMELINE_LABEL: Record<string, string> = {
-  VAT_SETTLEMENT_CREATED: "Tạo VAT Settlement",
+  VAT_SETTLEMENT_CREATED: "Tạo Quyết toán VAT",
   VAT_SETTLEMENT_SENT: "Gửi khách",
   VAT_SETTLEMENT_PAID: "Ghi nhận thanh toán",
   VAT_SETTLEMENT_INVOICED: "Đánh dấu đã xuất hóa đơn",
@@ -112,7 +112,7 @@ export default function VatSettlementDetailPage() {
         .then(setCustomer)
         .catch(() => {});
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Không thể tải VAT Settlement.");
+      setError(err instanceof ApiError ? err.message : "Không thể tải Quyết toán VAT.");
     } finally {
       setLoading(false);
     }
@@ -142,7 +142,7 @@ export default function VatSettlementDetailPage() {
     setBusy(true);
     try {
       await apiPost(`/vat-settlements/${id}/cancel`);
-      toast.success("Đã huỷ VAT Settlement.");
+      toast.success("Đã huỷ Quyết toán VAT.");
       fetchSettlement();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -198,7 +198,7 @@ export default function VatSettlementDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`VAT Settlement — ${settlement.code}`}
+        title={`Quyết toán VAT — ${settlement.code}`}
         breadcrumbLabel={settlement.code}
         description={<VatSettlementStatusBadge status={settlement.status} />}
         actions={
@@ -381,9 +381,9 @@ export default function VatSettlementDetailPage() {
       <ConfirmDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
-        title="Huỷ VAT Settlement"
-        description="Chỉ huỷ được khi đang Nháp (chưa gửi khách, chưa có Payment nào gắn vào) — an toàn, không ảnh hưởng gì khác. Công nợ nguồn sẽ đủ điều kiện tạo VAT Settlement mới lại. Bạn có chắc chắn?"
-        confirmLabel="Huỷ VAT Settlement"
+        title="Huỷ Quyết toán VAT"
+        description="Chỉ huỷ được khi đang Nháp (chưa gửi khách, chưa có Payment nào gắn vào) — an toàn, không ảnh hưởng gì khác. Công nợ nguồn sẽ đủ điều kiện tạo Quyết toán VAT mới lại. Bạn có chắc chắn?"
+        confirmLabel="Huỷ Quyết toán VAT"
         variant="destructive"
         onConfirm={handleCancel}
       />

@@ -74,14 +74,14 @@ export default function VatSettlementPrintPage() {
       .then((data) => {
         if (cancelled) return;
         setSettlement(data);
-        document.title = `${data.code} - VAT Settlement`;
+        document.title = `${data.code} - Quyết toán VAT`;
         // Nguồn Công nợ đầu kỳ không có snapshot customerName/Phone (khác
         // Receivable) — lấy trực tiếp từ Customer qua customerId.
         apiGet<CustomerBrief>(`/customers/${data.customerId}`)
           .then((c) => { if (!cancelled) setCustomer(c); })
           .catch(() => {});
       })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Không tìm thấy VAT Settlement."); });
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Không tìm thấy Quyết toán VAT."); });
 
     apiGet<Company | null>("/settings/company")
       .then((data) => { if (!cancelled) setCompany(data); })
@@ -164,7 +164,7 @@ export default function VatSettlementPrintPage() {
           </div>
 
           <div style={{ fontSize: 22, fontWeight: 800, color: GRAND_COLOR, marginTop: 12, textTransform: "uppercase" }}>
-            Phiếu VAT Settlement
+            Phiếu Quyết toán VAT
           </div>
           <div style={{ fontSize: 11, color: "#667085", marginTop: 4 }}>
             Ngày lập: {fmtDate(settlement.createdAt)}

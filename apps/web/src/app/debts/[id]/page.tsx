@@ -91,13 +91,14 @@ export default function ReceivableDetailPage() {
 
   const canPay = receivable.salesOrder.status !== "CANCELLED" && hasPermission("debt.create-payment");
   // 024-cong-no-vat-settlement.md Việc 6: 🟢 chỉ hiện khi còn nợ (remainingAmount > 0)
-  // và chưa từng đóng theo chế độ này. Rà soát mô hình công nợ (chốt
-  // 27/07/2026): thêm điều kiện đã thu đủ phần gốc (remainingAmountBeforeVat
-  // <= 0) — khớp validate mới ở backend, tránh hiện nút rồi bấm vào lại báo lỗi.
+  // và chưa từng đóng theo chế độ này. Rà soát mô hình công nợ lần 2 (chốt
+  // 28/07/2026): KHÔNG ẩn theo remainingAmountBeforeVat > 0 nữa — luôn hiện
+  // nút, để backend tự báo lỗi rõ ràng khi bấm lúc chưa thu đủ phần gốc
+  // (validate ở closeReceivableWithoutVat() không đổi, chỉ FE không tiền-đoán
+  // điều kiện nữa để tránh cảm giác "nút biến mất bí ẩn").
   const canCloseWithoutVat =
     canPay &&
     Number(receivable.remainingAmount) > 0 &&
-    Number(receivable.remainingAmountBeforeVat) <= 0 &&
     !receivable.closedWithoutVat;
   const canCreateVatSettlement = canPay && receivable.closedWithoutVat;
   // Hoàn tác action đóng-không-VAT (bổ sung 26/07/2026) — chỉ hiện khi đã
@@ -148,7 +149,7 @@ export default function ReceivableDetailPage() {
                 onClick={() => router.push(`/vat-settlements/new?receivableId=${receivable.id}`)}
               >
                 <FileText className="mr-2 h-4 w-4" />
-                Tạo VAT Settlement
+                Tạo Quyết toán VAT
               </Button>
             )}
             {canReopenWithoutVat && (
@@ -237,7 +238,7 @@ export default function ReceivableDetailPage() {
         open={closeWithoutVatOpen}
         onOpenChange={setCloseWithoutVatOpen}
         title="Đóng công nợ (không xuất hóa đơn)"
-        description="ERP sẽ coi công nợ này đã kết thúc (còn lại = 0), không tiếp tục theo dõi phần VAT như công nợ bình thường. Nếu khách quay lại yêu cầu xuất hóa đơn sau này, dùng chức năng Tạo VAT Settlement. Bạn có chắc chắn?"
+        description="ERP sẽ coi công nợ này đã kết thúc (còn lại = 0), không tiếp tục theo dõi phần VAT như công nợ bình thường. Nếu khách quay lại yêu cầu xuất hóa đơn sau này, dùng chức năng Tạo Quyết toán VAT. Bạn có chắc chắn?"
         confirmLabel="Xác nhận"
         onConfirm={handleCloseWithoutVat}
       />
@@ -246,7 +247,7 @@ export default function ReceivableDetailPage() {
         open={reopenOpen}
         onOpenChange={setReopenOpen}
         title="Hoàn tác đóng công nợ (không xuất hóa đơn)"
-        description="ERP sẽ khôi phục lại số tiền còn phải thu như trước khi đóng. Chỉ dùng khi bấm nhầm nút Đóng công nợ (không xuất hóa đơn) trước đó — sẽ bị chặn nếu công nợ này đã thuộc một VAT Settlement. Bạn có chắc chắn?"
+        description="ERP sẽ khôi phục lại số tiền còn phải thu như trước khi đóng. Chỉ dùng khi bấm nhầm nút Đóng công nợ (không xuất hóa đơn) trước đó — sẽ bị chặn nếu công nợ này đã thuộc một Quyết toán VAT. Bạn có chắc chắn?"
         confirmLabel="Hoàn tác"
         onConfirm={handleReopenWithoutVat}
       />

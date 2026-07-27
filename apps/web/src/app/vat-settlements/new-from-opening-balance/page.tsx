@@ -101,7 +101,7 @@ export default function NewVatSettlementFromOpeningBalancePage() {
           parameters: l.parameters,
         })),
       });
-      toast.success("Đã tạo VAT Settlement.");
+      toast.success("Đã tạo Quyết toán VAT.");
       router.push(`/vat-settlements/${settlement.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -192,7 +192,7 @@ export default function NewVatSettlementFromOpeningBalancePage() {
 
       <div className="flex justify-end">
         <Button onClick={handleSubmit} disabled={saving || lines.length === 0}>
-          {saving ? "Đang tạo..." : "Tạo VAT Settlement"}
+          {saving ? "Đang tạo..." : "Tạo Quyết toán VAT"}
         </Button>
       </div>
 

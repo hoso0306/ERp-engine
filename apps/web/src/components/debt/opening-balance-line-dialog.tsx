@@ -375,7 +375,7 @@ export function OpeningBalanceLineDialog({
               )}
               {qty > 0 && !finalNegative && vatRate > 0 && (
                 <div className="flex justify-between border-t pt-1.5 font-semibold">
-                  <span>VAT ({vatRate}%) — sẽ đưa vào VAT Settlement</span>
+                  <span>VAT ({vatRate}%) — sẽ đưa vào Quyết toán VAT</span>
                   <span className="font-mono">{vatAmount !== null ? formatMoney(vatAmount) : "—"}</span>
                 </div>
               )}
