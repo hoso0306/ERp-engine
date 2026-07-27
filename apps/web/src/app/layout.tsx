@@ -18,8 +18,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Rèm Thăng Long",
-  description: "ERP Quản lý Xưởng Rèm Thăng Long",
+  metadataBase: new URL("https://erp.thanglongstar.com"),
+  title: "Thăng Long Star ERP",
+  description: "Hệ thống ERP quản lý nội bộ công ty Thăng Long Star",
+  openGraph: {
+    title: "Thăng Long Star ERP",
+    description: "Hệ thống ERP quản lý nội bộ công ty Thăng Long Star",
+    url: "https://erp.thanglongstar.com",
+    siteName: "Thăng Long Star ERP",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 566,
+        height: 441,
+      },
+    ],
+    locale: "vi_VN",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
