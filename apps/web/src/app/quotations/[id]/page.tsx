@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -168,9 +168,14 @@ export default function QuotationDetailPage() {
 
   // Send action (Task 05)
   const [sending, setSending] = useState(false);
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
 
   // Approve action (Task 06)
   const [approving, setApproving] = useState(false);
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
+
+  // Xoá dòng sản phẩm — id dòng đang chờ xác nhận xoá (null = không có dialog nào mở)
+  const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
 
   // Pricing version stale + recalculate (Sprint 02 Task 02)
   const [staleItems, setStaleItems] = useState<StalePricingItem[] | null>(null);
@@ -282,7 +287,6 @@ export default function QuotationDetailPage() {
   }
 
   async function handleApprove() {
-    if (!confirm("Xác nhận khách hàng đã duyệt báo giá này? Hành động sẽ sinh Đơn hàng và Phiếu sản xuất.")) return;
     setApproving(true);
     try {
       await apiPost(`/quotations/${id}/approve`);
@@ -324,7 +328,6 @@ export default function QuotationDetailPage() {
   }
 
   async function handleSend() {
-    if (!confirm("Xác nhận gửi báo giá cho khách hàng?")) return;
     setSending(true);
     try {
       await apiPost(`/quotations/${id}/send`);
@@ -399,7 +402,6 @@ export default function QuotationDetailPage() {
   }
 
   async function deleteItem(itemId: string) {
-    if (!confirm("Xoá sản phẩm này khỏi báo giá?")) return;
     try {
       await apiDelete(`/quotations/${id}/items/${itemId}`);
       toast.success("Đã xoá sản phẩm.");
@@ -470,14 +472,14 @@ export default function QuotationDetailPage() {
                 không liệt kê "send"), dùng chung quotation.update vì đây là bước
                 chỉnh sửa/tiến trạng thái báo giá còn mở, không phải quyền độc lập. */}
             {quotation.status === "DRAFT" && hasPermission("quotation.update") && (
-              <Button onClick={handleSend} disabled={sending}>
+              <Button onClick={() => setSendConfirmOpen(true)} disabled={sending}>
                 <Send className="mr-2 h-4 w-4" />
                 {sending ? "Đang gửi..." : "Gửi báo giá"}
               </Button>
             )}
             {/* Task 06: Approve */}
             {quotation.status === "SENT" && hasPermission("quotation.approve") && (
-              <Button onClick={handleApprove} disabled={approving} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => setApproveConfirmOpen(true)} disabled={approving} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 {approving ? "Đang xử lý..." : "Khách đã duyệt"}
               </Button>
@@ -710,7 +712,7 @@ export default function QuotationDetailPage() {
             setEditingItem(item);
             setItemDialogOpen(true);
           }}
-          onDelete={deleteItem}
+          onDelete={setDeleteItemId}
           onDuplicate={duplicateItem}
           discountAmount={Number(quotation.discountAmount ?? 0)}
           shippingFee={Number(quotation.shippingFee ?? 0)}
@@ -829,6 +831,31 @@ export default function QuotationDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={sendConfirmOpen}
+        onOpenChange={setSendConfirmOpen}
+        title="Gửi báo giá"
+        description="Xác nhận gửi báo giá cho khách hàng?"
+        onConfirm={handleSend}
+      />
+
+      <ConfirmDialog
+        open={approveConfirmOpen}
+        onOpenChange={setApproveConfirmOpen}
+        title="Khách hàng đã duyệt báo giá"
+        description="Xác nhận khách hàng đã duyệt báo giá này? Hành động sẽ sinh Đơn hàng và Phiếu sản xuất."
+        onConfirm={handleApprove}
+      />
+
+      <ConfirmDialog
+        open={deleteItemId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteItemId(null); }}
+        title="Xoá sản phẩm"
+        description="Xoá sản phẩm này khỏi báo giá?"
+        variant="destructive"
+        onConfirm={() => deleteItemId && deleteItem(deleteItemId)}
+      />
 
       {/* Manual Override Dialog (Task 08) */}
       <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>

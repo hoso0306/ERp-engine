@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, PlayCircle, CheckCircle, Clock, FileDown, MapPin } from "lucide-react";
@@ -98,6 +98,8 @@ export default function ProductionOrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [startConfirmOpen, setStartConfirmOpen] = useState(false);
+  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
 
   const fetchOrder = useCallback(async () => {
     setLoading(true);
@@ -115,7 +117,6 @@ export default function ProductionOrderDetailPage() {
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
 
   async function handleStart() {
-    if (!confirm("Xác nhận bắt đầu sản xuất phiếu này?")) return;
     setStarting(true);
     try {
       await apiPost(`/production-orders/${id}/start`);
@@ -129,7 +130,6 @@ export default function ProductionOrderDetailPage() {
   }
 
   async function handleComplete() {
-    if (!confirm("Xác nhận phiếu sản xuất này đã hoàn thành?")) return;
     setCompleting(true);
     try {
       await apiPost(`/production-orders/${id}/complete`);
@@ -167,13 +167,13 @@ export default function ProductionOrderDetailPage() {
               </Button>
             </a>
             {canStart && (
-              <Button onClick={handleStart} disabled={starting}>
+              <Button onClick={() => setStartConfirmOpen(true)} disabled={starting}>
                 <PlayCircle className="mr-2 h-4 w-4" />
                 {starting ? "Đang xử lý..." : "Bắt đầu sản xuất"}
               </Button>
             )}
             {canComplete && (
-              <Button onClick={handleComplete} disabled={completing} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => setCompleteConfirmOpen(true)} disabled={completing} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 {completing ? "Đang xử lý..." : "Hoàn thành"}
               </Button>
@@ -256,6 +256,22 @@ export default function ProductionOrderDetailPage() {
         <h3 className="text-base font-semibold">Sản phẩm cần sản xuất</h3>
         <ProductionItemTable items={order.items} />
       </div>
+
+      <ConfirmDialog
+        open={startConfirmOpen}
+        onOpenChange={setStartConfirmOpen}
+        title="Bắt đầu sản xuất"
+        description="Xác nhận bắt đầu sản xuất phiếu này?"
+        onConfirm={handleStart}
+      />
+
+      <ConfirmDialog
+        open={completeConfirmOpen}
+        onOpenChange={setCompleteConfirmOpen}
+        title="Hoàn thành sản xuất"
+        description="Xác nhận phiếu sản xuất này đã hoàn thành?"
+        onConfirm={handleComplete}
+      />
 
       {/* Timeline */}
       {order.timeline && order.timeline.length > 0 && (

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, CheckCircle } from "lucide-react";
@@ -68,6 +68,7 @@ export default function ReturnDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
 
   const fetchReturn = useCallback(async () => {
     setLoading(true);
@@ -85,7 +86,6 @@ export default function ReturnDetailPage() {
   useEffect(() => { fetchReturn(); }, [fetchReturn]);
 
   async function handleComplete() {
-    if (!confirm("Chốt xong vụ việc này với khách? Không ảnh hưởng tài chính, không thể quay lại.")) return;
     setCompleting(true);
     try {
       await apiPost(`/returns/${id}/complete`);
@@ -116,7 +116,7 @@ export default function ReturnDetailPage() {
               Quay lại
             </Button>
             {canComplete && (
-              <Button onClick={handleComplete} disabled={completing} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => setCompleteConfirmOpen(true)} disabled={completing} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 {completing ? "Đang xử lý..." : "Hoàn tất xử lý"}
               </Button>
@@ -185,6 +185,14 @@ export default function ReturnDetailPage() {
         <h3 className="text-base font-semibold">Danh sách sản phẩm trả</h3>
         <ReturnItemTable items={ret.items} totalValue={Number(ret.totalValue)} />
       </div>
+
+      <ConfirmDialog
+        open={completeConfirmOpen}
+        onOpenChange={setCompleteConfirmOpen}
+        title="Hoàn tất xử lý"
+        description="Chốt xong vụ việc này với khách? Không ảnh hưởng tài chính, không thể quay lại."
+        onConfirm={handleComplete}
+      />
     </div>
   );
 }

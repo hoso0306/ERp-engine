@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Ban } from "lucide-react";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,6 +86,7 @@ export default function RoleDetailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [disabling, setDisabling] = useState(false);
+  const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
 
   const fetchRole = useCallback(async () => {
     setLoading(true);
@@ -145,7 +146,6 @@ export default function RoleDetailPage() {
   }
 
   async function handleDisable() {
-    if (!confirm(`Vô hiệu hoá vai trò "${role?.name}"?`)) return;
     setDisabling(true);
     try {
       await apiPost(`/roles/${id}/disable`);
@@ -183,7 +183,7 @@ export default function RoleDetailPage() {
               Quay lại
             </Button>
             {canDisable && (
-              <Button variant="destructive" onClick={handleDisable} disabled={disabling}>
+              <Button variant="destructive" onClick={() => setDisableConfirmOpen(true)} disabled={disabling}>
                 <Ban className="mr-2 h-4 w-4" />
                 {disabling ? "Đang xử lý..." : "Vô hiệu hoá"}
               </Button>
@@ -244,6 +244,15 @@ export default function RoleDetailPage() {
           </Button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={disableConfirmOpen}
+        onOpenChange={setDisableConfirmOpen}
+        title="Vô hiệu hoá vai trò"
+        description={`Vô hiệu hoá vai trò "${role.name}"?`}
+        variant="destructive"
+        onConfirm={handleDisable}
+      />
     </div>
   );
 }

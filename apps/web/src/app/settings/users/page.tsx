@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus } from "lucide-react";
-import { Loading, ErrorState } from "@/components/shared";
+import { Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { SettingsTabs } from "@/components/setting/settings-tabs";
@@ -32,6 +32,9 @@ export default function UsersPage() {
   const [tempPasswordEmail, setTempPasswordEmail] = useState("");
   const [tempPassword, setTempPassword] = useState("");
 
+  // Người dùng đang chờ xác nhận cấp lại mật khẩu tạm (null = không có dialog nào mở)
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserRow | null>(null);
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -60,7 +63,6 @@ export default function UsersPage() {
   }
 
   async function handleResetPassword(user: UserRow) {
-    if (!confirm(`Cấp lại mật khẩu tạm cho ${user.email}?`)) return;
     try {
       const result = await apiPatch<{ temporaryPassword: string }>(`/users/${user.id}`, {
         resetPassword: true,
@@ -98,7 +100,7 @@ export default function UsersPage() {
           <UserTable
             users={users}
             onEdit={(u) => { setEditingUser(u); setDialogOpen(true); }}
-            onResetPassword={handleResetPassword}
+            onResetPassword={setResetPasswordUser}
           />
 
           <UserDialog
@@ -114,6 +116,14 @@ export default function UsersPage() {
             onOpenChange={setTempPasswordOpen}
             email={tempPasswordEmail}
             temporaryPassword={tempPassword}
+          />
+
+          <ConfirmDialog
+            open={resetPasswordUser !== null}
+            onOpenChange={(open) => { if (!open) setResetPasswordUser(null); }}
+            title="Cấp lại mật khẩu tạm"
+            description={`Cấp lại mật khẩu tạm cho ${resetPasswordUser?.email}?`}
+            onConfirm={() => resetPasswordUser && handleResetPassword(resetPasswordUser)}
           />
         </>
       )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -181,6 +181,8 @@ export default function SalesOrderDetailPage() {
 
   const [shipping, setShipping] = useState(false);
   const [delivering, setDelivering] = useState(false);
+  const [shipConfirmOpen, setShipConfirmOpen] = useState(false);
+  const [deliverConfirmOpen, setDeliverConfirmOpen] = useState(false);
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -214,7 +216,6 @@ export default function SalesOrderDetailPage() {
   }, [id, hasPermission]);
 
   async function handleShip() {
-    if (!confirm("Xác nhận gửi xe cho đơn hàng này?")) return;
     setShipping(true);
     try {
       await apiPost(`/sales-orders/${id}/ship`);
@@ -228,7 +229,6 @@ export default function SalesOrderDetailPage() {
   }
 
   async function handleDeliver() {
-    if (!confirm("Xác nhận khách hàng đã nhận hàng?")) return;
     setDelivering(true);
     try {
       await apiPost(`/sales-orders/${id}/deliver`);
@@ -309,13 +309,13 @@ export default function SalesOrderDetailPage() {
               </a>
             )}
             {canShip && (
-              <Button onClick={handleShip} disabled={shipping}>
+              <Button onClick={() => setShipConfirmOpen(true)} disabled={shipping}>
                 <Truck className="mr-2 h-4 w-4" />
                 {shipping ? "Đang xử lý..." : "Gửi xe"}
               </Button>
             )}
             {canDeliver && (
-              <Button onClick={handleDeliver} disabled={delivering} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => setDeliverConfirmOpen(true)} disabled={delivering} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 {delivering ? "Đang xử lý..." : "Khách đã nhận"}
               </Button>
@@ -614,6 +614,22 @@ export default function SalesOrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={shipConfirmOpen}
+        onOpenChange={setShipConfirmOpen}
+        title="Gửi xe"
+        description="Xác nhận gửi xe cho đơn hàng này?"
+        onConfirm={handleShip}
+      />
+
+      <ConfirmDialog
+        open={deliverConfirmOpen}
+        onOpenChange={setDeliverConfirmOpen}
+        title="Khách hàng đã nhận hàng"
+        description="Xác nhận khách hàng đã nhận hàng?"
+        onConfirm={handleDeliver}
+      />
 
       {/* Manual Override Dialog */}
       <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
