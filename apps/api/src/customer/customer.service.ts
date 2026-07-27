@@ -18,6 +18,12 @@ import { OpeningBalanceService } from '../debt/opening-balance.service';
 const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
 const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
 
+// Mặc định cho khách hàng mới khi không chọn/không điền (chốt 27/07/2026) —
+// chỉ áp dụng lúc TẠO MỚI (form UI + API + dòng mới trong Excel import),
+// không áp dụng khi cập nhật khách đã tồn tại qua import.
+const DEFAULT_CUSTOMER_GROUP_NAME = 'Đại lý';
+const DEFAULT_DEBT_LIMIT = 30_000_000;
+
 @Injectable()
 export class CustomerService {
   constructor(
@@ -105,6 +111,8 @@ export class CustomerService {
     }
 
     const code = await this.generateCode('CUSTOMER');
+    const customerGroupId =
+      dto.customerGroupId || (await this.getDefaultCustomerGroupId());
 
     return this.prisma.customer.create({
       data: {
@@ -118,12 +126,12 @@ export class CustomerService {
         district: dto.district?.trim() || null,
         ward: dto.ward?.trim() || null,
         address: dto.address?.trim() || null,
-        customerGroupId: dto.customerGroupId || null,
+        customerGroupId,
         deliveryRouteId: dto.deliveryRouteId || null,
         saleId: dto.saleId || null,
         priority: dto.priority || 'MEDIUM',
         status: dto.status || 'ACTIVE',
-        debtLimit: dto.debtLimit ?? 0,
+        debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
         debtTermDays: dto.debtTermDays ?? 30,
         note: dto.note?.trim() || null,
         defaultCarrierName: dto.defaultCarrierName?.trim() || null,
@@ -135,6 +143,13 @@ export class CustomerService {
         deliveryRoute: { select: { id: true, name: true } },
       },
     });
+  }
+
+  private async getDefaultCustomerGroupId(): Promise<string | null> {
+    const group = await this.prisma.customerGroup.findUnique({
+      where: { name: DEFAULT_CUSTOMER_GROUP_NAME },
+    });
+    return group?.id ?? null;
   }
 
   private async generateCode(type: string): Promise<string> {
@@ -850,6 +865,10 @@ export class CustomerService {
       }
     }
 
+    const defaultGroupId = toCreate.length
+      ? await this.getDefaultCustomerGroupId()
+      : null;
+
     for (const { dto } of toCreate) {
       const code = await this.generateCode('CUSTOMER');
       await this.prisma.customer.create({
@@ -864,11 +883,11 @@ export class CustomerService {
           district: dto.district || null,
           ward: dto.ward || null,
           address: dto.address || null,
-          customerGroupId: dto.customerGroupId || null,
+          customerGroupId: dto.customerGroupId || defaultGroupId,
           deliveryRouteId: dto.deliveryRouteId || null,
           priority: dto.priority || 'MEDIUM',
           status: dto.status || 'ACTIVE',
-          debtLimit: dto.debtLimit ?? 0,
+          debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
           debtTermDays: dto.debtTermDays ?? 30,
           note: dto.note || null,
           defaultCarrierName: dto.defaultCarrierName || null,

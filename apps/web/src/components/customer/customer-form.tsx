@@ -26,9 +26,17 @@ export function CustomerForm() {
   const [groups, setGroups] = useState<FilterOption[]>([]);
   const [routes, setRoutes] = useState<FilterOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Mặc định "Đại lý" khi tạo mới (chốt 27/07/2026) — chỉ set được sau khi
+  // danh sách nhóm tải xong, nên phải dùng state điều khiển (controlled)
+  // thay vì defaultValue tĩnh.
+  const [customerGroupId, setCustomerGroupId] = useState("none");
 
   useEffect(() => {
-    apiGet<FilterOption[]>("/customers/groups").then(setGroups).catch(() => {});
+    apiGet<FilterOption[]>("/customers/groups").then((data) => {
+      setGroups(data);
+      const agency = data.find((g) => g.name === "Đại lý");
+      if (agency) setCustomerGroupId(agency.id);
+    }).catch(() => {});
     apiGet<FilterOption[]>("/customers/routes").then(setRoutes).catch(() => {});
   }, []);
 
@@ -51,8 +59,7 @@ export function CustomerForm() {
       if (val && String(val).trim()) body[key] = String(val).trim();
     }
 
-    const customerGroupId = form.get("customerGroupId");
-    if (customerGroupId && customerGroupId !== "none") body.customerGroupId = customerGroupId;
+    if (customerGroupId !== "none") body.customerGroupId = customerGroupId;
 
     const deliveryRouteId = form.get("deliveryRouteId");
     if (deliveryRouteId && deliveryRouteId !== "none") body.deliveryRouteId = deliveryRouteId;
@@ -138,7 +145,11 @@ export function CustomerForm() {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Nhóm khách hàng</Label>
-            <Select name="customerGroupId" defaultValue="none">
+            <Select
+              name="customerGroupId"
+              value={customerGroupId}
+              onValueChange={(v) => setCustomerGroupId(v ?? "none")}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Chọn nhóm" />
               </SelectTrigger>
@@ -188,7 +199,7 @@ export function CustomerForm() {
 
         <div className="space-y-2">
           <Label htmlFor="debtLimit">Hạn mức công nợ (VNĐ)</Label>
-          <Input id="debtLimit" name="debtLimit" type="number" min={0} defaultValue={0} />
+          <Input id="debtLimit" name="debtLimit" type="number" min={0} defaultValue={30000000} />
         </div>
       </fieldset>
 
