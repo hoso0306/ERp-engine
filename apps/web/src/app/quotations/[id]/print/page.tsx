@@ -46,6 +46,8 @@ interface Quotation {
   // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026).
   discountAmount: number;
   discountReason: string | null;
+  // Phí vận chuyển (chốt 27/07/2026) — không chịu VAT.
+  shippingFee: number;
   customer: {
     id: string;
     code: string;
@@ -91,6 +93,7 @@ interface SalesOrder {
   totalVatAmount: number;
   discountAmount: number;
   discountReason: string | null;
+  shippingFee: number;
   grandTotal: number;
   items: SalesOrderItem[];
   receivable: {
@@ -326,9 +329,20 @@ export default function QuotationPrintPage() {
   const totalVat = isOrder
     ? Number(order!.totalVatAmount)
     : items.reduce((s, i) => s + i.vatAmount, 0);
+  // Tổng SL/M2 hàng TỔNG — tính tại thời điểm hiển thị (Derived Data hợp lệ,
+  // giống m2 từng dòng), chỉ cộng M2 các dòng có đủ Rộng/Cao.
+  const totalQuantity = items.reduce((s, i) => s + i.quantity, 0);
+  const totalM2 = items.reduce((s, i) => {
+    const rong = paramNumber(i.parameters, WIDTH_PARAM_NAME);
+    const cao = paramNumber(i.parameters, HEIGHT_PARAM_NAME);
+    return s + (rong !== null && cao !== null ? rong * cao * i.quantity : 0);
+  }, 0);
   const discountAmount = isOrder ? Number(order!.discountAmount) : Number(quotation.discountAmount ?? 0);
   const discountReason = isOrder ? order!.discountReason : quotation.discountReason;
-  const grandTotal = isOrder ? Number(order!.grandTotal) : totalAmount + totalVat - discountAmount;
+  const shippingFee = isOrder ? Number(order!.shippingFee) : Number(quotation.shippingFee ?? 0);
+  const grandTotal = isOrder
+    ? Number(order!.grandTotal)
+    : totalAmount + totalVat - discountAmount + shippingFee;
 
   // Công nợ: "Đơn hàng hiện tại" = số còn phải thu của chính đơn này (đã trừ
   // phần đã thanh toán, nếu có) khi đã duyệt; = grandTotal khi còn là Báo giá.
@@ -340,7 +354,7 @@ export default function QuotationPrintPage() {
   // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — khách trả tiền
   // mặt không lấy hoá đơn thì chỉ cần trả mức này. "Đã thanh toán" trừ đều cả
   // 2 mức (1 Payment không tách được phần gốc/VAT) nên dùng chung 1 số.
-  const totalAmountBeforeVat = totalAmount - discountAmount;
+  const totalAmountBeforeVat = totalAmount - discountAmount + shippingFee;
   const paidAmount = isOrder && order!.receivable ? Number(order!.receivable.paidAmount) : 0;
   const currentOrderRemainingBeforeVat =
     isOrder && order!.receivable ? Number(order!.receivable.remainingAmountBeforeVat) : totalAmountBeforeVat;
@@ -504,7 +518,7 @@ export default function QuotationPrintPage() {
           <thead>
             <tr style={{ background: HEAD_BG }}>
               <th style={thStyle}>STT</th>
-              <th style={{ ...thStyle, textAlign: "left" }}>Sản phẩm</th>
+              <th style={thStyle}>Sản phẩm</th>
               <th style={thStyle}>Rộng</th>
               <th style={thStyle}>Cao</th>
               <th style={thStyle}>SL</th>
@@ -542,7 +556,7 @@ export default function QuotationPrintPage() {
                       {itemIdx === 0 && (
                         <td
                           rowSpan={group.length}
-                          style={{ ...tdStyle, overflowWrap: "break-word", verticalAlign: "top" }}
+                          style={{ ...tdStyle, overflowWrap: "break-word", verticalAlign: "middle" }}
                         >
                           <div style={{ fontSize: 10.5, fontWeight: 500, color: "#444" }}>{item.productName}</div>
                           {otherParams.length > 0 && (
@@ -589,18 +603,18 @@ export default function QuotationPrintPage() {
             <tr>
               <td colSpan={12} style={{ border: "none", height: 10 }} />
             </tr>
-            {/* Hàng Tổng — chữ "TỔNG" ở cột Đơn giá, số liệu là tổng cộng
-                nguyên trạng của cột Thành Tiền / Tiền Thuế / Thành tiền (bao
-                gồm VAT) — không trừ Giảm thêm cấp báo giá (số đó đã phản ánh
-                trong khối Tình hình công nợ bên dưới, dòng "Báo giá này"). */}
+            {/* Hàng Tổng — chữ "TỔNG" ở cột Sản phẩm, kèm tổng SL/M2; số liệu
+                Thành Tiền/Tiền Thuế/Thành tiền (bao gồm VAT) là tổng cộng
+                nguyên trạng — không trừ Giảm thêm cấp báo giá (số đó đã phản
+                ánh trong khối Tình hình công nợ bên dưới, dòng "Báo giá này"). */}
             <tr>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>TỔNG</td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
+              <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>{totalQuantity}</td>
+              <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt2(totalM2)}</td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
-              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
-              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
-              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>TỔNG</td>
               <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalAmount)}</td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
               <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalVat)}</td>
@@ -615,6 +629,11 @@ export default function QuotationPrintPage() {
         {discountAmount > 0 && discountReason && (
           <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--grey)", marginTop: 4 }}>
             <em>Lý do giảm thêm: {discountReason}</em>
+          </div>
+        )}
+        {shippingFee > 0 && (
+          <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--grey)", marginTop: 4 }}>
+            <em>Đã gồm phí vận chuyển: {fmt(shippingFee)} ₫</em>
           </div>
         )}
 

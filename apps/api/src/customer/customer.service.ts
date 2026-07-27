@@ -13,6 +13,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-discount.dto';
 import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
 import { Prisma, SalesOrderStatus } from '@prisma/client';
+import { OpeningBalanceService } from '../debt/opening-balance.service';
 
 const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
 const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
@@ -22,6 +23,7 @@ export class CustomerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly excel: ExcelService,
+    private readonly openingBalanceService: OpeningBalanceService,
   ) {}
 
   async findAll(query: CustomerQueryDto) {
@@ -167,21 +169,27 @@ export class CustomerService {
   async getDebtSummary(id: string) {
     await this.findOne(id);
 
-    const totals = await this.prisma.receivable.aggregate({
-      where: {
-        customerId: id,
-        salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
-      },
-      _sum: { remainingAmount: true, remainingAmountBeforeVat: true },
-    });
+    const [totals, openingBalance] = await Promise.all([
+      this.prisma.receivable.aggregate({
+        where: {
+          customerId: id,
+          salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
+        },
+        _sum: { remainingAmount: true, remainingAmountBeforeVat: true },
+      }),
+      // opening-balance.md — cộng thêm Công nợ đầu kỳ còn mở của khách này,
+      // dùng cho bản in Báo giá (khối "Công nợ cũ").
+      this.openingBalanceService.sumOpenForCustomer(id),
+    ]);
 
     return {
-      totalRemaining: Number(totals._sum.remainingAmount ?? 0),
+      totalRemaining:
+        Number(totals._sum.remainingAmount ?? 0) + openingBalance.remaining,
       // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — có thể âm
       // hợp lệ nếu khách đã trả vào phần VAT, không clamp về 0.
-      totalRemainingBeforeVat: Number(
-        totals._sum.remainingAmountBeforeVat ?? 0,
-      ),
+      totalRemainingBeforeVat:
+        Number(totals._sum.remainingAmountBeforeVat ?? 0) +
+        openingBalance.remainingBeforeVat,
     };
   }
 

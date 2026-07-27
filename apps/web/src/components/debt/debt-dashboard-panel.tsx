@@ -5,6 +5,7 @@ import { apiGet } from "@/lib/api";
 
 interface DebtDashboard {
   totalReceivable: number;
+  totalReceivableBeforeVat: number;
   overdue: { customerCount: number; totalAmount: number };
   overdue30: { customerCount: number; totalAmount: number };
   creditExceeded: { customerCount: number; totalAmount: number };
@@ -55,7 +56,11 @@ export function DebtDashboardPanel() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatTile label="Tổng còn phải thu" value={formatMoney(data.totalReceivable)} />
+        <StatTile
+          label="Tổng còn phải thu"
+          value={formatMoney(data.totalReceivable)}
+          sub={`trước VAT: ${formatMoney(data.totalReceivableBeforeVat)}`}
+        />
         <StatTile
           label="Quá hạn"
           value={formatMoney(data.overdue.totalAmount)}

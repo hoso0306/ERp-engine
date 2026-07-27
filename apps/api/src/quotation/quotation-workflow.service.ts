@@ -323,6 +323,11 @@ export class QuotationWorkflowService {
 
     const createdByName = await resolveActorName(this.prisma, userId);
 
+    const shippingFee = dto.shippingFee ?? 0;
+    if (shippingFee < 0) {
+      throw new BadRequestException('Phí vận chuyển không được âm.');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const running = await tx.runningNumber.update({
         where: { type: 'QUOTATION' },
@@ -339,6 +344,7 @@ export class QuotationWorkflowService {
             ? new Date(dto.expectedDeliveryDate)
             : null,
           note: dto.note?.trim() || null,
+          shippingFee,
           status: QuotationStatus.DRAFT,
           // Người tạo báo giá (từ JWT) — nguồn cho SalesOrder.ownerId khi Approve.
           createdBy: userId ?? null,
@@ -380,6 +386,12 @@ export class QuotationWorkflowService {
     }
     if (dto.note !== undefined) {
       data.note = dto.note?.trim() ?? null;
+    }
+    if (dto.shippingFee !== undefined) {
+      if (dto.shippingFee < 0) {
+        throw new BadRequestException('Phí vận chuyển không được âm.');
+      }
+      data.shippingFee = dto.shippingFee;
     }
 
     // Đổi khách hàng (chốt 24/07/2026) — chỉ cho phép khi đang Nháp, chặt hơn
@@ -1274,8 +1286,14 @@ export class QuotationWorkflowService {
       (s, i) => s + Number(i.vatAmount),
       0,
     );
+    // Phí vận chuyển (chốt 27/07/2026) — cộng thẳng vào grandTotal, không chịu
+    // VAT, không ảnh hưởng plannedProfit (khoản thu hộ khách).
+    const shippingFee = Number(quotation.shippingFee);
     const grandTotal =
-      totalAmount + totalVatAmount - Number(quotation.discountAmount);
+      totalAmount +
+      totalVatAmount -
+      Number(quotation.discountAmount) +
+      shippingFee;
     if (grandTotal < 0) {
       throw new BadRequestException(
         'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
@@ -1283,7 +1301,11 @@ export class QuotationWorkflowService {
     }
     // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — Giảm thêm trừ
     // vào cả 2 mức, nên chênh lệch giữa 2 track luôn đúng bằng totalVatAmount.
-    const totalAmountBeforeVat = totalAmount - Number(quotation.discountAmount);
+    // shippingFee không chịu VAT nên cộng đều vào cả 2 mức, giữ nguyên bất
+    // biến này (xem vat-settlement.service.ts — tính VAT phải nộp từ chênh
+    // lệch totalAmount - totalAmountBeforeVat của Receivable).
+    const totalAmountBeforeVat =
+      totalAmount - Number(quotation.discountAmount) + shippingFee;
 
     // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
     // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
@@ -1418,6 +1440,7 @@ export class QuotationWorkflowService {
           discountAmount: quotation.discountAmount,
           discountReason: quotation.discountReason,
           discountBy: quotation.discountBy,
+          shippingFee: quotation.shippingFee,
           grandTotal,
         },
       });

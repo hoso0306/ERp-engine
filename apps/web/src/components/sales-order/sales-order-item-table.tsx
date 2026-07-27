@@ -46,6 +46,9 @@ interface SalesOrderItemTableProps {
   // Giảm thêm cấp toàn đơn (Sprint 04, chốt 16/07/2026) — hiện dòng riêng
   // trước "Tổng thanh toán" nếu có.
   discountAmount?: number;
+  // Phí vận chuyển (chốt 27/07/2026) — hiện dòng riêng trước "Tổng thanh
+  // toán" nếu có, không chịu VAT.
+  shippingFee?: number;
 }
 
 function formatMoney(n: number) {
@@ -56,7 +59,7 @@ function formatNumber(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderItemTableProps) {
+export function SalesOrderItemTable({ items, discountAmount = 0, shippingFee = 0 }: SalesOrderItemTableProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function toggle(id: string) {
@@ -196,7 +199,7 @@ export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderIte
               </Fragment>
             );
           })}
-          {totalVat > 0 || discountAmount > 0 ? (
+          {totalVat > 0 || discountAmount > 0 || shippingFee > 0 ? (
             <>
               <TableRow className="bg-muted/50">
                 <TableCell colSpan={8} className="text-right text-sm font-medium">
@@ -224,12 +227,22 @@ export function SalesOrderItemTable({ items, discountAmount = 0 }: SalesOrderIte
                   </TableCell>
                 </TableRow>
               )}
+              {shippingFee > 0 && (
+                <TableRow className="bg-muted/50">
+                  <TableCell colSpan={8} className="text-right text-sm text-muted-foreground">
+                    Phí vận chuyển
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    +{formatMoney(shippingFee)}
+                  </TableCell>
+                </TableRow>
+              )}
               <TableRow className="bg-muted/50">
                 <TableCell colSpan={8} className="text-right text-sm font-semibold">
                   Tổng thanh toán
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold">
-                  {formatMoney(totalAmount + totalVat - discountAmount)}
+                  {formatMoney(totalAmount + totalVat - discountAmount + shippingFee)}
                 </TableCell>
               </TableRow>
             </>

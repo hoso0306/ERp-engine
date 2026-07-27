@@ -102,6 +102,9 @@ interface Quotation {
   // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026).
   discountAmount: number;
   discountReason: string | null;
+  // Phí vận chuyển (chốt 27/07/2026) — không chịu VAT, không tính vào lợi
+  // nhuận kế hoạch.
+  shippingFee: number;
   customer: {
     id: string;
     code: string;
@@ -150,6 +153,7 @@ export default function QuotationDetailPage() {
   const [editExpiry, setEditExpiry] = useState("");
   const [editExpectedDelivery, setEditExpectedDelivery] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editShippingFee, setEditShippingFee] = useState("0");
   const [editCustomer, setEditCustomer] = useState<CustomerOption | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -237,6 +241,7 @@ export default function QuotationDetailPage() {
         : "",
     );
     setEditNote(quotation.note ?? "");
+    setEditShippingFee(String(quotation.shippingFee ?? 0));
     setEditCustomer(quotation.customer);
     setEditOpen(true);
   }
@@ -247,12 +252,18 @@ export default function QuotationDetailPage() {
       toast.error("Vui lòng chọn khách hàng.");
       return;
     }
+    const shippingFee = parseFloat(editShippingFee) || 0;
+    if (shippingFee < 0) {
+      toast.error("Phí vận chuyển không được âm.");
+      return;
+    }
     setEditSaving(true);
     try {
       const body: Record<string, unknown> = {
         note: editNote.trim() || null,
         expiryDate: editExpiry || null,
         expectedDeliveryDate: editExpectedDelivery || null,
+        shippingFee,
       };
       // Chỉ gửi customerId khi đang Nháp — SENT không được đổi khách hàng
       // (chặn ở BE nữa, chặn sớm ở FE cho gọn).
@@ -611,6 +622,12 @@ export default function QuotationDetailPage() {
               </span>
             </div>
           )}
+          {quotation.shippingFee > 0 && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground w-32 shrink-0">Phí vận chuyển</span>
+              <span>{Number(quotation.shippingFee).toLocaleString("vi-VN")} đ</span>
+            </div>
+          )}
           <div className="flex gap-2 items-center">
             <span className="text-muted-foreground w-32 shrink-0">Ngày hết hạn</span>
             {quotation.expiryDate ? (
@@ -696,6 +713,7 @@ export default function QuotationDetailPage() {
           onDelete={deleteItem}
           onDuplicate={duplicateItem}
           discountAmount={Number(quotation.discountAmount ?? 0)}
+          shippingFee={Number(quotation.shippingFee ?? 0)}
           costByItemId={costByItemId}
         />
       </div>
@@ -745,6 +763,16 @@ export default function QuotationDetailPage() {
                 type="date"
                 value={editExpectedDelivery}
                 onChange={(e) => setEditExpectedDelivery(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-shipping-fee">Phí vận chuyển</Label>
+              <Input
+                id="edit-shipping-fee"
+                type="number"
+                min={0}
+                value={editShippingFee}
+                onChange={(e) => setEditShippingFee(e.target.value)}
               />
             </div>
             <div className="space-y-2">

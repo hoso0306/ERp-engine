@@ -70,6 +70,7 @@ function makeQuotation(overrides: Record<string, unknown> = {}) {
     discountAmount: 0,
     discountReason: null,
     discountBy: null,
+    shippingFee: 0,
     createdBy: null,
     updatedBy: null,
     createdAt: new Date(),
@@ -390,6 +391,57 @@ describe('QuotationWorkflowService.approve()', () => {
     expect(soData.plannedCost).toBe(0);
     // plannedProfit = totalAmount − plannedCost − discountAmount
     expect(soData.plannedProfit).toBe(2_000_000 - 0 - 300_000);
+  });
+
+  // Phí vận chuyển (chốt 27/07/2026) — cộng vào grandTotal/totalAmountBeforeVat
+  // (không chịu VAT), KHÔNG ảnh hưởng plannedProfit (khoản thu hộ khách).
+  it('cộng shippingFee vào grandTotal/totalAmountBeforeVat nhưng không ảnh hưởng plannedProfit khi Approve', async () => {
+    const item = makeItem(); // subtotal 2.000.000, plannedCost 0
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ items: [item], shippingFee: 150_000 }),
+    );
+    bomPrisma.materialRequirementVersion.findUnique.mockResolvedValue({
+      id: 'mrv-1',
+      items: [],
+      materialRequirement: { product: { derivedParameters: [] } },
+    });
+
+    const tx = {
+      runningNumber: {
+        update: jest
+          .fn()
+          .mockResolvedValue({ prefix: 'DH', lastNumber: 1, paddingLength: 6 }),
+      },
+      salesOrder: { create: jest.fn().mockResolvedValue({ id: 'so-1' }) },
+      receivable: { create: jest.fn() },
+      salesOrderItem: { create: jest.fn().mockResolvedValue({ id: 'soi-1' }) },
+      orderBOM: { create: jest.fn() },
+      productionOrder: { create: jest.fn().mockResolvedValue({ id: 'po-1' }) },
+      productionOrderTimeline: { create: jest.fn() },
+      quotation: { update: jest.fn().mockResolvedValue({ id: 'q-1' }) },
+      quotationTimeline: { create: jest.fn() },
+      salesOrderTimeline: { create: jest.fn() },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ name: 'Lê Văn Duyệt', email: 'duyet@acme.vn' }),
+      },
+    };
+    prisma.$transaction = jest.fn((fn: (t: unknown) => Promise<unknown>) =>
+      fn(tx),
+    );
+
+    await service.approve('q-1', 'approver-1');
+
+    const soData = tx.salesOrder.create.mock.calls[0][0].data;
+    expect(soData.shippingFee).toBe(150_000);
+    // grandTotal = totalAmount + totalVatAmount - discountAmount + shippingFee
+    expect(soData.grandTotal).toBe(2_000_000 + 0 - 0 + 150_000);
+    // plannedProfit = totalAmount − plannedCost − discountAmount (KHÔNG cộng shippingFee)
+    expect(soData.plannedProfit).toBe(2_000_000 - 0 - 0);
+
+    const receivableData = tx.receivable.create.mock.calls[0][0].data;
+    expect(receivableData.totalAmountBeforeVat).toBe(2_000_000 - 0 + 150_000);
   });
 
   // Fix 19/07/2026 — expectedDeliveryDate không được set ở đâu cả, dù field

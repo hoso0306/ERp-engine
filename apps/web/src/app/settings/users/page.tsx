@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { Plus } from "lucide-react";
+import { Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { SettingsTabs } from "@/components/setting/settings-tabs";
 import { UserTable, type UserRow } from "@/components/setting/user-table";
 import { UserDialog } from "@/components/setting/user-dialog";
 import { TemporaryPasswordDialog } from "@/components/setting/temporary-password-dialog";
@@ -74,50 +74,49 @@ export default function UsersPage() {
     }
   }
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorState description={error} onRetry={fetchUsers} />;
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Người dùng"
-        description="Quản lý tài khoản nhân viên"
-        actions={
-          <div className="flex gap-2 flex-wrap justify-end">
-            <Button variant="outline" render={<Link href="/settings" />}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Quay lại
-            </Button>
-            {hasPermission("user.create") && (
-              <Button onClick={() => { setEditingUser(null); setDialogOpen(true); }}>
-                <Plus className="mr-2 h-4 w-4" />
-                Tạo người dùng
-              </Button>
-            )}
-          </div>
-        }
-      />
+      <SettingsTabs active="users" />
 
-      <UserTable
-        users={users}
-        onEdit={(u) => { setEditingUser(u); setDialogOpen(true); }}
-        onResetPassword={handleResetPassword}
-      />
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Người dùng</h3>
+          <p className="text-sm text-muted-foreground">Quản lý tài khoản nhân viên</p>
+        </div>
+        {hasPermission("user.create") && (
+          <Button onClick={() => { setEditingUser(null); setDialogOpen(true); }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo người dùng
+          </Button>
+        )}
+      </div>
 
-      <UserDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        user={editingUser}
-        roles={roles}
-        onSaved={handleSaved}
-      />
+      {loading && <Loading />}
+      {error && <ErrorState description={error} onRetry={fetchUsers} />}
+      {!loading && !error && (
+        <>
+          <UserTable
+            users={users}
+            onEdit={(u) => { setEditingUser(u); setDialogOpen(true); }}
+            onResetPassword={handleResetPassword}
+          />
 
-      <TemporaryPasswordDialog
-        open={tempPasswordOpen}
-        onOpenChange={setTempPasswordOpen}
-        email={tempPasswordEmail}
-        temporaryPassword={tempPassword}
-      />
+          <UserDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            user={editingUser}
+            roles={roles}
+            onSaved={handleSaved}
+          />
+
+          <TemporaryPasswordDialog
+            open={tempPasswordOpen}
+            onOpenChange={setTempPasswordOpen}
+            email={tempPasswordEmail}
+            temporaryPassword={tempPassword}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -278,6 +278,27 @@ field này.
 
 Không cho phép sửa trực tiếp `Giá bán cuối`/`Tổng thanh toán`.
 
+## Phí vận chuyển (chốt 27/07/2026)
+
+Nhập tay ở cấp toàn báo giá — **không** phải một sản phẩm/dòng báo giá (không
+đi qua Pricing Engine/BOM/Production Order, vì đây là khoản thu hộ khách,
+không phải hàng sản xuất).
+
+- Field: `Quotation.shippingFee` — số tiền mặt, mặc định 0.
+- **Không chịu VAT.**
+- **Không tính vào `plannedProfit`** (Lợi nhuận kế hoạch của SalesOrder) — coi
+  là khoản thu hộ, không phải doanh thu sản xuất.
+- Cộng thẳng vào Tổng thanh toán: `grandTotal = Tổng tiền hàng + Tổng VAT −
+  Giảm thêm + Phí vận chuyển`.
+- Vì không chịu VAT, cộng đều vào cả `totalAmountBeforeVat` (giữ đúng bất biến
+  `totalAmount − totalAmountBeforeVat = Tổng VAT` dùng cho VAT Settlement, xem
+  `debt.md`).
+- Là field nhập tự do (giống `note`/`expectedDeliveryDate`), sửa được qua
+  `PATCH /quotations/:id` khi DRAFT/SENT — **không** cần lý do/audit riêng như
+  Giảm thêm (không phải điều chỉnh giảm trừ số đã tính, chỉ là dữ liệu đầu
+  vào).
+- Snapshot sang `SalesOrder.shippingFee` tại Approve, sau đó bất biến.
+
 ---
 
 # Workflow Engine

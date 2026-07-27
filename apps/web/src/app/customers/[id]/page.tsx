@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { CustomerProductDiscountList } from "@/components/customer/customer-product-discount-list";
+import { AllocatePaymentDialog } from "@/components/debt/allocate-payment-dialog";
+import { OpeningBalanceSection } from "@/components/debt/opening-balance-section";
 import { toast } from "sonner";
 import { apiGet, apiDelete, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -45,6 +47,17 @@ interface ProductDiscount {
   productType: { id: string; name: string };
 }
 
+interface OpeningBalance {
+  id: string;
+  code: string;
+  amountBeforeVat: number;
+  amount: number;
+  remainingAmountBeforeVat: number;
+  remainingAmount: number;
+  note: string | null;
+  createdAt: string;
+}
+
 const priorityLabels: Record<string, string> = { LOW: "Thấp", MEDIUM: "Trung bình", HIGH: "Cao" };
 const statusLabels: Record<string, string> = { ACTIVE: "Hoạt động", INACTIVE: "Ngừng hoạt động" };
 
@@ -63,14 +76,22 @@ export default function CustomerDetailPage() {
   const { hasPermission } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
+  const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [allocateOpen, setAllocateOpen] = useState(false);
 
   const fetchDiscounts = useCallback(() => {
     apiGet<ProductDiscount[]>(`/customers/${params.id}/product-discounts`)
       .then(setDiscounts)
       .catch(() => setDiscounts([]));
+  }, [params.id]);
+
+  const fetchOpeningBalances = useCallback(() => {
+    apiGet<OpeningBalance[]>(`/opening-balances/by-customer/${params.id}`)
+      .then(setOpeningBalances)
+      .catch(() => setOpeningBalances([]));
   }, [params.id]);
 
   useEffect(() => {
@@ -79,7 +100,8 @@ export default function CustomerDetailPage() {
       .catch((err) => setError(err instanceof ApiError ? err.message : "Không tìm thấy khách hàng."))
       .finally(() => setLoading(false));
     fetchDiscounts();
-  }, [params.id, fetchDiscounts]);
+    if (hasPermission("debt.view")) fetchOpeningBalances();
+  }, [params.id, fetchDiscounts, fetchOpeningBalances, hasPermission]);
 
   async function handleDelete() {
     try {
@@ -106,6 +128,12 @@ export default function CustomerDetailPage() {
         description={customer.code}
         actions={
           <div className="flex gap-2">
+            {hasPermission("debt.create-payment") && (
+              <Button variant="outline" onClick={() => setAllocateOpen(true)}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Ghi nhận thanh toán
+              </Button>
+            )}
             {hasPermission("customer.update") && (
               <Button variant="outline" render={<Link href={`/customers/${customer.id}/edit`} />}>
                 <Pencil className="mr-2 h-4 w-4" />
@@ -170,6 +198,14 @@ export default function CustomerDetailPage() {
         onChanged={fetchDiscounts}
       />
 
+      {hasPermission("debt.view") && (
+        <OpeningBalanceSection
+          customerId={customer.id}
+          balances={openingBalances}
+          onChanged={fetchOpeningBalances}
+        />
+      )}
+
       {customer.note && (
         <div className="rounded-lg border p-6">
           <h3 className="mb-2 text-sm font-medium text-muted-foreground">Ghi chú</h3>
@@ -189,6 +225,13 @@ export default function CustomerDetailPage() {
         confirmLabel="Xoá"
         variant="destructive"
         onConfirm={handleDelete}
+      />
+
+      <AllocatePaymentDialog
+        open={allocateOpen}
+        onOpenChange={setAllocateOpen}
+        fixedCustomer={customer}
+        onSaved={() => {}}
       />
     </div>
   );

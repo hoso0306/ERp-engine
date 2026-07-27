@@ -3,36 +3,49 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { ArrowLeft, CreditCard, Banknote, FileText, Undo2 } from "lucide-react";
+import { toast } from "sonner";
 import { RiskBadge } from "@/components/debt/risk-badge";
 import { PaymentTable } from "@/components/debt/payment-table";
 import { PaymentDialog } from "@/components/debt/payment-dialog";
-import { apiGet, ApiError } from "@/lib/api";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
-interface Payment {
+// 023-cong-no-payment-allocation-fifo: lịch sử thu tiền đọc qua allocations
+// (PaymentAllocation), không còn payments trực tiếp — xem payment-table.tsx.
+interface AllocationRow {
   id: string;
-  code: string;
-  paymentDate: string;
-  amount: number;
-  paymentMethod: string;
-  referenceNumber: string | null;
-  note: string | null;
-  createdBy: string | null;
+  allocatedTotal: number;
+  payment: {
+    id: string;
+    code: string;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber: string | null;
+    note: string | null;
+    createdBy: string | null;
+    type: string;
+    reversedBy: { id: string } | null;
+  };
 }
 
 interface Receivable {
   id: string;
   totalAmount: number;
+  totalAmountBeforeVat: number;
   paidAmount: number;
   remainingAmount: number;
+  remainingAmountBeforeVat: number;
   dueDate: string | null;
   daysOverdue: number | null;
   riskLevel: string | null;
-  payments: Payment[];
+  // 024-cong-no-vat-settlement.md — true khi kế toán đã dùng action "Thu tiền
+  // mặt (không xuất hóa đơn)", điều kiện để hiện nút "Tạo VAT Settlement".
+  closedWithoutVat: boolean;
+  allocations: AllocationRow[];
   salesOrder: {
     id: string;
     code: string;
@@ -55,6 +68,8 @@ export default function ReceivableDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [closeWithoutVatOpen, setCloseWithoutVatOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
 
   const fetchReceivable = useCallback(async () => {
     setLoading(true);
@@ -75,6 +90,39 @@ export default function ReceivableDetailPage() {
   if (error || !receivable) return <ErrorState description={error ?? "Không tìm thấy công nợ."} onRetry={fetchReceivable} />;
 
   const canPay = receivable.salesOrder.status !== "CANCELLED" && hasPermission("debt.create-payment");
+  // 024-cong-no-vat-settlement.md Việc 6: 🟢 chỉ hiện khi còn nợ (remainingAmount > 0)
+  // và chưa từng đóng theo chế độ này. Rà soát mô hình công nợ (chốt
+  // 27/07/2026): thêm điều kiện đã thu đủ phần gốc (remainingAmountBeforeVat
+  // <= 0) — khớp validate mới ở backend, tránh hiện nút rồi bấm vào lại báo lỗi.
+  const canCloseWithoutVat =
+    canPay &&
+    Number(receivable.remainingAmount) > 0 &&
+    Number(receivable.remainingAmountBeforeVat) <= 0 &&
+    !receivable.closedWithoutVat;
+  const canCreateVatSettlement = canPay && receivable.closedWithoutVat;
+  // Hoàn tác action đóng-không-VAT (bổ sung 26/07/2026) — chỉ hiện khi đã
+  // đóng; nếu đã thuộc 1 VAT Settlement (chưa huỷ), backend sẽ chặn và báo lỗi.
+  const canReopenWithoutVat = canPay && receivable.closedWithoutVat;
+
+  async function handleCloseWithoutVat() {
+    try {
+      await apiPost(`/receivables/${id}/close-without-vat`);
+      toast.success("Đã đóng công nợ theo chế độ tiền mặt không xuất hóa đơn.");
+      fetchReceivable();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    }
+  }
+
+  async function handleReopenWithoutVat() {
+    try {
+      await apiPost(`/receivables/${id}/reopen-without-vat`);
+      toast.success("Đã hoàn tác — công nợ trở lại bình thường.");
+      fetchReceivable();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -88,6 +136,27 @@ export default function ReceivableDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
+            {canCloseWithoutVat && (
+              <Button variant="outline" onClick={() => setCloseWithoutVatOpen(true)}>
+                <Banknote className="mr-2 h-4 w-4" />
+                Đóng công nợ (không xuất hóa đơn)
+              </Button>
+            )}
+            {canCreateVatSettlement && (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/vat-settlements/new?receivableId=${receivable.id}`)}
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                Tạo VAT Settlement
+              </Button>
+            )}
+            {canReopenWithoutVat && (
+              <Button variant="outline" onClick={() => setReopenOpen(true)}>
+                <Undo2 className="mr-2 h-4 w-4" />
+                Hoàn tác (đóng công nợ không xuất hóa đơn)
+              </Button>
+            )}
             {canPay && (
               <Button onClick={() => setPaymentDialogOpen(true)}>
                 <CreditCard className="mr-2 h-4 w-4" />
@@ -116,7 +185,10 @@ export default function ReceivableDetailPage() {
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Tổng tiền</span>
-            <span className="font-mono font-semibold">{formatMoney(Number(receivable.totalAmount))}</span>
+            <span className="flex flex-col">
+              <span className="font-mono font-semibold">{formatMoney(Number(receivable.totalAmount))}</span>
+              <span className="text-xs text-muted-foreground">trước VAT: {formatMoney(Number(receivable.totalAmountBeforeVat))}</span>
+            </span>
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Đã thu</span>
@@ -124,7 +196,10 @@ export default function ReceivableDetailPage() {
           </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground w-36 shrink-0">Còn lại</span>
-            <span className="font-mono font-semibold text-destructive">{formatMoney(Number(receivable.remainingAmount))}</span>
+            <span className="flex flex-col">
+              <span className="font-mono font-semibold text-destructive">{formatMoney(Number(receivable.remainingAmount))}</span>
+              <span className="text-xs text-muted-foreground">trước VAT: {formatMoney(Number(receivable.remainingAmountBeforeVat))}</span>
+            </span>
           </div>
           <div className="flex gap-2 items-center">
             <span className="text-muted-foreground w-36 shrink-0">Hạn thanh toán</span>
@@ -147,7 +222,7 @@ export default function ReceivableDetailPage() {
 
       <div className="space-y-4">
         <h3 className="text-base font-semibold">Lịch sử thanh toán</h3>
-        <PaymentTable payments={receivable.payments} />
+        <PaymentTable allocations={receivable.allocations} onReversed={fetchReceivable} />
       </div>
 
       <PaymentDialog
@@ -156,6 +231,24 @@ export default function ReceivableDetailPage() {
         salesOrderId={receivable.salesOrder.id}
         remainingAmount={Number(receivable.remainingAmount)}
         onSaved={fetchReceivable}
+      />
+
+      <ConfirmDialog
+        open={closeWithoutVatOpen}
+        onOpenChange={setCloseWithoutVatOpen}
+        title="Đóng công nợ (không xuất hóa đơn)"
+        description="ERP sẽ coi công nợ này đã kết thúc (còn lại = 0), không tiếp tục theo dõi phần VAT như công nợ bình thường. Nếu khách quay lại yêu cầu xuất hóa đơn sau này, dùng chức năng Tạo VAT Settlement. Bạn có chắc chắn?"
+        confirmLabel="Xác nhận"
+        onConfirm={handleCloseWithoutVat}
+      />
+
+      <ConfirmDialog
+        open={reopenOpen}
+        onOpenChange={setReopenOpen}
+        title="Hoàn tác đóng công nợ (không xuất hóa đơn)"
+        description="ERP sẽ khôi phục lại số tiền còn phải thu như trước khi đóng. Chỉ dùng khi bấm nhầm nút Đóng công nợ (không xuất hóa đơn) trước đó — sẽ bị chặn nếu công nợ này đã thuộc một VAT Settlement. Bạn có chắc chắn?"
+        confirmLabel="Hoàn tác"
+        onConfirm={handleReopenWithoutVat}
       />
     </div>
   );

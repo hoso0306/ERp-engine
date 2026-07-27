@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
-import { PageHeader, Loading, ErrorState } from "@/components/shared";
+import { Plus } from "lucide-react";
+import { Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
+import { SettingsTabs } from "@/components/setting/settings-tabs";
 import { RoleTable, type RoleRow } from "@/components/setting/role-table";
 import { RoleCreateDialog } from "@/components/setting/role-create-dialog";
 import { apiGet, ApiError } from "@/lib/api";
@@ -46,33 +46,31 @@ export default function RolesPage() {
 
   useEffect(() => { fetchRoles(); }, [fetchRoles]);
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorState description={error} onRetry={fetchRoles} />;
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Vai trò"
-        description="Quản lý vai trò và phân quyền"
-        actions={
-          <div className="flex gap-2 flex-wrap justify-end">
-            <Button variant="outline" render={<Link href="/settings" />}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Quay lại
-            </Button>
-            {hasPermission("role.create") && (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Tạo vai trò
-              </Button>
-            )}
-          </div>
-        }
-      />
+      <SettingsTabs active="roles" />
 
-      <RoleTable roles={roles} userCountByRole={userCountByRole} />
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Vai trò</h3>
+          <p className="text-sm text-muted-foreground">Quản lý vai trò và phân quyền</p>
+        </div>
+        {hasPermission("role.create") && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo vai trò
+          </Button>
+        )}
+      </div>
 
-      <RoleCreateDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={fetchRoles} />
+      {loading && <Loading />}
+      {error && <ErrorState description={error} onRetry={fetchRoles} />}
+      {!loading && !error && (
+        <>
+          <RoleTable roles={roles} userCountByRole={userCountByRole} />
+          <RoleCreateDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={fetchRoles} />
+        </>
+      )}
     </div>
   );
 }

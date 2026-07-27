@@ -3,4 +3,5 @@ export class CreateQuotationDto {
   expiryDate?: string;
   expectedDeliveryDate?: string;
   note?: string;
+  shippingFee?: number;
 }

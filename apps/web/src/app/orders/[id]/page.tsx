@@ -122,6 +122,9 @@ interface SalesOrder {
   totalVatAmount: number;
   discountAmount: number;
   discountReason: string | null;
+  // Phí vận chuyển (chốt 27/07/2026) — snapshot từ Quotation.shippingFee tại
+  // Approve, không chịu VAT, không tính vào plannedProfit.
+  shippingFee: number;
   grandTotal: number;
   totalProductionOrders: number;
   completedProductionOrders: number;
@@ -401,6 +404,12 @@ export default function SalesOrderDetailPage() {
               </span>
             </div>
           )}
+          {order.shippingFee > 0 && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground w-36 shrink-0">Phí vận chuyển</span>
+              <span>{Number(order.shippingFee).toLocaleString("vi-VN")} đ</span>
+            </div>
+          )}
           {order.note && (
             <div className="flex gap-2 col-span-2">
               <span className="text-muted-foreground w-36 shrink-0">Ghi chú</span>
@@ -446,7 +455,11 @@ export default function SalesOrderDetailPage() {
       {/* Items */}
       <div className="space-y-4">
         <h3 className="text-base font-semibold">Danh sách sản phẩm</h3>
-        <SalesOrderItemTable items={order.items} discountAmount={Number(order.discountAmount ?? 0)} />
+        <SalesOrderItemTable
+          items={order.items}
+          discountAmount={Number(order.discountAmount ?? 0)}
+          shippingFee={Number(order.shippingFee ?? 0)}
+        />
       </div>
 
       <Separator />

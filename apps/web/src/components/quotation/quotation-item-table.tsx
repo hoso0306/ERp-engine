@@ -57,6 +57,9 @@ interface QuotationItemTableProps {
   // Giảm thêm cấp toàn báo giá (Sprint 04, chốt 16/07/2026) — hiện dòng riêng
   // trước "Tổng thanh toán" nếu có.
   discountAmount?: number;
+  // Phí vận chuyển (chốt 27/07/2026) — hiện dòng riêng trước "Tổng thanh
+  // toán" nếu có, không chịu VAT.
+  shippingFee?: number;
   // Giá vốn ước tính theo dòng — undefined nếu không có quyền xem.
   costByItemId?: Map<string, ItemCostInfo>;
 }
@@ -69,7 +72,7 @@ function formatNumber(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplicate, discountAmount = 0, costByItemId }: QuotationItemTableProps) {
+export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplicate, discountAmount = 0, shippingFee = 0, costByItemId }: QuotationItemTableProps) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
@@ -265,20 +268,32 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
               {editable && <TableCell />}
             </TableRow>
           )}
+          {shippingFee > 0 && (
+            <TableRow className="bg-muted/50">
+              <TableCell colSpan={labelColsToVat} className="text-right text-sm font-medium text-muted-foreground whitespace-normal break-words">
+                Phí vận chuyển
+              </TableCell>
+              <TableCell className="text-right font-mono font-semibold whitespace-normal break-words">
+                +{formatMoney(shippingFee)}
+              </TableCell>
+              <TableCell colSpan={fillerAfterVat} />
+              {editable && <TableCell />}
+            </TableRow>
+          )}
           {/* Tổng thanh toán: CHỮ thẳng cột với "TỔNG" (bắt đầu từ cột Phụ
               phí, căn trái — không right-align cả colSpan nữa vì sẽ đẩy chữ
               sát vào ô số liệu), SỐ LIỆU vẫn thẳng cột VAT (giống Tổng
               VAT/Giảm thêm phía trên). Gộp chung hàng với Tổng giá vốn (khi
               có quyền xem) — Tổng giá vốn vẫn rơi đúng cột "Giá vốn" như dòng
               sản phẩm phía trên. */}
-          {totalVat > 0 || discountAmount > 0 ? (
+          {totalVat > 0 || discountAmount > 0 || shippingFee > 0 ? (
             <TableRow className="bg-muted/50 border-t-2 border-foreground/15">
               <TableCell colSpan={labelColsToAmount - 2} />
               <TableCell colSpan={3} className="text-left text-sm font-bold whitespace-normal break-words">
                 Tổng thanh toán
               </TableCell>
               <TableCell className="text-right font-mono text-sm font-bold text-primary whitespace-normal break-words">
-                {formatMoney(totalAmount + totalVat - discountAmount)}
+                {formatMoney(totalAmount + totalVat - discountAmount + shippingFee)}
               </TableCell>
               {showCost ? (
                 <>
