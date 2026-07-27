@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/shared";
 import { UserMenu } from "./user-menu";
 import { HeaderStatusIndicator } from "./header-status-indicator";
+import { HeaderClock } from "./header-clock";
 
 export function Header() {
   const pathname = usePathname();
@@ -20,7 +21,10 @@ export function Header() {
           <h1 className="text-sm font-medium">Trang chủ</h1>
         )}
       </div>
-      <UserMenu />
+      <div className="flex items-center gap-3">
+        <HeaderClock />
+        <UserMenu />
+      </div>
       <HeaderStatusIndicator />
     </header>
   );
