@@ -152,6 +152,7 @@ export default function ProductDetailPage() {
             {isActive && (
               <Button
                 variant="outline"
+                className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 dark:hover:bg-amber-950/50"
                 onClick={() => openStatusDialog("INACTIVE")}
                 disabled={acting}
               >
@@ -163,7 +164,11 @@ export default function ProductDetailPage() {
                 Tái kích hoạt
               </Button>
             )}
-            <Button variant="outline" render={<Link href={`/products/${product.id}/edit`} />}>
+            <Button
+              variant="outline"
+              className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+              render={<Link href={`/products/${product.id}/edit`} />}
+            >
               <Pencil className="mr-2 h-4 w-4" />
               Chỉnh sửa
             </Button>
@@ -173,7 +178,12 @@ export default function ProductDetailPage() {
                 Xoá
               </Button>
             )}
-            <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            <Button
+              variant="outline"
+              className="border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900/60"
+              onClick={handleExport}
+              disabled={exporting}
+            >
               <Download className="mr-2 h-4 w-4" />
               {exporting ? "Đang xuất..." : "Export"}
             </Button>

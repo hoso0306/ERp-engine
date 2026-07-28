@@ -302,7 +302,10 @@ export default function SalesOrderDetailPage() {
                 đổi tiêu đề/dữ liệu sang "Xác nhận đơn hàng" khi đã duyệt. */}
             {order.quotation && hasPermission("quotation.print") && (
               <a href={`/quotations/${order.quotation.id}/print`} target="_blank" rel="noreferrer">
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  className="border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/50"
+                >
                   <FileDown className="mr-2 h-4 w-4" />
                   In / Tải PDF
                 </Button>
@@ -542,6 +545,7 @@ export default function SalesOrderDetailPage() {
             <Button
               variant="outline"
               size="sm"
+              className="border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:text-orange-800 dark:border-orange-800 dark:bg-orange-950/30 dark:text-orange-400 dark:hover:bg-orange-950/50"
               onClick={() => router.push(`/returns/new?salesOrderId=${order.id}`)}
             >
               Tạo phiếu hoàn

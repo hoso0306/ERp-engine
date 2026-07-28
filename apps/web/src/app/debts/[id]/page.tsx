@@ -138,7 +138,11 @@ export default function ReceivableDetailPage() {
               Quay lại
             </Button>
             {canCloseWithoutVat && (
-              <Button variant="outline" onClick={() => setCloseWithoutVatOpen(true)}>
+              <Button
+                variant="outline"
+                className="border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400 dark:hover:bg-teal-950/50"
+                onClick={() => setCloseWithoutVatOpen(true)}
+              >
                 <Banknote className="mr-2 h-4 w-4" />
                 Đóng công nợ (không xuất hóa đơn)
               </Button>
@@ -146,6 +150,7 @@ export default function ReceivableDetailPage() {
             {canCreateVatSettlement && (
               <Button
                 variant="outline"
+                className="border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-400 dark:hover:bg-violet-950/50"
                 onClick={() => router.push(`/vat-settlements/new?receivableId=${receivable.id}`)}
               >
                 <FileText className="mr-2 h-4 w-4" />
@@ -153,7 +158,11 @@ export default function ReceivableDetailPage() {
               </Button>
             )}
             {canReopenWithoutVat && (
-              <Button variant="outline" onClick={() => setReopenOpen(true)}>
+              <Button
+                variant="outline"
+                className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                onClick={() => setReopenOpen(true)}
+              >
                 <Undo2 className="mr-2 h-4 w-4" />
                 Hoàn tác (đóng công nợ không xuất hóa đơn)
               </Button>

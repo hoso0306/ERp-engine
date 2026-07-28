@@ -126,13 +126,22 @@ export default function CustomersPage() {
         actions={
           <div className="flex gap-2">
             {hasPermission("customer.create") && (
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Button
+                variant="outline"
+                className="border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-400 dark:hover:bg-indigo-950/50"
+                onClick={() => setImportOpen(true)}
+              >
                 <Upload className="mr-2 h-4 w-4" />
                 Import
               </Button>
             )}
             {hasPermission("customer.export") && (
-              <Button variant="outline" onClick={handleExport} disabled={exporting}>
+              <Button
+                variant="outline"
+                className="border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900/60"
+                onClick={handleExport}
+                disabled={exporting}
+              >
                 <Download className="mr-2 h-4 w-4" />
                 {exporting ? "Đang xuất..." : "Export"}
               </Button>

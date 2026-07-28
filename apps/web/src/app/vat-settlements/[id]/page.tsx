@@ -209,13 +209,21 @@ export default function VatSettlementDetailPage() {
             </Button>
             <Button
               variant="outline"
+              className="border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/50"
               onClick={() => window.open(`/vat-settlements/${id}/print`, "_blank")}
             >
               <Printer className="mr-2 h-4 w-4" />
               In
             </Button>
             {canAct && settlement.status === "DRAFT" && (
-              <Button variant="outline" onClick={() => setCancelOpen(true)} disabled={busy}>Huỷ</Button>
+              <Button
+                variant="outline"
+                className="border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                onClick={() => setCancelOpen(true)}
+                disabled={busy}
+              >
+                Huỷ
+              </Button>
             )}
             {canAct && settlement.status === "DRAFT" && (
               <Button onClick={handleSend} disabled={busy}>Gửi khách</Button>

@@ -474,7 +474,11 @@ export default function QuotationDetailPage() {
               Quay lại
             </Button>
             {editable && hasPermission("quotation.update") && (
-              <Button variant="outline" onClick={openEditHeader}>
+              <Button
+                variant="outline"
+                className="border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900/60"
+                onClick={openEditHeader}
+              >
                 <Pencil className="mr-2 h-4 w-4" />
                 Sửa thông tin
               </Button>
@@ -520,7 +524,11 @@ export default function QuotationDetailPage() {
             )}
             {/* 022-gia-von-loi-nhuan-bao-gia.md — chỉ OWNER/ADMIN */}
             {canViewCost && (
-              <Button variant="outline" onClick={() => setMarginDialogOpen(true)}>
+              <Button
+                variant="outline"
+                className="border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/50"
+                onClick={() => setMarginDialogOpen(true)}
+              >
                 <TrendingUp className="mr-2 h-4 w-4" />
                 Xem lãi/lỗ
               </Button>
@@ -706,6 +714,7 @@ export default function QuotationDetailPage() {
             {canEditItems && (
               <Button
                 variant="outline"
+                className="border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-400 dark:hover:bg-violet-950/50"
                 onClick={() => {
                   setDiscountAmountInput(String(quotation.discountAmount ?? 0));
                   setDiscountReasonInput(quotation.discountReason ?? "");
@@ -718,6 +727,7 @@ export default function QuotationDetailPage() {
             {canEditItems && (
               <Button
                 variant="outline"
+                className="border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400 dark:hover:bg-teal-950/50"
                 onClick={() => {
                   setEditingMaterialItem(null);
                   setMaterialItemDialogOpen(true);
@@ -729,6 +739,7 @@ export default function QuotationDetailPage() {
             )}
             {canEditItems && (
               <Button
+                className="border-primary/60"
                 onClick={() => {
                   setEditingItem(null);
                   setItemDialogOpen(true);

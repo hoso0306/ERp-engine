@@ -129,13 +129,21 @@ export default function CustomerDetailPage() {
         actions={
           <div className="flex gap-2">
             {hasPermission("debt.create-payment") && (
-              <Button variant="outline" onClick={() => setAllocateOpen(true)}>
+              <Button
+                variant="outline"
+                className="border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400 dark:hover:bg-teal-950/50"
+                onClick={() => setAllocateOpen(true)}
+              >
                 <CreditCard className="mr-2 h-4 w-4" />
                 Ghi nhận thanh toán
               </Button>
             )}
             {hasPermission("customer.update") && (
-              <Button variant="outline" render={<Link href={`/customers/${customer.id}/edit`} />}>
+              <Button
+                variant="outline"
+                className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                render={<Link href={`/customers/${customer.id}/edit`} />}
+              >
                 <Pencil className="mr-2 h-4 w-4" />
                 Chỉnh sửa
               </Button>

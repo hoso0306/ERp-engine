@@ -110,12 +110,21 @@ export default function MaterialDetailPage() {
           <div className="flex gap-2">
             <Button
               variant="outline"
+              className={
+                material.isActive
+                  ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                  : "border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400 dark:hover:bg-teal-950/50"
+              }
               onClick={handleToggleActive}
               disabled={toggling}
             >
               {material.isActive ? "Ngừng sử dụng" : "Kích hoạt"}
             </Button>
-            <Button variant="outline" render={<Link href={`/materials/${material.id}/edit`} />}>
+            <Button
+              variant="outline"
+              className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+              render={<Link href={`/materials/${material.id}/edit`} />}
+            >
               <Pencil className="mr-2 h-4 w-4" />
               Chỉnh sửa
             </Button>

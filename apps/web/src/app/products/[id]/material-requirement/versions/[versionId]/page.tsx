@@ -360,7 +360,12 @@ export default function MaterialRequirementVersionPage() {
           <h2 className="text-sm font-medium text-muted-foreground">Danh sách vật tư</h2>
           {isDraft && (
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-400 dark:hover:bg-indigo-950/50"
+                onClick={() => setImportOpen(true)}
+              >
                 <Upload className="mr-1 h-4 w-4" />
                 Nhập từ Excel
               </Button>
