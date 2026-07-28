@@ -16,7 +16,10 @@ interface Parameter {
 
 interface QuotationItemRow {
   id: string;
-  productId: string;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  itemType?: "PRODUCT" | "MATERIAL";
+  productId: string | null;
+  materialId?: string | null;
   quantity: number;
   systemPrice: number;
   unitPrice: number | null;
@@ -30,10 +33,13 @@ interface QuotationItemRow {
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
   warnings: string[] | null;
   // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
-  productCode: string;
-  productName: string;
+  productCode: string | null;
+  productName: string | null;
+  materialCode?: string | null;
+  materialName?: string | null;
+  materialUnit?: string | null;
   // Chỉ dùng điều hướng (navigation), không dùng hiển thị.
-  product: { id: string; code: string; name: string };
+  product: { id: string; code: string; name: string } | null;
   parameters: Parameter[];
 }
 
@@ -149,20 +155,31 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
             <TableRow key={item.id}>
               <TableCell className="text-center text-sm text-muted-foreground">{idx + 1}</TableCell>
               <TableCell className="whitespace-normal break-words">
-                <div className="font-medium">{item.productName}</div>
-                <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
+                <div className="font-medium">
+                  {item.itemType === "MATERIAL" ? item.materialName : item.productName}
+                </div>
+                <div className="text-xs text-muted-foreground font-mono">
+                  {item.itemType === "MATERIAL" ? item.materialCode : item.productCode}
+                </div>
+                {item.itemType === "MATERIAL" && (
+                  <div className="text-[10px] text-muted-foreground">Vật tư bán lẻ</div>
+                )}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                <div className="space-y-0.5">
-                  {item.parameters.length > 0
-                    ? item.parameters.map((p) => (
-                        <div key={p.name} className="truncate max-w-[180px]">
-                          <span className="text-muted-foreground/70">{p.label}:</span>{" "}
-                          {p.value}{p.unit ? ` ${p.unit}` : ""}
-                        </div>
-                      ))
-                    : "—"}
-                </div>
+                {item.itemType === "MATERIAL" ? (
+                  <span>{item.materialUnit}</span>
+                ) : (
+                  <div className="space-y-0.5">
+                    {item.parameters.length > 0
+                      ? item.parameters.map((p) => (
+                          <div key={p.name} className="truncate max-w-[180px]">
+                            <span className="text-muted-foreground/70">{p.label}:</span>{" "}
+                            {p.value}{p.unit ? ` ${p.unit}` : ""}
+                          </div>
+                        ))
+                      : "—"}
+                  </div>
+                )}
               </TableCell>
               <TableCell className="text-right font-mono text-sm">
                 {item.unitPrice !== null ? (

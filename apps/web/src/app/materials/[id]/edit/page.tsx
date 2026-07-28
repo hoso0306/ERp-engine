@@ -15,6 +15,11 @@ interface Material {
   note: string | null;
   retailPrice: number | string | null;
   minimumStock: number | string | null;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  isRetailable?: boolean;
+  retailUnitId?: string | null;
+  retailConversionFactor?: number | string | null;
+  retailVatRate?: number | string | null;
 }
 
 export default function EditMaterialPage() {

@@ -18,6 +18,9 @@ interface ItemParam {
 
 interface QuotationItem {
   id: string;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025) — bản in
+  // giữ 1 bảng chung, không tách nhóm Sản phẩm/Vật tư (đã chốt).
+  itemType?: "PRODUCT" | "MATERIAL";
   quantity: number;
   systemPrice: number;
   unitPrice: number | null;
@@ -30,8 +33,11 @@ interface QuotationItem {
   note: string | null;
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
   warnings: string[] | null;
-  productCode: string;
-  productName: string;
+  productCode: string | null;
+  productName: string | null;
+  materialCode?: string | null;
+  materialName?: string | null;
+  materialUnit?: string | null;
   parameters: ItemParam[];
 }
 
@@ -69,8 +75,12 @@ interface Quotation {
 
 interface SalesOrderItem {
   id: string;
-  productCode: string;
-  productName: string;
+  itemType?: "PRODUCT" | "MATERIAL";
+  productCode: string | null;
+  productName: string | null;
+  materialCode?: string | null;
+  materialName?: string | null;
+  materialUnit?: string | null;
   quantity: number;
   systemPrice: number;
   unitPrice: number | null;
@@ -126,8 +136,12 @@ interface Setting {
 // (chưa duyệt) / Xác nhận đơn hàng (đã duyệt, có SalesOrder).
 interface ViewItem {
   id: string;
+  itemType: "PRODUCT" | "MATERIAL";
+  // Đã resolve fallback tại lúc map (MATERIAL đọc materialCode/Name/Unit,
+  // PRODUCT đọc productCode/Name) — phần render dưới không cần biết nguồn.
   productCode: string;
   productName: string;
+  unit: string | null;
   parameters: ItemParam[];
   systemPrice: number;
   unitPrice: number | null;
@@ -290,8 +304,10 @@ export default function QuotationPrintPage() {
   const items: ViewItem[] = isOrder
     ? order!.items.map((i) => ({
         id: i.id,
-        productCode: i.productCode,
-        productName: i.productName,
+        itemType: i.itemType ?? "PRODUCT",
+        productCode: i.itemType === "MATERIAL" ? (i.materialCode ?? "") : (i.productCode ?? ""),
+        productName: i.itemType === "MATERIAL" ? (i.materialName ?? "") : (i.productName ?? ""),
+        unit: i.itemType === "MATERIAL" ? (i.materialUnit ?? null) : null,
         parameters: i.parameters,
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
@@ -306,8 +322,10 @@ export default function QuotationPrintPage() {
       }))
     : quotation.items.map((i) => ({
         id: i.id,
-        productCode: i.productCode,
-        productName: i.productName,
+        itemType: i.itemType ?? "PRODUCT",
+        productCode: i.itemType === "MATERIAL" ? (i.materialCode ?? "") : (i.productCode ?? ""),
+        productName: i.itemType === "MATERIAL" ? (i.materialName ?? "") : (i.productName ?? ""),
+        unit: i.itemType === "MATERIAL" ? (i.materialUnit ?? null) : null,
         parameters: i.parameters,
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
@@ -559,6 +577,9 @@ export default function QuotationPrintPage() {
                           style={{ ...tdStyle, overflowWrap: "break-word", verticalAlign: "middle" }}
                         >
                           <div style={{ fontSize: 10.5, fontWeight: 500, color: "#444" }}>{item.productName}</div>
+                          {item.itemType === "MATERIAL" && (
+                            <div style={{ fontSize: 9, color: "var(--grey)" }}>Vật tư bán lẻ</div>
+                          )}
                           {otherParams.length > 0 && (
                             <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>
                               {otherParams.map((p) => p.valueLabel || (p.unit ? `${p.value} ${p.unit}` : p.value)).join(", ")}
@@ -568,7 +589,10 @@ export default function QuotationPrintPage() {
                       )}
                       <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{rong !== null ? fmt3(rong) : "—"}</td>
                       <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{cao !== null ? fmt3(cao) : "—"}</td>
-                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{item.quantity}</td>
+                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>
+                        {item.quantity}
+                        {item.unit && <span style={{ fontWeight: 400 }}> {item.unit}</span>}
+                      </td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>{m2 !== null ? fmt2(m2) : "—"}</td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
                         <div>{item.unitPrice !== null ? `${fmt(item.unitPrice)}/m²` : fmt(item.systemPrice)}</div>

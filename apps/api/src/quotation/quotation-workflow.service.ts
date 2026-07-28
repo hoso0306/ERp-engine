@@ -32,6 +32,8 @@ import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
+import { CreateQuotationMaterialItemDto } from './dto/create-quotation-material-item.dto';
+import { UpdateQuotationMaterialItemDto } from './dto/update-quotation-material-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
 import { DiscountQuotationDto } from './dto/discount-quotation.dto';
@@ -59,6 +61,10 @@ const QUOTATION_INCLUDE = {
             orderBy: { displayOrder: 'asc' as const },
           },
         },
+      },
+      // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — chỉ có khi itemType=MATERIAL.
+      material: {
+        select: { id: true, code: true, name: true, isActive: true },
       },
       parameters: { orderBy: { displayOrder: 'asc' as const } },
     },
@@ -161,7 +167,9 @@ export class QuotationWorkflowService {
             ? {
                 select: {
                   id: true,
+                  itemType: true,
                   productId: true,
+                  materialId: true,
                   quantity: true,
                   subtotal: true,
                   parameters: { select: { name: true, value: true } },
@@ -182,7 +190,9 @@ export class QuotationWorkflowService {
         data as Array<{
           items: Array<{
             id: string;
-            productId: string;
+            itemType: 'PRODUCT' | 'MATERIAL';
+            productId: string | null;
+            materialId: string | null;
             quantity: unknown;
             subtotal: unknown;
             parameters: Array<{ name: string; value: string }>;
@@ -191,7 +201,9 @@ export class QuotationWorkflowService {
       ).flatMap((q) =>
         q.items.map((i) => ({
           id: i.id,
+          itemType: i.itemType,
           productId: i.productId,
+          materialId: i.materialId,
           quantity: Number(i.quantity),
           parameters: i.parameters,
         })),
@@ -240,9 +252,13 @@ export class QuotationWorkflowService {
         items: {
           select: {
             id: true,
+            itemType: true,
             productId: true,
+            materialId: true,
             productCode: true,
             productName: true,
+            materialCode: true,
+            materialName: true,
             quantity: true,
             finalPrice: true,
             subtotal: true,
@@ -260,7 +276,9 @@ export class QuotationWorkflowService {
     const costByItemId = await this.estimateItemsCost(
       quotation.items.map((item) => ({
         id: item.id,
+        itemType: item.itemType,
         productId: item.productId,
+        materialId: item.materialId,
         quantity: Number(item.quantity),
         parameters: item.parameters,
       })),
@@ -273,9 +291,10 @@ export class QuotationWorkflowService {
 
       return {
         quotationItemId: item.id,
+        itemType: item.itemType,
         productId: item.productId,
-        productCode: item.productCode,
-        productName: item.productName,
+        productCode: item.productCode ?? item.materialCode,
+        productName: item.productName ?? item.materialName,
         quantity: Number(item.quantity),
         costUnitPrice: cost.costUnitPrice,
         saleUnitPrice: Number(item.finalPrice),
@@ -418,10 +437,16 @@ export class QuotationWorkflowService {
       data.customer = { connect: { id: dto.customerId } };
 
       // Đổi khách hàng thì snapshot lại % Chiết khấu Khách hàng × Loại sản
-      // phẩm cho TẤT CẢ dòng đã có theo khách hàng mới — quyết định chốt
-      // 24/07/2026, tránh dòng cũ giữ chiết khấu của khách cũ.
-      if (quotation.items.length > 0) {
-        const productIds = [...new Set(quotation.items.map((i) => i.productId))];
+      // phẩm cho TẤT CẢ dòng PRODUCT đã có theo khách hàng mới — quyết định
+      // chốt 24/07/2026, tránh dòng cũ giữ chiết khấu của khách cũ. Dòng
+      // MATERIAL (chốt 28/07/2026, sprint-04/025) không dùng Discount Engine
+      // nên bỏ qua hoàn toàn ở đây.
+      const productItems = quotation.items.filter(
+        (i): i is typeof i & { productId: string } =>
+          i.itemType === 'PRODUCT' && i.productId !== null,
+      );
+      if (productItems.length > 0) {
+        const productIds = [...new Set(productItems.map((i) => i.productId))];
         const products = await this.prisma.product.findMany({
           where: { id: { in: productIds } },
           select: { id: true, productTypeId: true },
@@ -430,7 +455,9 @@ export class QuotationWorkflowService {
           products.map((p) => [p.id, p.productTypeId]),
         );
 
-        const productTypeIds = [...new Set(products.map((p) => p.productTypeId))];
+        const productTypeIds = [
+          ...new Set(products.map((p) => p.productTypeId)),
+        ];
         const discounts = await this.prisma.customerProductDiscount.findMany({
           where: {
             customerId: dto.customerId,
@@ -442,7 +469,7 @@ export class QuotationWorkflowService {
         );
 
         return this.prisma.$transaction(async (tx) => {
-          for (const item of quotation.items) {
+          for (const item of productItems) {
             const productTypeId = productTypeIdByProductId.get(item.productId);
             const discountPercent = productTypeId
               ? (discountPercentByProductTypeId.get(productTypeId) ?? 0)
@@ -452,8 +479,14 @@ export class QuotationWorkflowService {
               discountPercent,
               Number(item.surchargeAfterDiscount),
             );
-            const subtotal = this.calcSubtotal(finalPrice, Number(item.quantity));
-            const vatAmount = this.calcVatAmount(subtotal, Number(item.vatRate));
+            const subtotal = this.calcSubtotal(
+              finalPrice,
+              Number(item.quantity),
+            );
+            const vatAmount = this.calcVatAmount(
+              subtotal,
+              Number(item.vatRate),
+            );
 
             await tx.quotationItem.update({
               where: { id: item.id },
@@ -501,7 +534,10 @@ export class QuotationWorkflowService {
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
       include: {
-        parameters: { include: { options: true }, orderBy: { displayOrder: 'asc' } },
+        parameters: {
+          include: { options: true },
+          orderBy: { displayOrder: 'asc' },
+        },
       },
     });
 
@@ -595,8 +631,7 @@ export class QuotationWorkflowService {
   // để hiển thị, không đổi hành vi tính giá/định mức đang đọc `value`.
   private resolveValueLabel(
     productParam:
-      | { options: { value: string; label: string | null }[] }
-      | undefined,
+      { options: { value: string; label: string | null }[] } | undefined,
     value: string,
   ): string | null {
     return productParam?.options.find((o) => o.value === value)?.label ?? null;
@@ -616,13 +651,14 @@ export class QuotationWorkflowService {
     }
 
     const item = await this.prisma.quotationItem.findFirst({
-      where: { id: itemId, quotationId },
+      where: { id: itemId, quotationId, itemType: 'PRODUCT' },
       include: { parameters: true },
     });
 
-    if (!item) {
+    if (!item || !item.productId) {
       throw new NotFoundException('Dòng sản phẩm không tồn tại.');
     }
+    const productId = item.productId;
 
     if (dto.quantity !== undefined && dto.quantity <= 0) {
       throw new BadRequestException('Số lượng phải lớn hơn 0.');
@@ -630,8 +666,7 @@ export class QuotationWorkflowService {
 
     const quantity = dto.quantity ?? Number(item.quantity);
     let systemPrice = Number(item.systemPrice);
-    let unitPrice =
-      item.unitPrice !== null ? Number(item.unitPrice) : null;
+    let unitPrice = item.unitPrice !== null ? Number(item.unitPrice) : null;
     let pricingRuleVersionId = item.pricingRuleVersionId;
     let warnings = item.warnings as string[] | null;
     let vatRate = Number(item.vatRate);
@@ -640,7 +675,7 @@ export class QuotationWorkflowService {
 
     if (dto.parameters !== undefined) {
       const priceResult = await this.pricingEngine.calculate({
-        productId: item.productId,
+        productId,
         parameters: dto.parameters,
       });
       systemPrice = priceResult.systemPrice;
@@ -667,7 +702,7 @@ export class QuotationWorkflowService {
     // Snapshot Rule (quotation.md): snapshot productCode/productName tại thời
     // điểm thêm/SỬA dòng — refresh lại mỗi lần sửa khi còn Draft/Sent.
     const snapshotProduct = await this.prisma.product.findUnique({
-      where: { id: item.productId },
+      where: { id: productId },
       select: { code: true, name: true },
     });
     if (!snapshotProduct) {
@@ -681,9 +716,12 @@ export class QuotationWorkflowService {
         });
 
         const product = await tx.product.findUnique({
-          where: { id: item.productId },
+          where: { id: productId },
           include: {
-            parameters: { include: { options: true }, orderBy: { displayOrder: 'asc' } },
+            parameters: {
+              include: { options: true },
+              orderBy: { displayOrder: 'asc' },
+            },
           },
         });
         const paramMap = new Map(
@@ -721,9 +759,7 @@ export class QuotationWorkflowService {
           vatRate,
           vatAmount,
           warnings: warnings ?? [],
-          ...(dto.note !== undefined
-            ? { note: dto.note?.trim() || null }
-            : {}),
+          ...(dto.note !== undefined ? { note: dto.note?.trim() || null } : {}),
           ...(dto.displayOrder !== undefined
             ? { displayOrder: dto.displayOrder }
             : {}),
@@ -755,6 +791,146 @@ export class QuotationWorkflowService {
 
     await this.prisma.quotationItem.delete({ where: { id: itemId } });
     return { message: 'Đã xoá sản phẩm khỏi báo giá.' };
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Bán lẻ Vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025) — dòng
+  // MATERIAL, không qua CTO/Pricing Rule/Material Requirement. Giá cố định
+  // theo Material.retailPrice, KHÔNG áp Discount Engine (quyết định mục 2) —
+  // người dùng vẫn sửa tay được finalPrice qua updateMaterialItem.
+  // ─────────────────────────────────────────────────────
+
+  async addMaterialItem(
+    quotationId: string,
+    dto: CreateQuotationMaterialItemDto,
+  ) {
+    const quotation = await this.findOne(quotationId);
+
+    if (!EDITABLE_STATUSES.includes(quotation.status)) {
+      throw new ForbiddenException(
+        `Không thể thêm vật tư vào báo giá ở trạng thái ${quotation.status}.`,
+      );
+    }
+
+    if (!dto.materialId) {
+      throw new BadRequestException('Vật tư là bắt buộc.');
+    }
+    if (!dto.quantity || dto.quantity <= 0) {
+      throw new BadRequestException('Số lượng phải lớn hơn 0.');
+    }
+
+    const material = await this.prisma.material.findUnique({
+      where: { id: dto.materialId },
+      include: {
+        unit: { select: { name: true } },
+        retailUnit: { select: { name: true } },
+      },
+    });
+    if (!material) {
+      throw new NotFoundException('Vật tư không tồn tại.');
+    }
+    if (!material.isActive) {
+      throw new BadRequestException('Vật tư đã ngừng sử dụng.');
+    }
+    if (!material.isRetailable) {
+      throw new BadRequestException('Vật tư này chưa được bật bán lẻ.');
+    }
+    if (material.retailPrice === null || Number(material.retailPrice) <= 0) {
+      throw new BadRequestException('Vật tư chưa có giá bán lẻ hợp lệ.');
+    }
+
+    const systemPrice = Number(material.retailPrice);
+    // finalPrice có thể sửa tay (không có Discount Engine cho dòng vật tư).
+    const finalPrice =
+      dto.finalPrice !== undefined
+        ? Math.round(dto.finalPrice)
+        : Math.round(systemPrice);
+    if (finalPrice < 0) {
+      throw new BadRequestException('Giá bán không được âm.');
+    }
+    const subtotal = this.calcSubtotal(finalPrice, dto.quantity);
+    const vatRate = Number(material.retailVatRate);
+    const vatAmount = this.calcVatAmount(subtotal, vatRate);
+    const displayOrder = dto.displayOrder ?? quotation.items.length;
+
+    return this.prisma.quotationItem.create({
+      data: {
+        quotationId,
+        itemType: 'MATERIAL',
+        materialId: material.id,
+        // Snapshot tại thời điểm thêm dòng — đơn vị đọc theo retailUnit nếu có
+        // set riêng, không thì dùng unit gốc (đúng thiết kế sprint-04/025).
+        materialCode: material.code,
+        materialName: material.name,
+        materialUnit: material.retailUnit?.name ?? material.unit.name,
+        quantity: dto.quantity,
+        systemPrice,
+        discountPercent: 0,
+        surchargeAfterDiscount: 0,
+        finalPrice,
+        subtotal,
+        vatRate,
+        vatAmount,
+        note: dto.note?.trim() || null,
+        displayOrder,
+      },
+      include: {
+        material: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  async updateMaterialItem(
+    quotationId: string,
+    itemId: string,
+    dto: UpdateQuotationMaterialItemDto,
+  ) {
+    const quotation = await this.findOne(quotationId);
+
+    if (!EDITABLE_STATUSES.includes(quotation.status)) {
+      throw new ForbiddenException(
+        `Không thể chỉnh sửa vật tư trong báo giá ở trạng thái ${quotation.status}.`,
+      );
+    }
+
+    const item = await this.prisma.quotationItem.findFirst({
+      where: { id: itemId, quotationId, itemType: 'MATERIAL' },
+    });
+    if (!item) {
+      throw new NotFoundException('Dòng vật tư không tồn tại.');
+    }
+
+    if (dto.quantity !== undefined && dto.quantity <= 0) {
+      throw new BadRequestException('Số lượng phải lớn hơn 0.');
+    }
+
+    const quantity = dto.quantity ?? Number(item.quantity);
+    const finalPrice =
+      dto.finalPrice !== undefined
+        ? Math.round(dto.finalPrice)
+        : Number(item.finalPrice);
+    if (finalPrice < 0) {
+      throw new BadRequestException('Giá bán không được âm.');
+    }
+    const subtotal = this.calcSubtotal(finalPrice, quantity);
+    const vatAmount = this.calcVatAmount(subtotal, Number(item.vatRate));
+
+    return this.prisma.quotationItem.update({
+      where: { id: itemId },
+      data: {
+        quantity,
+        finalPrice,
+        subtotal,
+        vatAmount,
+        ...(dto.note !== undefined ? { note: dto.note?.trim() || null } : {}),
+        ...(dto.displayOrder !== undefined
+          ? { displayOrder: dto.displayOrder }
+          : {}),
+      },
+      include: {
+        material: { select: { id: true, code: true, name: true } },
+      },
+    });
   }
 
   // ─────────────────────────────────────────────────────
@@ -848,7 +1024,10 @@ export class QuotationWorkflowService {
       warnings: string[];
     }> = [];
 
+    // Dòng MATERIAL (chốt 28/07/2026, sprint-04/025) không có Pricing Rule —
+    // giá cố định theo Material.retailPrice, bỏ qua hoàn toàn ở "Tính lại giá".
     for (const item of quotation.items) {
+      if (item.itemType !== 'PRODUCT' || !item.productId) continue;
       const priceResult = await this.pricingEngine.calculate({
         productId: item.productId,
         parameters: item.parameters.map((p) => ({
@@ -871,8 +1050,8 @@ export class QuotationWorkflowService {
 
       changes.push({
         itemId: item.id,
-        productCode: item.productCode,
-        productName: item.productName,
+        productCode: item.productCode ?? '',
+        productName: item.productName ?? '',
         oldSystemPrice: Number(item.systemPrice),
         newSystemPrice,
         oldFinalPrice: Number(item.finalPrice),
@@ -1175,6 +1354,18 @@ export class QuotationWorkflowService {
                 },
               },
             },
+            // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — chỉ có khi
+            // itemType=MATERIAL, dùng giá vốn MaterialPrice mặc định, không
+            // qua Pricing Rule/Material Requirement/Production.
+            material: {
+              include: {
+                prices: {
+                  where: { isDefault: true },
+                  orderBy: { effectiveFrom: 'desc' },
+                  take: 1,
+                },
+              },
+            },
             parameters: { orderBy: { displayOrder: 'asc' } },
           },
           orderBy: { displayOrder: 'asc' },
@@ -1217,8 +1408,48 @@ export class QuotationWorkflowService {
     // để KHÔNG ép giá trị ENUM giống số (vd "1") sang number, nếu không condition
     // BOM dạng `socanh == "1"` lệch kiểu khi so sánh (cùng pattern PricingEngine).
     const enumParamNamesByItem = new Map<string, string[]>();
+    // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — giá vốn/đơn vị (đã quy
+    // đổi theo retailConversionFactor nếu có) cho từng dòng MATERIAL.
+    const retailCostUnitByItem = new Map<string, number>();
 
     for (const item of quotation.items) {
+      if (item.itemType === 'MATERIAL') {
+        const material = item.material;
+        if (!material) {
+          throw new BadRequestException(
+            `Dòng vật tư "${item.materialName}" không còn tồn tại.`,
+          );
+        }
+        if (!material.isActive || !material.isRetailable) {
+          throw new BadRequestException(
+            `Vật tư "${material.name}" không còn được bán lẻ. Vui lòng cập nhật báo giá.`,
+          );
+        }
+        const costPrice = material.prices[0]?.price;
+        if (costPrice === undefined) {
+          throw new BadRequestException(
+            `Vật tư "${material.name}" chưa có giá vốn (giá nhập) mặc định.`,
+          );
+        }
+        const factor = material.retailConversionFactor
+          ? Number(material.retailConversionFactor)
+          : 1;
+        retailCostUnitByItem.set(item.id, Number(costPrice) * factor);
+
+        if (Number(item.finalPrice) < 0) {
+          throw new BadRequestException(
+            `Giá bán của vật tư "${material.name}" không được âm.`,
+          );
+        }
+        continue;
+      }
+
+      if (!item.product) {
+        throw new BadRequestException(
+          `Dòng sản phẩm "${item.productName}" không còn tồn tại.`,
+        );
+      }
+
       if (item.product.status !== 'ACTIVE') {
         throw new BadRequestException(
           `Sản phẩm "${item.product.name}" không còn hoạt động. Vui lòng cập nhật báo giá.`,
@@ -1238,8 +1469,8 @@ export class QuotationWorkflowService {
       if (item.pricingRuleVersionId !== activePricingVersion.id) {
         stalePricingItems.push({
           itemId: item.id,
-          productCode: item.productCode,
-          productName: item.productName,
+          productCode: item.productCode ?? '',
+          productName: item.productName ?? '',
         });
       }
 
@@ -1337,8 +1568,23 @@ export class QuotationWorkflowService {
       bomLines: BomLine[];
       itemPlannedCost: number;
     }> = [];
+    // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — giá vốn không qua BOM,
+    // tính trực tiếp từ retailCostUnitByItem × quantity.
+    const materialItemComputations: Array<{
+      item: (typeof quotation.items)[number];
+      itemPlannedCost: number;
+    }> = [];
 
     for (const item of quotation.items) {
+      if (item.itemType === 'MATERIAL') {
+        const costUnit = retailCostUnitByItem.get(item.id) ?? 0;
+        materialItemComputations.push({
+          item,
+          itemPlannedCost: Math.round(costUnit * Number(item.quantity)),
+        });
+        continue;
+      }
+
       const materialRequirementVersionId = materialVersionIdByItem.get(
         item.id,
       )!;
@@ -1373,18 +1619,18 @@ export class QuotationWorkflowService {
 
     // All validations pass — execute in a single transaction
     return this.prisma.$transaction(async (tx) => {
-      const plannedCost = itemComputations.reduce(
-        (s, c) => s + c.itemPlannedCost,
-        0,
-      );
+      const plannedCost =
+        itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0) +
+        materialItemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
       // Trừ thêm discountAmount (Giảm thêm cấp toàn báo giá, chốt 18/07/2026 —
       // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
       // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
       // phồng đúng bằng số tiền Giảm thêm.
       const plannedProfit =
         totalAmount - plannedCost - Number(quotation.discountAmount);
+      // Dòng MATERIAL không sinh Production Order — chỉ đếm xưởng của dòng PRODUCT.
       const totalProductionOrders = new Set(
-        quotation.items.map((i) => i.product.productionCenterId),
+        itemComputations.map((c) => c.item.product!.productionCenterId),
       ).size;
 
       // Generate SalesOrder running number
@@ -1485,22 +1731,23 @@ export class QuotationWorkflowService {
         bomLines,
         itemPlannedCost,
       } of itemComputations) {
+        const product = item.product!;
         const soItem = await tx.salesOrderItem.create({
           data: {
             salesOrderId: salesOrder.id,
+            itemType: 'PRODUCT',
             productId: item.productId,
-            productCode: item.product.code,
-            productName: item.product.name,
+            productCode: product.code,
+            productName: product.name,
             // Redundant Reference + snapshot phục vụ Báo cáo B2/B4 (report.md)
             // — copy trong transaction Approve, không đọc lại Master Data sau đó.
-            productTypeId: item.product.productTypeId,
-            productTypeName: item.product.productType.name,
-            productionCenterId: item.product.productionCenterId,
-            productionCenterName: item.product.productionCenter.name,
+            productTypeId: product.productTypeId,
+            productTypeName: product.productType.name,
+            productionCenterId: product.productionCenterId,
+            productionCenterName: product.productionCenter.name,
             pricingRuleVersionId: item.pricingRuleVersionId,
             systemPrice: Number(item.systemPrice),
-            unitPrice:
-              item.unitPrice !== null ? Number(item.unitPrice) : null,
+            unitPrice: item.unitPrice !== null ? Number(item.unitPrice) : null,
             discountPercent: Number(item.discountPercent),
             // Snapshot y nguyên, không tính lại (023-phu-phi) — giống finalPrice.
             surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
@@ -1555,17 +1802,44 @@ export class QuotationWorkflowService {
         }
 
         // Group by production center
-        const centerId = item.product.productionCenterId;
-        const centerName = item.product.productionCenter.name;
+        const centerId = product.productionCenterId;
+        const centerName = product.productionCenter.name;
         if (!centerMap.has(centerId)) {
           centerMap.set(centerId, { centerName, items: [] });
         }
         centerMap.get(centerId)!.items.push({
           salesOrderItemId: soItem.id,
-          productId: item.productId,
-          productCode: item.product.code,
-          productName: item.product.name,
+          productId: item.productId!,
+          productCode: product.code,
+          productName: product.name,
           quantity: Number(item.quantity),
+        });
+      }
+
+      // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — tạo SalesOrderItem
+      // riêng cho dòng MATERIAL, KHÔNG group vào centerMap (không sinh
+      // Production Order — vật tư bán lẻ khách tự lắp, không qua sản xuất).
+      for (const { item, itemPlannedCost } of materialItemComputations) {
+        await tx.salesOrderItem.create({
+          data: {
+            salesOrderId: salesOrder.id,
+            itemType: 'MATERIAL',
+            materialId: item.materialId,
+            materialCode: item.materialCode,
+            materialName: item.materialName,
+            materialUnit: item.materialUnit,
+            systemPrice: Number(item.systemPrice),
+            discountPercent: Number(item.discountPercent),
+            surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
+            finalPrice: Number(item.finalPrice),
+            quantity: Number(item.quantity),
+            subtotal: Number(item.subtotal),
+            vatRate: Number(item.vatRate),
+            vatAmount: Number(item.vatAmount),
+            note: item.note,
+            plannedCost: itemPlannedCost,
+            displayOrder: item.displayOrder,
+          },
         });
       }
 
@@ -1676,7 +1950,8 @@ export class QuotationWorkflowService {
     discountPercent: number,
     surchargeAfterDiscount = 0,
   ): number {
-    const final = systemPrice * (1 - discountPercent / 100) + surchargeAfterDiscount;
+    const final =
+      systemPrice * (1 - discountPercent / 100) + surchargeAfterDiscount;
 
     if (final < 0) {
       throw new BadRequestException(
@@ -1709,7 +1984,9 @@ export class QuotationWorkflowService {
   private async estimateItemsCost(
     inputs: Array<{
       id: string;
-      productId: string;
+      itemType?: 'PRODUCT' | 'MATERIAL';
+      productId: string | null;
+      materialId?: string | null;
       quantity: number;
       parameters: Array<{ name: string; value: string }>;
     }>,
@@ -1725,23 +2002,80 @@ export class QuotationWorkflowService {
     >();
     if (inputs.length === 0) return result;
 
-    const productIds = [...new Set(inputs.map((i) => i.productId))];
-    const materialRequirements = await this.prisma.materialRequirement.findMany({
-      where: { productId: { in: productIds } },
-      include: {
-        versions: {
-          where: { status: VersionStatus.ACTIVE },
-          take: 1,
+    // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — giá vốn KHÔNG qua BOM,
+    // tính trực tiếp từ MaterialPrice mặc định × hệ số quy đổi (nếu bán theo
+    // đơn vị khác đơn vị gốc).
+    const materialInputs = inputs.filter((i) => i.itemType === 'MATERIAL');
+    if (materialInputs.length > 0) {
+      const materialIds = [
+        ...new Set(
+          materialInputs
+            .map((i) => i.materialId)
+            .filter((v): v is string => !!v),
+        ),
+      ];
+      const materials = await this.prisma.material.findMany({
+        where: { id: { in: materialIds } },
+        include: {
+          prices: {
+            where: { isDefault: true },
+            orderBy: { effectiveFrom: 'desc' },
+            take: 1,
+            select: { price: true },
+          },
         },
-        // ENUM param (vd "socanh") không được ép kiểu số khi coerceParameters()
-        // — cùng lý do đã sửa ở approve() (xem comment enumParamNamesByItem).
-        product: {
-          select: {
-            parameters: { where: { type: 'ENUM' }, select: { name: true } },
+      });
+      const materialById = new Map(materials.map((m) => [m.id, m]));
+      for (const input of materialInputs) {
+        const material = input.materialId
+          ? materialById.get(input.materialId)
+          : undefined;
+        const costPrice = material?.prices[0]?.price;
+        if (!material || costPrice === undefined) {
+          result.set(input.id, {
+            costUnitPrice: 0,
+            totalCost: 0,
+            costAvailable: false,
+          });
+          continue;
+        }
+        const factor = material.retailConversionFactor
+          ? Number(material.retailConversionFactor)
+          : 1;
+        const costUnitPrice = Number(costPrice) * factor;
+        result.set(input.id, {
+          costUnitPrice,
+          totalCost: costUnitPrice * input.quantity,
+          costAvailable: true,
+        });
+      }
+    }
+
+    const productInputs = inputs.filter((i) => i.itemType !== 'MATERIAL');
+    const productIds = [
+      ...new Set(
+        productInputs.map((i) => i.productId).filter((v): v is string => !!v),
+      ),
+    ];
+    if (productIds.length === 0) return result;
+    const materialRequirements = await this.prisma.materialRequirement.findMany(
+      {
+        where: { productId: { in: productIds } },
+        include: {
+          versions: {
+            where: { status: VersionStatus.ACTIVE },
+            take: 1,
+          },
+          // ENUM param (vd "socanh") không được ép kiểu số khi coerceParameters()
+          // — cùng lý do đã sửa ở approve() (xem comment enumParamNamesByItem).
+          product: {
+            select: {
+              parameters: { where: { type: 'ENUM' }, select: { name: true } },
+            },
           },
         },
       },
-    });
+    );
     const activeVersionIdByProductId = new Map<string, string>();
     const enumParamNamesByProductId = new Map<string, string[]>();
     for (const mr of materialRequirements) {
@@ -1756,8 +2090,10 @@ export class QuotationWorkflowService {
     }
 
     const configCache = new Map<string, BomConfig>();
-    for (const input of inputs) {
-      const versionId = activeVersionIdByProductId.get(input.productId);
+    for (const input of productInputs) {
+      const productId = input.productId;
+      if (!productId) continue;
+      const versionId = activeVersionIdByProductId.get(productId);
       if (!versionId) {
         // Sản phẩm chưa có Material Requirement Version ACTIVE (có thể xảy ra
         // ở Draft/Sent — Approve mới bắt buộc) — không chặn, chỉ đánh dấu
@@ -1780,7 +2116,7 @@ export class QuotationWorkflowService {
       // của Pricing Engine (nguyên tắc billable ≠ actual).
       const rawParams = coerceParameters(
         input.parameters,
-        enumParamNamesByProductId.get(input.productId),
+        enumParamNamesByProductId.get(productId),
       );
 
       // Version ACTIVE hiện tại có thể lệch tham số so với snapshot của báo

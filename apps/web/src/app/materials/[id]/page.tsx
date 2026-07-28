@@ -38,6 +38,11 @@ interface Material {
   productionCenters?: { productionCenter: { id: string; name: string } }[];
   createdAt: string;
   updatedAt: string;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  isRetailable?: boolean;
+  retailUnit?: { id: string; name: string } | null;
+  retailConversionFactor?: number | string | null;
+  retailVatRate?: number | string | null;
 }
 
 function formatQty(n: number) {
@@ -122,6 +127,7 @@ export default function MaterialDetailPage() {
         <Badge variant={material.isActive ? "default" : "secondary"}>
           {material.isActive ? "Đang dùng" : "Ngừng dùng"}
         </Badge>
+        {material.isRetailable && <Badge variant="outline">Bán lẻ</Badge>}
       </div>
 
       <div className="rounded-lg border p-6">
@@ -137,9 +143,30 @@ export default function MaterialDetailPage() {
             })()}
           />
           <Field
-            label="Giá bán lẻ"
+            label={`Giá bán lẻ${material.retailUnit ? ` (theo ${material.retailUnit.name})` : ""}`}
             value={material.retailPrice !== null ? formatMoney(Number(material.retailPrice)) : null}
           />
+          {material.retailUnit && (
+            <Field
+              label="Hệ số quy đổi (đơn vị gốc)"
+              value={
+                material.retailConversionFactor !== null &&
+                material.retailConversionFactor !== undefined
+                  ? `1 ${material.retailUnit.name} = ${Number(material.retailConversionFactor)} ${material.unit?.name ?? ""}`
+                  : null
+              }
+            />
+          )}
+          {material.isRetailable && (
+            <Field
+              label="% VAT bán lẻ"
+              value={
+                material.retailVatRate !== null && material.retailVatRate !== undefined
+                  ? `${Number(material.retailVatRate)}%`
+                  : null
+              }
+            />
+          )}
           <Field
             label="Xưởng sử dụng"
             value={

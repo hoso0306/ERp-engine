@@ -18,6 +18,8 @@ import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { CreateQuotationItemDto } from './dto/create-quotation-item.dto';
 import { UpdateQuotationItemDto } from './dto/update-quotation-item.dto';
+import { CreateQuotationMaterialItemDto } from './dto/create-quotation-material-item.dto';
+import { UpdateQuotationMaterialItemDto } from './dto/update-quotation-material-item.dto';
 import { CancelQuotationDto } from './dto/cancel-quotation.dto';
 import { OverrideQuotationDto } from './dto/override-quotation.dto';
 import { DiscountQuotationDto } from './dto/discount-quotation.dto';
@@ -157,4 +159,28 @@ export class QuotationController {
   removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.workflow.removeItem(id, itemId);
   }
+
+  // ── Bán lẻ Vật tư (chốt 28/07/2026, sprint-04/025) — dùng chung quyền
+  // quotation.update/quotation.create như dòng sản phẩm (quyết định mục 5). ──
+
+  @Post(':id/material-items')
+  @RequirePermission('quotation.update')
+  addMaterialItem(
+    @Param('id') id: string,
+    @Body() dto: CreateQuotationMaterialItemDto,
+  ) {
+    return this.workflow.addMaterialItem(id, dto);
+  }
+
+  @Patch(':id/material-items/:itemId')
+  @RequirePermission('quotation.update')
+  updateMaterialItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateQuotationMaterialItemDto,
+  ) {
+    return this.workflow.updateMaterialItem(id, itemId, dto);
+  }
+
+  // Xoá dùng chung route/handler removeItem ở trên (không phân biệt PRODUCT/MATERIAL).
 }

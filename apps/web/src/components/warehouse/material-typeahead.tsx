@@ -10,11 +10,20 @@ export interface MaterialOption {
   code: string;
   name: string;
   unit: { id: string; name: string } | null;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025) — chỉ có ý
+  // nghĩa khi dùng với onlyRetailable=true.
+  retailPrice?: number | string | null;
+  retailUnit?: { id: string; name: string } | null;
+  retailVatRate?: number | string | null;
 }
 
 interface MaterialTypeaheadProps {
   value: MaterialOption | null;
   onChange: (material: MaterialOption | null) => void;
+  // Chỉ gợi ý vật tư đã bật "Cho phép bán lẻ" (chốt 28/07/2026, sprint-04/025)
+  // — dùng cho nút "Thêm vật tư" trong Báo giá. Mặc định false (giữ nguyên
+  // hành vi cũ cho Kho/Nhập kho — gợi ý mọi vật tư đang hoạt động).
+  onlyRetailable?: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -22,7 +31,7 @@ const PAGE_SIZE = 20;
 // Gợi ý vật tư realtime — cùng pattern CustomerTypeahead (quotation module),
 // chỉ gợi ý vật tư đang hoạt động (isActive=true).
 // Cuộn gần đáy danh sách tự tải thêm trang tiếp theo (infinite scroll).
-export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
+export function MaterialTypeahead({ value, onChange, onlyRetailable = false }: MaterialTypeaheadProps) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<MaterialOption[]>([]);
   const [open, setOpen] = useState(false);
@@ -53,6 +62,7 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
         params.set("limit", String(PAGE_SIZE));
         params.set("page", "1");
         params.set("isActive", "true");
+        if (onlyRetailable) params.set("isRetailable", "true");
         const json = await apiGet<{ data: MaterialOption[]; meta?: { totalPages: number } }>(
           `/materials?${params}`,
         );
@@ -68,7 +78,7 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, open]);
+  }, [query, open, onlyRetailable]);
 
   async function loadMore() {
     if (loading || loadingMore || page >= totalPages) return;
@@ -80,6 +90,7 @@ export function MaterialTypeahead({ value, onChange }: MaterialTypeaheadProps) {
       params.set("limit", String(PAGE_SIZE));
       params.set("page", String(nextPage));
       params.set("isActive", "true");
+      if (onlyRetailable) params.set("isRetailable", "true");
       const json = await apiGet<{ data: MaterialOption[] }>(`/materials?${params}`);
       setOptions((prev) => [...prev, ...(json.data ?? [])]);
       setPage(nextPage);

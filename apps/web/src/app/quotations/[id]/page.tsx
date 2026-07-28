@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { QuotationStatusBadge } from "@/components/quotation/quotation-status-badge";
 import { CustomerTypeahead, type CustomerOption } from "@/components/quotation/customer-typeahead";
 import { QuotationItemDialog } from "@/components/quotation/quotation-item-dialog";
+import { MaterialItemDialog } from "@/components/quotation/material-item-dialog";
 import { QuotationItemTable } from "@/components/quotation/quotation-item-table";
 import {
   QuotationMarginDialog, type QuotationCostSummary,
@@ -42,7 +43,11 @@ interface QuotationItemParam {
 
 interface QuotationItem {
   id: string;
-  productId: string;
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025) — PRODUCT =
+  // dòng CTO thường (mặc định), MATERIAL = bán lẻ vật tư trực tiếp.
+  itemType?: "PRODUCT" | "MATERIAL";
+  productId: string | null;
+  materialId?: string | null;
   quantity: number;
   systemPrice: number;
   unitPrice: number | null;
@@ -56,10 +61,13 @@ interface QuotationItem {
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
   warnings: string[] | null;
   // Snapshot tại thời điểm thêm/sửa dòng — hiển thị đọc từ đây, không đọc Product.
-  productCode: string;
-  productName: string;
+  productCode: string | null;
+  productName: string | null;
+  materialCode?: string | null;
+  materialName?: string | null;
+  materialUnit?: string | null;
   // Chỉ dùng điều hướng (navigation), không dùng hiển thị.
-  product: { id: string; code: string; name: string };
+  product: { id: string; code: string; name: string } | null;
   parameters: QuotationItemParam[];
 }
 
@@ -160,6 +168,10 @@ export default function QuotationDetailPage() {
   // Item dialog
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<QuotationItem | null>(null);
+
+  // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — dialog riêng cho dòng MATERIAL.
+  const [materialItemDialogOpen, setMaterialItemDialogOpen] = useState(false);
+  const [editingMaterialItem, setEditingMaterialItem] = useState<QuotationItem | null>(null);
 
   // Cancel dialog (Task 05)
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -414,15 +426,27 @@ export default function QuotationDetailPage() {
   // Nhân đôi dòng — gọi lại đúng POST /items như thêm dòng mới bình thường
   // (productId/quantity/parameters/note), để BE tự tính giá/chiết khấu/VAT
   // theo cấu hình hiện tại (không copy nguyên số đã snapshot của dòng gốc).
+  // Dòng MATERIAL (chốt 28/07/2026, sprint-04/025) dùng route riêng, snapshot
+  // finalPrice/note y nguyên (không có Discount Engine để tính lại).
   async function duplicateItem(item: QuotationItem) {
     try {
-      await apiPost(`/quotations/${id}/items`, {
-        productId: item.productId,
-        quantity: item.quantity,
-        parameters: item.parameters.map((p) => ({ name: p.name, value: p.value })),
-        note: item.note,
-      });
-      toast.success("Đã nhân đôi sản phẩm.");
+      if (item.itemType === "MATERIAL") {
+        await apiPost(`/quotations/${id}/material-items`, {
+          materialId: item.materialId,
+          quantity: item.quantity,
+          finalPrice: item.finalPrice,
+          note: item.note,
+        });
+        toast.success("Đã nhân đôi vật tư.");
+      } else {
+        await apiPost(`/quotations/${id}/items`, {
+          productId: item.productId,
+          quantity: item.quantity,
+          parameters: item.parameters.map((p) => ({ name: p.name, value: p.value })),
+          note: item.note,
+        });
+        toast.success("Đã nhân đôi sản phẩm.");
+      }
       refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
@@ -693,6 +717,18 @@ export default function QuotationDetailPage() {
             )}
             {canEditItems && (
               <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingMaterialItem(null);
+                  setMaterialItemDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm vật tư
+              </Button>
+            )}
+            {canEditItems && (
+              <Button
                 onClick={() => {
                   setEditingItem(null);
                   setItemDialogOpen(true);
@@ -709,8 +745,13 @@ export default function QuotationDetailPage() {
           items={quotation.items}
           editable={canEditItems}
           onEdit={(item) => {
-            setEditingItem(item);
-            setItemDialogOpen(true);
+            if (item.itemType === "MATERIAL") {
+              setEditingMaterialItem(item);
+              setMaterialItemDialogOpen(true);
+            } else {
+              setEditingItem(item);
+              setItemDialogOpen(true);
+            }
           }}
           onDelete={setDeleteItemId}
           onDuplicate={duplicateItem}
@@ -969,7 +1010,31 @@ export default function QuotationDetailPage() {
         onOpenChange={setItemDialogOpen}
         quotationId={id}
         customerId={quotation.customer.id}
-        item={editingItem}
+        // editingItem chỉ được set ở nhánh PRODUCT (xem onEdit của
+        // QuotationItemTable) — productId luôn có giá trị tại đây.
+        item={editingItem ? { ...editingItem, productId: editingItem.productId! } : null}
+        onSaved={refresh}
+      />
+
+      {/* Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) */}
+      <MaterialItemDialog
+        open={materialItemDialogOpen}
+        onOpenChange={setMaterialItemDialogOpen}
+        quotationId={id}
+        item={
+          editingMaterialItem && editingMaterialItem.materialId
+            ? {
+                id: editingMaterialItem.id,
+                materialId: editingMaterialItem.materialId,
+                materialCode: editingMaterialItem.materialCode ?? "",
+                materialName: editingMaterialItem.materialName ?? "",
+                materialUnit: editingMaterialItem.materialUnit ?? "",
+                quantity: editingMaterialItem.quantity,
+                finalPrice: editingMaterialItem.finalPrice,
+                note: editingMaterialItem.note,
+              }
+            : null
+        }
         onSaved={refresh}
       />
 

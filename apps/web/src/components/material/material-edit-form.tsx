@@ -36,6 +36,11 @@ interface MaterialData {
   retailPrice: number | string | null;
   minimumStock: number | string | null;
   productionCenters?: { productionCenter: { id: string; name: string } }[];
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  isRetailable?: boolean;
+  retailUnitId?: string | null;
+  retailConversionFactor?: number | string | null;
+  retailVatRate?: number | string | null;
 }
 
 interface MaterialEditFormProps {
@@ -51,6 +56,10 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
     (material.productionCenters ?? []).map((pc) => pc.productionCenter.id),
   );
   const [submitting, setSubmitting] = useState(false);
+
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  const [isRetailable, setIsRetailable] = useState(material.isRetailable ?? false);
+  const [retailUnitId, setRetailUnitId] = useState(material.retailUnitId ?? "");
 
   useEffect(() => {
     apiGet<Unit[]>("/units").then(setUnits).catch(() => {});
@@ -78,7 +87,23 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
       retailPrice: retailPrice && String(retailPrice).trim() ? Number(retailPrice) : null,
       minimumStock: minimumStock && String(minimumStock).trim() ? Number(minimumStock) : null,
       productionCenterIds: selectedCenterIds,
+      isRetailable,
     };
+
+    if (isRetailable) {
+      const effectiveRetailUnitId = retailUnitId || unitId;
+      body.retailUnitId = effectiveRetailUnitId !== unitId ? effectiveRetailUnitId : null;
+      const retailConversionFactor = form.get("retailConversionFactor");
+      body.retailConversionFactor =
+        effectiveRetailUnitId !== unitId && retailConversionFactor && String(retailConversionFactor).trim()
+          ? Number(retailConversionFactor)
+          : null;
+      const retailVatRate = form.get("retailVatRate");
+      body.retailVatRate = retailVatRate && String(retailVatRate).trim() ? Number(retailVatRate) : 0;
+    } else {
+      body.retailUnitId = null;
+      body.retailConversionFactor = null;
+    }
 
     try {
       await apiPatch(`/materials/${material.id}`, body);
@@ -127,7 +152,8 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="retailPrice">
-              Giá bán lẻ (₫) <span className="text-muted-foreground">(tuỳ chọn)</span>
+              Giá bán lẻ (₫){" "}
+              {!isRetailable && <span className="text-muted-foreground">(tuỳ chọn)</span>}
             </Label>
             <Input
               id="retailPrice"
@@ -135,6 +161,7 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
               type="number"
               min="0"
               step="1000"
+              required={isRetailable}
               defaultValue={material.retailPrice !== null ? Number(material.retailPrice) : ""}
             />
             <p className="text-xs text-muted-foreground">
@@ -157,6 +184,80 @@ export function MaterialEditForm({ material }: MaterialEditFormProps) {
               Tồn kho dưới mức này sẽ hiện cảnh báo.
             </p>
           </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={isRetailable}
+              onChange={(e) => setIsRetailable(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            Cho phép bán lẻ (hiện trong nút &quot;Thêm vật tư&quot; ở Báo giá)
+          </label>
+
+          {isRetailable && (
+            <div className="grid grid-cols-2 gap-4 pl-6">
+              <div className="space-y-2">
+                <Label>
+                  Đơn vị bán lẻ <span className="text-muted-foreground">(mặc định = đơn vị gốc)</span>
+                </Label>
+                <Select value={retailUnitId || unitId} onValueChange={(v) => setRetailUnitId(v ?? "")}>
+                  <SelectTrigger className="w-56">
+                    <SelectValue placeholder="Chọn đơn vị" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {retailUnitId && retailUnitId !== unitId && (
+                <div className="space-y-2">
+                  <Label htmlFor="retailConversionFactor">Hệ số quy đổi *</Label>
+                  <Input
+                    id="retailConversionFactor"
+                    name="retailConversionFactor"
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    defaultValue={
+                      material.retailConversionFactor !== null &&
+                      material.retailConversionFactor !== undefined
+                        ? Number(material.retailConversionFactor)
+                        : ""
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    1 đơn vị bán lẻ = bao nhiêu đơn vị gốc (vd nhôm: 1 mét = 0,35 kg).
+                  </p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="retailVatRate">
+                  % VAT bán lẻ <span className="text-muted-foreground">(tuỳ chọn)</span>
+                </Label>
+                <Input
+                  id="retailVatRate"
+                  name="retailVatRate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  defaultValue={
+                    material.retailVatRate !== null && material.retailVatRate !== undefined
+                      ? Number(material.retailVatRate)
+                      : ""
+                  }
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

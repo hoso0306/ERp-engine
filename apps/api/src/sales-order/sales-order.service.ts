@@ -748,7 +748,10 @@ export class SalesOrderService {
     ]);
 
     const totalRevenue = rows.reduce((s, r) => s + Number(r.totalAmount), 0);
-    const totalPlannedCost = rows.reduce((s, r) => s + Number(r.plannedCost), 0);
+    const totalPlannedCost = rows.reduce(
+      (s, r) => s + Number(r.plannedCost),
+      0,
+    );
     const totalPlannedProfit = rows.reduce(
       (s, r) => s + Number(r.plannedProfit),
       0,
@@ -855,8 +858,11 @@ export class SalesOrderService {
 
   // B2 — group theo SalesOrderItem.productId (Redundant Reference bất biến),
   // hiển thị productName snapshot — không join ngược Product (Snapshot Rule).
+  // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — loại dòng MATERIAL khỏi
+  // báo cáo doanh thu theo sản phẩm (productId luôn null ở dòng MATERIAL).
   async getRevenueByProduct(from: Date, to: Date) {
     const itemWhere: Prisma.SalesOrderItemWhereInput = {
+      itemType: 'PRODUCT',
       salesOrder: this.reportRangeWhere(from, to),
     };
 
@@ -906,8 +912,13 @@ export class SalesOrderService {
   async getGrowthByProductType(from: Date, to: Date) {
     const timezone = await this.getCompanyTimezone();
 
+    // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — báo cáo B4 nhóm theo
+    // Loại sản phẩm, không áp dụng cho dòng MATERIAL (không có productTypeId).
     const rows = await this.prisma.salesOrderItem.findMany({
-      where: { salesOrder: this.reportRangeWhere(from, to) },
+      where: {
+        itemType: 'PRODUCT',
+        salesOrder: this.reportRangeWhere(from, to),
+      },
       select: {
         productTypeId: true,
         productTypeName: true,
@@ -926,23 +937,27 @@ export class SalesOrderService {
     const months = new Set<string>();
 
     for (const row of rows) {
+      const productTypeId = row.productTypeId!;
       const month = bucketDate(row.salesOrder.createdAt, timezone, 'month');
       months.add(month);
-      let acc = byType.get(row.productTypeId);
+      let acc = byType.get(productTypeId);
       if (!acc) {
         acc = {
-          productTypeId: row.productTypeId,
-          productTypeName: row.productTypeName,
+          productTypeId,
+          productTypeName: row.productTypeName!,
           revenue: 0,
           byMonth: new Map(),
         };
-        byType.set(row.productTypeId, acc);
+        byType.set(productTypeId, acc);
       }
       // Nhãn hiển thị: snapshot gặp sau cùng — vẫn là snapshot, không đọc
       // lại ProductType.
-      acc.productTypeName = row.productTypeName;
+      acc.productTypeName = row.productTypeName!;
       acc.revenue += Number(row.subtotal);
-      acc.byMonth.set(month, (acc.byMonth.get(month) ?? 0) + Number(row.subtotal));
+      acc.byMonth.set(
+        month,
+        (acc.byMonth.get(month) ?? 0) + Number(row.subtotal),
+      );
     }
 
     const sortedMonths = Array.from(months).sort();

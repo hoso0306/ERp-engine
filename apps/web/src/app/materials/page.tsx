@@ -28,6 +28,8 @@ export default function MaterialsPage() {
   const [search, setSearch] = useState("");
   const [isActive, setIsActive] = useState("all");
   const [centerId, setCenterId] = useState("all");
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  const [isRetailable, setIsRetailable] = useState("all");
   const [centers, setCenters] = useState<ProductionCenterOption[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -45,6 +47,7 @@ export default function MaterialsPage() {
       if (search) params.set("search", search);
       if (isActive !== "all") params.set("isActive", isActive);
       if (centerId !== "all") params.set("productionCenterId", centerId);
+      if (isRetailable !== "all") params.set("isRetailable", isRetailable);
       params.set("page", String(page));
       params.set("limit", "20");
 
@@ -56,7 +59,7 @@ export default function MaterialsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, isActive, centerId, page]);
+  }, [search, isActive, centerId, isRetailable, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchMaterials, search ? 300 : 0);
@@ -65,7 +68,7 @@ export default function MaterialsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, isActive, centerId]);
+  }, [search, isActive, centerId, isRetailable]);
 
   return (
     <div className="space-y-6">
@@ -115,6 +118,17 @@ export default function MaterialsPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <Select value={isRetailable} onValueChange={(v) => setIsRetailable(v ?? "all")}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Vật tư bán lẻ" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả</SelectItem>
+            <SelectItem value="true">Vật tư bán lẻ</SelectItem>
+            <SelectItem value="false">Không bán lẻ</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading && <Loading />}
@@ -126,7 +140,12 @@ export default function MaterialsPage() {
         />
       )}
       {!loading && !error && materials.length > 0 && (
-        <MaterialTable materials={materials} meta={meta} onPageChange={setPage} />
+        <MaterialTable
+          materials={materials}
+          meta={meta}
+          onPageChange={setPage}
+          onRefresh={fetchMaterials}
+        />
       )}
     </div>
   );

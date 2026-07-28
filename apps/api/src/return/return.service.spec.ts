@@ -17,6 +17,7 @@ function makeSalesOrder(overrides: Record<string, unknown> = {}) {
     items: [
       {
         id: 'soi-1',
+        itemType: 'PRODUCT',
         productCode: 'SP000001',
         productName: 'Rèm phòng ngủ',
         quantity: 5,
@@ -216,6 +217,32 @@ describe('ReturnService', () => {
       prisma.returnItem.aggregate.mockResolvedValue({
         _sum: { returnedQuantity: 4 },
       });
+
+      await expect(
+        service.create({
+          salesOrderId: 'so-1',
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects khi dòng SalesOrderItem là vật tư bán lẻ (itemType=MATERIAL, chưa hỗ trợ trả hàng)', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({
+          items: [
+            {
+              id: 'soi-1',
+              itemType: 'MATERIAL',
+              materialName: 'Bạt xếp/cuốn - Mô tơ động cơ',
+              quantity: 5,
+              finalPrice: 1000000,
+              parameters: [],
+            },
+          ],
+        }),
+      );
 
       await expect(
         service.create({

@@ -34,6 +34,10 @@ export function MaterialForm() {
   const [selectedCenterIds, setSelectedCenterIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
+  const [isRetailable, setIsRetailable] = useState(false);
+  const [retailUnitId, setRetailUnitId] = useState("");
+
   useEffect(() => {
     apiGet<Unit[]>("/units").then(setUnits).catch(() => {});
     apiGet<ProductionCenterOption[]>("/production-centers").then(setCenters).catch(() => {});
@@ -65,6 +69,21 @@ export function MaterialForm() {
     if (minimumStock && String(minimumStock).trim()) body.minimumStock = Number(minimumStock);
 
     if (selectedCenterIds.length > 0) body.productionCenterIds = selectedCenterIds;
+
+    body.isRetailable = isRetailable;
+    if (isRetailable) {
+      if (retailUnitId && retailUnitId !== unitId) {
+        body.retailUnitId = retailUnitId;
+        const retailConversionFactor = form.get("retailConversionFactor");
+        if (retailConversionFactor && String(retailConversionFactor).trim()) {
+          body.retailConversionFactor = Number(retailConversionFactor);
+        }
+      }
+      const retailVatRate = form.get("retailVatRate");
+      if (retailVatRate && String(retailVatRate).trim()) {
+        body.retailVatRate = Number(retailVatRate);
+      }
+    }
 
     try {
       await apiPost("/materials", body);
@@ -106,9 +125,17 @@ export function MaterialForm() {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="retailPrice">
-              Giá bán lẻ (₫) <span className="text-muted-foreground">(tuỳ chọn)</span>
+              Giá bán lẻ (₫){" "}
+              {!isRetailable && <span className="text-muted-foreground">(tuỳ chọn)</span>}
             </Label>
-            <Input id="retailPrice" name="retailPrice" type="number" min="0" step="1000" />
+            <Input
+              id="retailPrice"
+              name="retailPrice"
+              type="number"
+              min="0"
+              step="1000"
+              required={isRetailable}
+            />
             <p className="text-xs text-muted-foreground">
               Dùng khi bán lẻ vật tư. Giá vốn sản xuất vẫn tính theo giá nhập.
             </p>
@@ -122,6 +149,70 @@ export function MaterialForm() {
               Tồn kho dưới mức này sẽ hiện cảnh báo.
             </p>
           </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={isRetailable}
+              onChange={(e) => setIsRetailable(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            Cho phép bán lẻ (hiện trong nút &quot;Thêm vật tư&quot; ở Báo giá)
+          </label>
+
+          {isRetailable && (
+            <div className="grid grid-cols-2 gap-4 pl-6">
+              <div className="space-y-2">
+                <Label>
+                  Đơn vị bán lẻ <span className="text-muted-foreground">(mặc định = đơn vị gốc)</span>
+                </Label>
+                <Select value={retailUnitId || unitId} onValueChange={(v) => setRetailUnitId(v ?? "")}>
+                  <SelectTrigger className="w-56">
+                    <SelectValue placeholder="Chọn đơn vị" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {retailUnitId && retailUnitId !== unitId && (
+                <div className="space-y-2">
+                  <Label htmlFor="retailConversionFactor">Hệ số quy đổi *</Label>
+                  <Input
+                    id="retailConversionFactor"
+                    name="retailConversionFactor"
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    1 đơn vị bán lẻ = bao nhiêu đơn vị gốc (vd nhôm: 1 mét = 0,35 kg).
+                  </p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="retailVatRate">
+                  % VAT bán lẻ <span className="text-muted-foreground">(mặc định 10%)</span>
+                </Label>
+                <Input
+                  id="retailVatRate"
+                  name="retailVatRate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  defaultValue="10"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

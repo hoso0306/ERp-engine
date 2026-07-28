@@ -281,6 +281,10 @@ export class ProductService {
         some: { productionCenterId: query.productionCenterId },
       };
     }
+    // Lọc "Vật tư bán lẻ" (chốt 28/07/2026, sprint-04/025).
+    if (query.isRetailable !== undefined) {
+      where.isRetailable = query.isRetailable === 'true';
+    }
 
     // Sort A-Z không phân biệt hoa/thường phải làm ở tầng JS (DB collation mặc
     // định phân biệt hoa/thường — xem sortByNameAsc) nên lấy hết rồi mới cắt
@@ -289,6 +293,7 @@ export class ProductService {
       where,
       include: {
         unit: { select: { id: true, name: true } },
+        retailUnit: { select: { id: true, name: true } },
         // Giá nhập mặc định — hiển thị cạnh giá bán lẻ ở danh sách (Task 07
         // sprint-02/002): lấy 1 giá isDefault mới nhất, không load cả bảng giá.
         prices: {
@@ -319,6 +324,7 @@ export class ProductService {
       where: { id },
       include: {
         unit: { select: { id: true, name: true } },
+        retailUnit: { select: { id: true, name: true } },
         prices: { orderBy: { effectiveFrom: 'desc' } },
         productionCenters: {
           select: {
@@ -331,11 +337,57 @@ export class ProductService {
     return material;
   }
 
+  // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025):
+  // - isRetailable=true bắt buộc retailPrice > 0.
+  // - retailUnitId khác unitId gốc thì bắt buộc retailConversionFactor > 0.
+  // - retailUnitId = unitId gốc hoặc null thì retailConversionFactor phải trống.
+  private validateRetailConfig(params: {
+    isRetailable: boolean;
+    unitId: string;
+    retailUnitId: string | null;
+    retailPrice: number | null;
+    retailConversionFactor: number | null;
+  }) {
+    const {
+      isRetailable,
+      unitId,
+      retailUnitId,
+      retailPrice,
+      retailConversionFactor,
+    } = params;
+    if (isRetailable && (retailPrice === null || retailPrice <= 0)) {
+      throw new BadRequestException(
+        'Vật tư cho phép bán lẻ phải có giá bán lẻ lớn hơn 0.',
+      );
+    }
+    const hasOwnRetailUnit = !!retailUnitId && retailUnitId !== unitId;
+    if (hasOwnRetailUnit) {
+      if (retailConversionFactor === null || retailConversionFactor <= 0) {
+        throw new BadRequestException(
+          'Đơn vị bán lẻ khác đơn vị gốc thì phải nhập hệ số quy đổi lớn hơn 0.',
+        );
+      }
+    } else if (retailConversionFactor !== null) {
+      throw new BadRequestException(
+        'Chỉ nhập hệ số quy đổi khi đơn vị bán lẻ khác đơn vị gốc.',
+      );
+    }
+  }
+
   async createMaterial(dto: CreateMaterialDto) {
     if (!dto.name?.trim())
       throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
     if (!dto.unitId) throw new BadRequestException('Đơn vị là bắt buộc.');
     await this.findOneUnit(dto.unitId);
+    if (dto.retailUnitId) await this.findOneUnit(dto.retailUnitId);
+
+    this.validateRetailConfig({
+      isRetailable: dto.isRetailable ?? false,
+      unitId: dto.unitId,
+      retailUnitId: dto.retailUnitId ?? null,
+      retailPrice: dto.retailPrice ?? null,
+      retailConversionFactor: dto.retailConversionFactor ?? null,
+    });
 
     const code = await this.generateCode('MATERIAL');
     return this.prisma.material.create({
@@ -346,6 +398,11 @@ export class ProductService {
         note: dto.note?.trim() || null,
         minimumStock: dto.minimumStock ?? null,
         retailPrice: dto.retailPrice ?? null,
+        isRetailable: dto.isRetailable ?? false,
+        retailUnitId: dto.retailUnitId ?? null,
+        retailConversionFactor: dto.retailConversionFactor ?? null,
+        // Mặc định 10% (chốt 28/07/2026) — người dùng tự sửa nếu khác.
+        retailVatRate: dto.retailVatRate ?? 10,
         ...(dto.productionCenterIds && dto.productionCenterIds.length > 0
           ? {
               productionCenters: {
@@ -358,6 +415,7 @@ export class ProductService {
       },
       include: {
         unit: { select: { id: true, name: true } },
+        retailUnit: { select: { id: true, name: true } },
         productionCenters: {
           select: { productionCenter: { select: { id: true, name: true } } },
         },
@@ -366,11 +424,12 @@ export class ProductService {
   }
 
   async updateMaterial(id: string, dto: UpdateMaterialDto) {
-    await this.findOneMaterial(id);
+    const existingMaterial = await this.findOneMaterial(id);
     if (dto.name !== undefined && !dto.name.trim()) {
       throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
     }
     if (dto.unitId) await this.findOneUnit(dto.unitId);
+    if (dto.retailUnitId) await this.findOneUnit(dto.retailUnitId);
     if (dto.code !== undefined) {
       if (!dto.code.trim())
         throw new BadRequestException('Mã nguyên liệu là bắt buộc.');
@@ -380,6 +439,39 @@ export class ProductService {
       if (existing) throw new ConflictException('Mã nguyên liệu đã tồn tại.');
     }
 
+    // Merge với giá trị hiện có để validate đúng trạng thái CUỐI CÙNG sau khi
+    // update (chỉ đổi 1 field, vd chỉ đổi isRetailable, vẫn phải hợp lệ với
+    // retailPrice/retailUnitId đang có sẵn).
+    const finalUnitId = dto.unitId ?? existingMaterial.unitId;
+    const finalRetailUnitId =
+      dto.retailUnitId !== undefined
+        ? dto.retailUnitId
+        : existingMaterial.retailUnitId;
+    const finalRetailPrice =
+      dto.retailPrice !== undefined
+        ? dto.retailPrice
+        : existingMaterial.retailPrice !== null
+          ? Number(existingMaterial.retailPrice)
+          : null;
+    const finalRetailConversionFactor =
+      dto.retailConversionFactor !== undefined
+        ? dto.retailConversionFactor
+        : existingMaterial.retailConversionFactor !== null
+          ? Number(existingMaterial.retailConversionFactor)
+          : null;
+    const finalIsRetailable =
+      dto.isRetailable !== undefined
+        ? dto.isRetailable
+        : existingMaterial.isRetailable;
+
+    this.validateRetailConfig({
+      isRetailable: finalIsRetailable,
+      unitId: finalUnitId,
+      retailUnitId: finalRetailUnitId,
+      retailPrice: finalRetailPrice,
+      retailConversionFactor: finalRetailConversionFactor,
+    });
+
     const data: Prisma.MaterialUpdateInput = {};
     if (dto.code !== undefined) data.code = dto.code.trim();
     if (dto.name !== undefined) data.name = dto.name.trim();
@@ -388,6 +480,15 @@ export class ProductService {
     if (dto.note !== undefined) data.note = dto.note?.trim() || null;
     if (dto.minimumStock !== undefined) data.minimumStock = dto.minimumStock;
     if (dto.retailPrice !== undefined) data.retailPrice = dto.retailPrice;
+    if (dto.isRetailable !== undefined) data.isRetailable = dto.isRetailable;
+    if (dto.retailUnitId !== undefined) {
+      data.retailUnit = dto.retailUnitId
+        ? { connect: { id: dto.retailUnitId } }
+        : { disconnect: true };
+    }
+    if (dto.retailConversionFactor !== undefined)
+      data.retailConversionFactor = dto.retailConversionFactor;
+    if (dto.retailVatRate !== undefined) data.retailVatRate = dto.retailVatRate;
     // Set lại toàn bộ danh sách xưởng khi FE gửi lên (mảng rỗng = bỏ hết).
     if (dto.productionCenterIds !== undefined) {
       data.productionCenters = {
@@ -403,6 +504,7 @@ export class ProductService {
       data,
       include: {
         unit: { select: { id: true, name: true } },
+        retailUnit: { select: { id: true, name: true } },
         productionCenters: {
           select: { productionCenter: { select: { id: true, name: true } } },
         },
@@ -525,10 +627,22 @@ export class ProductService {
       unit: { select: { id: true, name: true } },
       productionCenter: { select: { id: true, code: true, name: true } },
       pricingRule: {
-        select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+        select: {
+          versions: {
+            where: { status: 'ACTIVE' },
+            take: 1,
+            select: { id: true },
+          },
+        },
       },
       materialRequirement: {
-        select: { versions: { where: { status: 'ACTIVE' }, take: 1, select: { id: true } } },
+        select: {
+          versions: {
+            where: { status: 'ACTIVE' },
+            take: 1,
+            select: { id: true },
+          },
+        },
       },
     } satisfies Prisma.ProductInclude;
 
@@ -555,11 +669,14 @@ export class ProductService {
       rows = sorted.slice(skip, skip + limit);
     }
 
-    const data = rows.map(({ pricingRule, materialRequirement, ...product }) => ({
-      ...product,
-      hasActivePricingRule: (pricingRule?.versions.length ?? 0) > 0,
-      hasActiveMaterialRequirement: (materialRequirement?.versions.length ?? 0) > 0,
-    }));
+    const data = rows.map(
+      ({ pricingRule, materialRequirement, ...product }) => ({
+        ...product,
+        hasActivePricingRule: (pricingRule?.versions.length ?? 0) > 0,
+        hasActiveMaterialRequirement:
+          (materialRequirement?.versions.length ?? 0) > 0,
+      }),
+    );
 
     return {
       data,
@@ -1015,7 +1132,10 @@ export class ProductService {
       // bắt buộc tạo version mới (Sửa) và cập nhật Bảng giá trước.
       if (dto.name.trim() !== param.name) {
         const activeVersion = await this.prisma.pricingRuleVersion.findFirst({
-          where: { pricingRule: { productId: param.productId }, status: 'ACTIVE' },
+          where: {
+            pricingRule: { productId: param.productId },
+            status: 'ACTIVE',
+          },
           include: { matrixRows: { select: { dimensions: true } } },
         });
         const referencedByActiveMatrix = activeVersion?.matrixRows.some((row) =>
@@ -1183,7 +1303,10 @@ export class ProductService {
     if (dto.expression !== undefined && dto.expression?.trim()) {
       this.validateExpression(dto.expression.trim());
     }
-    if (dto.surchargeExpression !== undefined && dto.surchargeExpression?.trim()) {
+    if (
+      dto.surchargeExpression !== undefined &&
+      dto.surchargeExpression?.trim()
+    ) {
       this.validateExpression(dto.surchargeExpression.trim());
     }
     if (dto.vatRate !== undefined) this.validateVatRate(dto.vatRate);
@@ -1842,7 +1965,9 @@ export class ProductService {
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     version.items.sort((a, b) =>
-      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      a.material.name.localeCompare(b.material.name, 'vi', {
+        sensitivity: 'accent',
+      }),
     );
     return version;
   }
@@ -1931,7 +2056,9 @@ export class ProductService {
       },
     });
     updated.items.sort((a, b) =>
-      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      a.material.name.localeCompare(b.material.name, 'vi', {
+        sensitivity: 'accent',
+      }),
     );
     return updated;
   }
@@ -1983,7 +2110,9 @@ export class ProductService {
         },
       });
       activated.items.sort((a, b) =>
-        a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+        a.material.name.localeCompare(b.material.name, 'vi', {
+          sensitivity: 'accent',
+        }),
       );
       return activated;
     });
@@ -2068,7 +2197,9 @@ export class ProductService {
         },
       });
       duplicated?.items.sort((a, b) =>
-        a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+        a.material.name.localeCompare(b.material.name, 'vi', {
+          sensitivity: 'accent',
+        }),
       );
       return duplicated;
     });
@@ -2225,7 +2356,9 @@ export class ProductService {
     });
     if (!version) throw new NotFoundException('Phiên bản không tồn tại.');
     version.items.sort((a, b) =>
-      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      a.material.name.localeCompare(b.material.name, 'vi', {
+        sensitivity: 'accent',
+      }),
     );
 
     const columns = [
@@ -2511,7 +2644,9 @@ export class ProductService {
       },
     });
     saved?.items.sort((a, b) =>
-      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      a.material.name.localeCompare(b.material.name, 'vi', {
+        sensitivity: 'accent',
+      }),
     );
     return saved;
   }
@@ -2606,7 +2741,9 @@ export class ProductService {
       },
     });
     materialReq?.versions[0]?.items.sort((a, b) =>
-      a.material.name.localeCompare(b.material.name, 'vi', { sensitivity: 'accent' }),
+      a.material.name.localeCompare(b.material.name, 'vi', {
+        sensitivity: 'accent',
+      }),
     );
 
     const workbook = new ExcelJS.Workbook();

@@ -171,9 +171,17 @@ export class ReturnService {
           `Lý do trả hàng "${item.reason}" không hợp lệ.`,
         );
       }
-      if (!salesOrderItemMap.has(item.salesOrderItemId)) {
+      const soItemForCheck = salesOrderItemMap.get(item.salesOrderItemId);
+      if (!soItemForCheck) {
         throw new NotFoundException(
           `Dòng sản phẩm "${item.salesOrderItemId}" không thuộc đơn hàng này.`,
+        );
+      }
+      // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — ngoài phạm vi module
+      // Hàng hoàn ở milestone này, chỉ hỗ trợ trả dòng PRODUCT.
+      if (soItemForCheck.itemType !== 'PRODUCT') {
+        throw new BadRequestException(
+          `Dòng "${soItemForCheck.materialName}" là vật tư bán lẻ, chưa hỗ trợ trả hàng.`,
         );
       }
 
@@ -214,9 +222,7 @@ export class ReturnService {
       const lineSubtotal = Math.round(
         Number(soItem.finalPrice) * item.returnedQuantity,
       );
-      const lineVat = Math.round(
-        (lineSubtotal * Number(soItem.vatRate)) / 100,
-      );
+      const lineVat = Math.round((lineSubtotal * Number(soItem.vatRate)) / 100);
       totalValue += lineSubtotal + lineVat;
     }
 
@@ -256,8 +262,10 @@ export class ReturnService {
           data: {
             returnId: ret.id,
             salesOrderItemId: soItem.id,
-            productCode: soItem.productCode,
-            productName: soItem.productName,
+            // Đã chặn dòng MATERIAL ở validate phía trên — productCode/Name
+            // luôn có giá trị ở đây (chỉ còn dòng PRODUCT).
+            productCode: soItem.productCode!,
+            productName: soItem.productName!,
             productParameters,
             orderedQuantity: soItem.quantity,
             returnedQuantity: item.returnedQuantity,
@@ -277,8 +285,8 @@ export class ReturnService {
             code: `${returnCode}-${recoverySeq}`,
             returnItemId: returnItem.id,
             createdFromReturnCode: returnCode,
-            productCode: soItem.productCode,
-            productName: soItem.productName,
+            productCode: soItem.productCode!,
+            productName: soItem.productName!,
             productParameters,
             quantity: item.returnedQuantity,
             status: RecoveryInventoryStatus.AVAILABLE,
@@ -327,7 +335,9 @@ export class ReturnService {
     // desc — cho phép đổi chiều để tìm hàng tồn kho thu hồi lâu ngày
     // (createdAt asc, xem "Hàng tồn lâu" ở Dashboard).
     const orderBy: Prisma.RecoveryInventoryOrderByWithRelationInput =
-      query.sortBy === 'created_asc' ? { createdAt: 'asc' } : { createdAt: 'desc' };
+      query.sortBy === 'created_asc'
+        ? { createdAt: 'asc' }
+        : { createdAt: 'desc' };
     // 'created_desc' và giá trị mặc định đều dùng chung nhánh else (cùng kết quả).
 
     const [data, total] = await Promise.all([
@@ -444,10 +454,7 @@ export class ReturnService {
   }
 
   async getDashboardSummary(range?: { from?: Date; to?: Date }) {
-    const returnDateFilter = this.returnDateRangeFilter(
-      range?.from,
-      range?.to,
-    );
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const returnWhere: Prisma.ReturnWhereInput = returnDateFilter
       ? { returnDate: returnDateFilter }
       : {};
@@ -515,13 +522,12 @@ export class ReturnService {
   }
 
   async getTopReturnReasons(range?: { from?: Date; to?: Date }) {
-    const returnDateFilter = this.returnDateRangeFilter(
-      range?.from,
-      range?.to,
-    );
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const grouped = await this.prisma.returnItem.groupBy({
       by: ['reason'],
-      where: returnDateFilter ? { return: { returnDate: returnDateFilter } } : {},
+      where: returnDateFilter
+        ? { return: { returnDate: returnDateFilter } }
+        : {},
       _sum: { returnedQuantity: true },
       _count: { _all: true },
     });
@@ -540,10 +546,7 @@ export class ReturnService {
   }
 
   async getReturnsByCustomer(range?: { from?: Date; to?: Date }, limit = 10) {
-    const returnDateFilter = this.returnDateRangeFilter(
-      range?.from,
-      range?.to,
-    );
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const grouped = await this.prisma.return.groupBy({
       by: ['customerId', 'customerName'],
       where: returnDateFilter ? { returnDate: returnDateFilter } : {},
