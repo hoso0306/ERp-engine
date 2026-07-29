@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { CreateMaterialReceiptDto } from './dto/create-material-receipt.dto';
 import { MaterialReceiptQueryDto } from './dto/material-receipt-query.dto';
 import { WarehouseTransactionQueryDto } from './dto/warehouse-transaction-query.dto';
@@ -49,7 +50,9 @@ export class WarehouseService {
         throw new BadRequestException('Số lượng phải lớn hơn 0.');
       }
       if (seen.has(item.materialId)) {
-        throw new BadRequestException('Một vật tư không được lặp lại trong cùng phiếu.');
+        throw new BadRequestException(
+          'Một vật tư không được lặp lại trong cùng phiếu.',
+        );
       }
       seen.add(item.materialId);
     }
@@ -66,67 +69,71 @@ export class WarehouseService {
         throw new NotFoundException('Nguyên liệu không tồn tại.');
       }
       if (!material.isActive) {
-        throw new BadRequestException(`Nguyên liệu "${material.name}" không còn hoạt động.`);
+        throw new BadRequestException(
+          `Nguyên liệu "${material.name}" không còn hoạt động.`,
+        );
       }
     }
 
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const running = await tx.runningNumber.update({
-        where: { type: 'MATERIAL_RECEIPT' },
-        data: { lastNumber: { increment: 1 } },
-      });
-      const code = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const running = await tx.runningNumber.update({
+          where: { type: 'MATERIAL_RECEIPT' },
+          data: { lastNumber: { increment: 1 } },
+        });
+        const code = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
 
-      const receipt = await tx.materialReceipt.create({
-        data: {
-          code,
-          supplierName: dto.supplierName?.trim() || null,
-          note: dto.note?.trim() || null,
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
-
-      for (const item of dto.items) {
-        const material = materialMap.get(item.materialId)!;
-
-        const receiptItem = await tx.materialReceiptItem.create({
+        const receipt = await tx.materialReceipt.create({
           data: {
-            materialReceiptId: receipt.id,
-            materialId: material.id,
-            materialCode: material.code,
-            materialName: material.name,
-            unit: material.unit.name,
-            quantity: item.quantity,
+            code,
+            supplierName: dto.supplierName?.trim() || null,
+            note: dto.note?.trim() || null,
+            createdBy: userId ?? null,
+            createdByName,
           },
         });
 
-        await tx.warehouseTransaction.create({
-          data: {
-            direction: WarehouseDirection.IN,
-            transactionType: WarehouseTransactionType.MATERIAL_RECEIPT,
-            materialId: material.id,
-            materialCode: material.code,
-            materialName: material.name,
-            unit: material.unit.name,
-            quantity: item.quantity,
-            materialReceiptItemId: receiptItem.id,
-          },
-        });
+        for (const item of dto.items) {
+          const material = materialMap.get(item.materialId)!;
 
-        await tx.material.update({
-          where: { id: material.id },
-          data: { currentStock: { increment: item.quantity } },
-        });
-      }
+          const receiptItem = await tx.materialReceiptItem.create({
+            data: {
+              materialReceiptId: receipt.id,
+              materialId: material.id,
+              materialCode: material.code,
+              materialName: material.name,
+              unit: material.unit.name,
+              quantity: item.quantity,
+            },
+          });
 
-      return tx.materialReceipt.findUniqueOrThrow({
-        where: { id: receipt.id },
-        include: MATERIAL_RECEIPT_INCLUDE,
-      });
-    });
+          await tx.warehouseTransaction.create({
+            data: {
+              direction: WarehouseDirection.IN,
+              transactionType: WarehouseTransactionType.MATERIAL_RECEIPT,
+              materialId: material.id,
+              materialCode: material.code,
+              materialName: material.name,
+              unit: material.unit.name,
+              quantity: item.quantity,
+              materialReceiptItemId: receiptItem.id,
+            },
+          });
+
+          await tx.material.update({
+            where: { id: material.id },
+            data: { currentStock: { increment: item.quantity } },
+          });
+        }
+
+        return tx.materialReceipt.findUniqueOrThrow({
+          where: { id: receipt.id },
+          include: MATERIAL_RECEIPT_INCLUDE,
+        });
+      }),
+    );
   }
 
   // ─────────────────────────────────────────────────────
@@ -143,8 +150,20 @@ export class WarehouseService {
     if (query.search) {
       where.OR = [
         { code: { contains: query.search, mode: 'insensitive' } },
-        { items: { some: { materialCode: { contains: query.search, mode: 'insensitive' } } } },
-        { items: { some: { materialName: { contains: query.search, mode: 'insensitive' } } } },
+        {
+          items: {
+            some: {
+              materialCode: { contains: query.search, mode: 'insensitive' },
+            },
+          },
+        },
+        {
+          items: {
+            some: {
+              materialName: { contains: query.search, mode: 'insensitive' },
+            },
+          },
+        },
       ];
     }
 

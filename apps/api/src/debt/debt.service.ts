@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
@@ -22,7 +23,10 @@ import { ReceivableByCustomerQueryDto } from './dto/receivable-by-customer-query
 import { OpeningBalanceService } from './opening-balance.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { buildSeries, type ReportGroupBy } from '../shared/report-range';
-import { BeforeVatFirstPolicy, type AllocationPolicy } from './allocation-policy';
+import {
+  BeforeVatFirstPolicy,
+  type AllocationPolicy,
+} from './allocation-policy';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -143,7 +147,9 @@ export class DebtService {
             receivableId: receivable.id,
             salesOrderId: salesOrder.id,
             amount: dto.amount,
-            remainingAmountBeforeVat: Number(receivable.remainingAmountBeforeVat),
+            remainingAmountBeforeVat: Number(
+              receivable.remainingAmountBeforeVat,
+            ),
             currentPaymentStatus: salesOrder.paymentStatus,
           },
         ],
@@ -155,7 +161,10 @@ export class DebtService {
   // Luồng theo khách hàng — mặc định FIFO (đơn cũ nhất trước), cho phép kế
   // toán truyền `allocations` để cấn tay. Không được thanh toán vượt tổng
   // công nợ (Quyết định kỹ thuật #7, 023-cong-no-payment-allocation-fifo).
-  async createAllocatedPayment(dto: AllocatePaymentDto, userId?: string | null) {
+  async createAllocatedPayment(
+    dto: AllocatePaymentDto,
+    userId?: string | null,
+  ) {
     if (!dto.customerId) {
       throw new BadRequestException('Khách hàng là bắt buộc.');
     }
@@ -215,80 +224,82 @@ export class DebtService {
 
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const code = await this.nextPaymentCode(tx);
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextPaymentCode(tx);
 
-      const reversal = await tx.payment.create({
-        data: {
-          code,
-          type: PaymentType.REVERSAL,
-          reversalOfPaymentId: payment.id,
-          paymentDate: new Date(),
-          amount: payment.amount,
-          paymentMethod: payment.paymentMethod,
-          note: `Hoàn tác ${payment.code}`,
-        },
-      });
-
-      for (const alloc of payment.allocations) {
-        const receivableBefore = await tx.receivable.findUniqueOrThrow({
-          where: { id: alloc.receivableId },
-          include: { salesOrder: { select: { paymentStatus: true } } },
-        });
-
-        await tx.paymentAllocation.create({
+        const reversal = await tx.payment.create({
           data: {
-            paymentId: reversal.id,
-            receivableId: alloc.receivableId,
-            salesOrderId: alloc.salesOrderId,
-            allocatedSubtotal: alloc.allocatedSubtotal,
-            allocatedVat: alloc.allocatedVat,
-            allocatedTotal: alloc.allocatedTotal,
+            code,
+            type: PaymentType.REVERSAL,
+            reversalOfPaymentId: payment.id,
+            paymentDate: new Date(),
+            amount: payment.amount,
+            paymentMethod: payment.paymentMethod,
+            note: `Hoàn tác ${payment.code}`,
           },
         });
 
-        const updatedReceivable = await tx.receivable.update({
-          where: { id: alloc.receivableId },
-          data: {
-            paidAmount: { decrement: alloc.allocatedTotal },
-            remainingAmount: { increment: alloc.allocatedTotal },
-            remainingAmountBeforeVat: { increment: alloc.allocatedSubtotal },
-          },
-        });
+        for (const alloc of payment.allocations) {
+          const receivableBefore = await tx.receivable.findUniqueOrThrow({
+            where: { id: alloc.receivableId },
+            include: { salesOrder: { select: { paymentStatus: true } } },
+          });
 
-        const newPaymentStatus = this.computePaymentStatus(
-          Number(updatedReceivable.paidAmount),
-          Number(updatedReceivable.totalAmount),
-        );
-
-        await tx.salesOrder.update({
-          where: { id: alloc.salesOrderId },
-          data: { paymentStatus: newPaymentStatus },
-        });
-
-        await tx.salesOrderTimeline.create({
-          data: {
-            salesOrderId: alloc.salesOrderId,
-            action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
-            actorType: SalesOrderTimelineActorType.USER,
-            payload: {
-              paymentCode: code,
-              amount: -Number(alloc.allocatedTotal),
-              reversalOf: payment.code,
-              fromStatus: receivableBefore.salesOrder.paymentStatus,
-              toStatus: newPaymentStatus,
+          await tx.paymentAllocation.create({
+            data: {
+              paymentId: reversal.id,
+              receivableId: alloc.receivableId,
+              salesOrderId: alloc.salesOrderId,
+              allocatedSubtotal: alloc.allocatedSubtotal,
+              allocatedVat: alloc.allocatedVat,
+              allocatedTotal: alloc.allocatedTotal,
             },
-            createdBy: userId ?? null,
-            createdByName,
-          },
-        });
-      }
+          });
 
-      return tx.payment.findUniqueOrThrow({
-        where: { id: reversal.id },
-        include: { allocations: true },
-      });
-    });
+          const updatedReceivable = await tx.receivable.update({
+            where: { id: alloc.receivableId },
+            data: {
+              paidAmount: { decrement: alloc.allocatedTotal },
+              remainingAmount: { increment: alloc.allocatedTotal },
+              remainingAmountBeforeVat: { increment: alloc.allocatedSubtotal },
+            },
+          });
+
+          const newPaymentStatus = this.computePaymentStatus(
+            Number(updatedReceivable.paidAmount),
+            Number(updatedReceivable.totalAmount),
+          );
+
+          await tx.salesOrder.update({
+            where: { id: alloc.salesOrderId },
+            data: { paymentStatus: newPaymentStatus },
+          });
+
+          await tx.salesOrderTimeline.create({
+            data: {
+              salesOrderId: alloc.salesOrderId,
+              action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
+              actorType: SalesOrderTimelineActorType.USER,
+              payload: {
+                paymentCode: code,
+                amount: -Number(alloc.allocatedTotal),
+                reversalOf: payment.code,
+                fromStatus: receivableBefore.salesOrder.paymentStatus,
+                toStatus: newPaymentStatus,
+              },
+              createdBy: userId ?? null,
+              createdByName,
+            },
+          });
+        }
+
+        return tx.payment.findUniqueOrThrow({
+          where: { id: reversal.id },
+          include: { allocations: true },
+        });
+      }),
+    );
   }
 
   // Action "Đóng công nợ (không xuất hóa đơn)" (024-cong-no-vat-settlement.md,
@@ -302,10 +313,15 @@ export class DebtService {
   // VatSettlementItem.amount sau này nếu khách quay lại xin hóa đơn). Không
   // cần nhập lý do — đây là 1 nhánh workflow hợp lệ đã định nghĩa sẵn, không
   // phải Manual Override.
-  async closeReceivableWithoutVat(receivableId: string, userId?: string | null) {
+  async closeReceivableWithoutVat(
+    receivableId: string,
+    userId?: string | null,
+  ) {
     const receivable = await this.prisma.receivable.findUnique({
       where: { id: receivableId },
-      include: { salesOrder: { select: { id: true, status: true, paymentStatus: true } } },
+      include: {
+        salesOrder: { select: { id: true, status: true, paymentStatus: true } },
+      },
     });
     if (!receivable) {
       throw new NotFoundException('Công nợ không tồn tại.');
@@ -377,7 +393,9 @@ export class DebtService {
       where: { id: receivableId },
       include: {
         salesOrder: { select: { id: true, status: true, paymentStatus: true } },
-        vatSettlementItems: { include: { vatSettlement: { select: { status: true } } } },
+        vatSettlementItems: {
+          include: { vatSettlement: { select: { status: true } } },
+        },
       },
     });
     if (!receivable) {
@@ -414,7 +432,10 @@ export class DebtService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.receivable.update({
         where: { id: receivableId },
-        data: { remainingAmount: restoredRemainingAmount, closedWithoutVat: false },
+        data: {
+          remainingAmount: restoredRemainingAmount,
+          closedWithoutVat: false,
+        },
       });
 
       await tx.salesOrder.update({
@@ -513,18 +534,24 @@ export class DebtService {
 
       const receivables = await tx.receivable.findMany({
         where: { id: { in: overrides.map((o) => o.receivableId) } },
-        include: { salesOrder: { select: { status: true, paymentStatus: true } } },
+        include: {
+          salesOrder: { select: { status: true, paymentStatus: true } },
+        },
       });
       const map = new Map(receivables.map((r) => [r.id, r]));
 
       const resolved: ResolvedAllocation[] = [];
       for (const o of overrides) {
         if (o.amount <= 0) {
-          throw new BadRequestException('Số tiền cấn cho mỗi đơn phải lớn hơn 0.');
+          throw new BadRequestException(
+            'Số tiền cấn cho mỗi đơn phải lớn hơn 0.',
+          );
         }
         const r = map.get(o.receivableId);
         if (!r) {
-          throw new NotFoundException(`Công nợ ${o.receivableId} không tồn tại.`);
+          throw new NotFoundException(
+            `Công nợ ${o.receivableId} không tồn tại.`,
+          );
         }
         if (r.customerId !== customerId) {
           throw new BadRequestException(
@@ -613,90 +640,93 @@ export class DebtService {
     const createdByName = await resolveActorName(this.prisma, userId);
     const totalAmount = input.allocations.reduce((s, a) => s + a.amount, 0);
 
-    return this.prisma.$transaction(async (tx) => {
-      const code = await this.nextPaymentCode(tx);
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextPaymentCode(tx);
 
-      const payment = await tx.payment.create({
-        data: {
-          code,
-          paymentDate: input.paymentDate
-            ? new Date(input.paymentDate)
-            : new Date(),
-          amount: totalAmount,
-          paymentMethod: input.paymentMethod,
-          referenceNumber: input.referenceNumber?.trim() || null,
-          note: input.note?.trim() || null,
-          createdBy: input.createdBy?.trim() || null,
-        },
-      });
-
-      for (const alloc of input.allocations) {
-        // BeforeVatFirstPolicy: trừ hết phần trước-VAT trước, dư mới trừ VAT
-        // — floor tại 0, không cho remainingAmountBeforeVat âm qua đường này
-        // (khác hành vi cũ trừ đều cả 2 field, xem allocation-policy.ts).
-        const { allocatedSubtotal, allocatedVat } = this.allocationPolicy.split(
-          { remainingAmountBeforeVat: alloc.remainingAmountBeforeVat },
-          alloc.amount,
-        );
-
-        await tx.paymentAllocation.create({
+        const payment = await tx.payment.create({
           data: {
-            paymentId: payment.id,
-            receivableId: alloc.receivableId,
-            salesOrderId: alloc.salesOrderId,
-            allocatedSubtotal,
-            allocatedVat,
-            allocatedTotal: alloc.amount,
+            code,
+            paymentDate: input.paymentDate
+              ? new Date(input.paymentDate)
+              : new Date(),
+            amount: totalAmount,
+            paymentMethod: input.paymentMethod,
+            referenceNumber: input.referenceNumber?.trim() || null,
+            note: input.note?.trim() || null,
+            createdBy: input.createdBy?.trim() || null,
           },
         });
 
-        // Concurrency Rule (debt.md): atomic increment/decrement — không đọc
-        // remainingAmount ra tính rồi ghi đè. CHECK (remaining_amount >= 0) ở
-        // DB chặn mọi trường hợp thu vượt công nợ, kể cả concurrent request.
-        const updatedReceivable = await tx.receivable.update({
-          where: { id: alloc.receivableId },
-          data: {
-            paidAmount: { increment: alloc.amount },
-            remainingAmount: { decrement: alloc.amount },
-            remainingAmountBeforeVat: { decrement: allocatedSubtotal },
-          },
-        });
+        for (const alloc of input.allocations) {
+          // BeforeVatFirstPolicy: trừ hết phần trước-VAT trước, dư mới trừ VAT
+          // — floor tại 0, không cho remainingAmountBeforeVat âm qua đường này
+          // (khác hành vi cũ trừ đều cả 2 field, xem allocation-policy.ts).
+          const { allocatedSubtotal, allocatedVat } =
+            this.allocationPolicy.split(
+              { remainingAmountBeforeVat: alloc.remainingAmountBeforeVat },
+              alloc.amount,
+            );
 
-        const newPaymentStatus = this.computePaymentStatus(
-          Number(updatedReceivable.paidAmount),
-          Number(updatedReceivable.totalAmount),
-        );
-
-        await tx.salesOrder.update({
-          where: { id: alloc.salesOrderId },
-          data: { paymentStatus: newPaymentStatus },
-        });
-
-        // Timeline — ghi mỗi lần tạo Payment cho từng đơn bị ảnh hưởng, không
-        // phụ thuộc paymentStatus có đổi hay không. amount = allocatedTotal
-        // của đúng đơn này, không phải tổng Payment (Quyết định #11).
-        await tx.salesOrderTimeline.create({
-          data: {
-            salesOrderId: alloc.salesOrderId,
-            action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
-            actorType: SalesOrderTimelineActorType.USER,
-            payload: {
-              paymentCode: code,
-              amount: alloc.amount,
-              fromStatus: alloc.currentPaymentStatus,
-              toStatus: newPaymentStatus,
+          await tx.paymentAllocation.create({
+            data: {
+              paymentId: payment.id,
+              receivableId: alloc.receivableId,
+              salesOrderId: alloc.salesOrderId,
+              allocatedSubtotal,
+              allocatedVat,
+              allocatedTotal: alloc.amount,
             },
-            createdBy: userId ?? null,
-            createdByName,
-          },
-        });
-      }
+          });
 
-      return tx.payment.findUniqueOrThrow({
-        where: { id: payment.id },
-        include: { allocations: true },
-      });
-    });
+          // Concurrency Rule (debt.md): atomic increment/decrement — không đọc
+          // remainingAmount ra tính rồi ghi đè. CHECK (remaining_amount >= 0) ở
+          // DB chặn mọi trường hợp thu vượt công nợ, kể cả concurrent request.
+          const updatedReceivable = await tx.receivable.update({
+            where: { id: alloc.receivableId },
+            data: {
+              paidAmount: { increment: alloc.amount },
+              remainingAmount: { decrement: alloc.amount },
+              remainingAmountBeforeVat: { decrement: allocatedSubtotal },
+            },
+          });
+
+          const newPaymentStatus = this.computePaymentStatus(
+            Number(updatedReceivable.paidAmount),
+            Number(updatedReceivable.totalAmount),
+          );
+
+          await tx.salesOrder.update({
+            where: { id: alloc.salesOrderId },
+            data: { paymentStatus: newPaymentStatus },
+          });
+
+          // Timeline — ghi mỗi lần tạo Payment cho từng đơn bị ảnh hưởng, không
+          // phụ thuộc paymentStatus có đổi hay không. amount = allocatedTotal
+          // của đúng đơn này, không phải tổng Payment (Quyết định #11).
+          await tx.salesOrderTimeline.create({
+            data: {
+              salesOrderId: alloc.salesOrderId,
+              action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
+              actorType: SalesOrderTimelineActorType.USER,
+              payload: {
+                paymentCode: code,
+                amount: alloc.amount,
+                fromStatus: alloc.currentPaymentStatus,
+                toStatus: newPaymentStatus,
+              },
+              createdBy: userId ?? null,
+              createdByName,
+            },
+          });
+        }
+
+        return tx.payment.findUniqueOrThrow({
+          where: { id: payment.id },
+          include: { allocations: true },
+        });
+      }),
+    );
   }
 
   // ─────────────────────────────────────────────────────
@@ -1305,8 +1335,7 @@ export class DebtService {
       highRisk,
       creditExceeded,
       topDebtors,
-      newReceivables,
-      cashIn,
+      inRangeSummary,
     ] = await Promise.all([
       this.getDashboardSummary(),
       // Bậc rủi ro — cùng ngưỡng 7/30 ngày như findAllReceivables()/computeRiskLevel().
@@ -1326,19 +1355,7 @@ export class DebtService {
       }),
       this.getCreditLimitExceededCustomers(),
       this.getTopDebtors(),
-      // Công nợ mới phát sinh trong kỳ: Receivable của SalesOrder tạo trong
-      // kỳ, loại đơn huỷ.
-      this.prisma.receivable.aggregate({
-        where: {
-          salesOrder: {
-            status: { not: SalesOrderStatus.CANCELLED },
-            createdAt: { gte: from, lte: to },
-          },
-        },
-        _sum: { totalAmount: true },
-        _count: { _all: true },
-      }),
-      this.getCashInReport(from, to),
+      this.getReceivablesInRangeSummary(from, to),
     ]);
 
     const riskBucket = (agg: {
@@ -1362,11 +1379,34 @@ export class DebtService {
         creditExceeded,
         topDebtors,
       },
-      inRange: {
-        newReceivableCount: newReceivables._count._all,
-        newReceivableAmount: Number(newReceivables._sum.totalAmount ?? 0),
-        cashIn,
-      },
+      inRange: inRangeSummary,
+    };
+  }
+
+  // Công nợ "phát sinh" trong kỳ (report.md A4 — 1 định nghĩa duy nhất, dùng
+  // chung cho cả Report (qua getDebtReport() ở trên) lẫn Dashboard (khối Tổng
+  // công nợ, 027-thiet-ke-lai-dashboard-bo-loc-rieng.md mục 4): nợ mới phát
+  // sinh (Receivable của SalesOrder tạo trong kỳ, loại đơn huỷ) + tiền đã thu
+  // trong kỳ (tái dùng getCashInReport() đã có cho Report A2).
+  async getReceivablesInRangeSummary(from: Date, to: Date) {
+    const [newReceivables, cashIn] = await Promise.all([
+      this.prisma.receivable.aggregate({
+        where: {
+          salesOrder: {
+            status: { not: SalesOrderStatus.CANCELLED },
+            createdAt: { gte: from, lte: to },
+          },
+        },
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+      this.getCashInReport(from, to),
+    ]);
+
+    return {
+      newReceivableCount: newReceivables._count._all,
+      newReceivableAmount: Number(newReceivables._sum.totalAmount ?? 0),
+      cashIn,
     };
   }
 
@@ -1388,5 +1428,27 @@ export class DebtService {
     return new Map(
       grouped.map((g) => [g.customerId, Number(g._sum.remainingAmount ?? 0)]),
     );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Xuất dữ liệu backup (report.md mục "Xuất dữ liệu backup") — liệt kê
+  // TOÀN BỘ Receivable/Payment trong kỳ, KHÔNG loại CANCELLED (khác Quy tắc
+  // loại trừ áp dụng cho 14 báo cáo phân tích) — mục đích là bản sao đầy đủ
+  // dữ liệu, thiếu công nợ của đơn đã huỷ là backup không đầy đủ.
+  // ─────────────────────────────────────────────────────
+
+  async getAllReceivablesRaw(from: Date, to: Date) {
+    return this.prisma.receivable.findMany({
+      where: { createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+      include: RECEIVABLE_LIST_INCLUDE,
+    });
+  }
+
+  async getAllPaymentsRaw(from: Date, to: Date) {
+    return this.prisma.payment.findMany({
+      where: { paymentDate: { gte: from, lte: to } },
+      orderBy: { paymentDate: 'asc' },
+    });
   }
 }

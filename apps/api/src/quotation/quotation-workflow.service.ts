@@ -20,6 +20,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { coerceParameters } from '../shared/derived-params';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import {
   BomEngineService,
@@ -27,6 +28,7 @@ import {
   BomLine,
 } from '../bom-engine/bom-engine.service';
 import { PermissionService } from '../permission/permission.service';
+import { SettingService } from '../setting/setting.service';
 import { QuotationQueryDto } from './dto/quotation-query.dto';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
@@ -80,6 +82,7 @@ export class QuotationWorkflowService {
     private readonly pricingEngine: PricingEngineService,
     private readonly bomEngine: BomEngineService,
     private readonly permissionService: PermissionService,
+    private readonly settingService: SettingService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -347,42 +350,44 @@ export class QuotationWorkflowService {
       throw new BadRequestException('Phí vận chuyển không được âm.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const running = await tx.runningNumber.update({
-        where: { type: 'QUOTATION' },
-        data: { lastNumber: { increment: 1 } },
-      });
-      const code = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const running = await tx.runningNumber.update({
+          where: { type: 'QUOTATION' },
+          data: { lastNumber: { increment: 1 } },
+        });
+        const code = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
 
-      const quotation = await tx.quotation.create({
-        data: {
-          code,
-          customerId: dto.customerId,
-          expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
-          expectedDeliveryDate: dto.expectedDeliveryDate
-            ? new Date(dto.expectedDeliveryDate)
-            : null,
-          note: dto.note?.trim() || null,
-          shippingFee,
-          status: QuotationStatus.DRAFT,
-          // Người tạo báo giá (từ JWT) — nguồn cho SalesOrder.ownerId khi Approve.
-          createdBy: userId ?? null,
-        },
-        include: QUOTATION_INCLUDE,
-      });
+        const quotation = await tx.quotation.create({
+          data: {
+            code,
+            customerId: dto.customerId,
+            expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+            expectedDeliveryDate: dto.expectedDeliveryDate
+              ? new Date(dto.expectedDeliveryDate)
+              : null,
+            note: dto.note?.trim() || null,
+            shippingFee,
+            status: QuotationStatus.DRAFT,
+            // Người tạo báo giá (từ JWT) — nguồn cho SalesOrder.ownerId khi Approve.
+            createdBy: userId ?? null,
+          },
+          include: QUOTATION_INCLUDE,
+        });
 
-      await tx.quotationTimeline.create({
-        data: {
-          quotationId: quotation.id,
-          action: QuotationTimelineAction.QUOTATION_CREATED,
-          payload: { code: quotation.code },
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
+        await tx.quotationTimeline.create({
+          data: {
+            quotationId: quotation.id,
+            action: QuotationTimelineAction.QUOTATION_CREATED,
+            payload: { code: quotation.code },
+            createdBy: userId ?? null,
+            createdByName,
+          },
+        });
 
-      return quotation;
-    });
+        return quotation;
+      }),
+    );
   }
 
   async update(id: string, dto: UpdateQuotationDto) {
@@ -1618,323 +1623,326 @@ export class QuotationWorkflowService {
     }
 
     // All validations pass — execute in a single transaction
-    return this.prisma.$transaction(async (tx) => {
-      const plannedCost =
-        itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0) +
-        materialItemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
-      // Trừ thêm discountAmount (Giảm thêm cấp toàn báo giá, chốt 18/07/2026 —
-      // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
-      // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
-      // phồng đúng bằng số tiền Giảm thêm.
-      const plannedProfit =
-        totalAmount - plannedCost - Number(quotation.discountAmount);
-      // Dòng MATERIAL không sinh Production Order — chỉ đếm xưởng của dòng PRODUCT.
-      const totalProductionOrders = new Set(
-        itemComputations.map((c) => c.item.product!.productionCenterId),
-      ).size;
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const plannedCost =
+          itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0) +
+          materialItemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
+        // Trừ thêm discountAmount (Giảm thêm cấp toàn báo giá, chốt 18/07/2026 —
+        // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
+        // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
+        // phồng đúng bằng số tiền Giảm thêm.
+        const plannedProfit =
+          totalAmount - plannedCost - Number(quotation.discountAmount);
+        // Dòng MATERIAL không sinh Production Order — chỉ đếm xưởng của dòng PRODUCT.
+        const totalProductionOrders = new Set(
+          itemComputations.map((c) => c.item.product!.productionCenterId),
+        ).size;
 
-      // Generate SalesOrder running number
-      const salesRunning = await tx.runningNumber.update({
-        where: { type: 'SALES_ORDER' },
-        data: { lastNumber: { increment: 1 } },
-      });
-      const salesOrderCode = `${salesRunning.prefix}${String(salesRunning.lastNumber).padStart(salesRunning.paddingLength, '0')}`;
+        // Generate SalesOrder running number
+        const salesRunning = await tx.runningNumber.update({
+          where: { type: 'SALES_ORDER' },
+          data: { lastNumber: { increment: 1 } },
+        });
+        const salesOrderCode = `${salesRunning.prefix}${String(salesRunning.lastNumber).padStart(salesRunning.paddingLength, '0')}`;
 
-      // Create SalesOrder — Snapshot Customer + Planned Financials known upfront
-      const salesOrder = await tx.salesOrder.create({
-        data: {
-          code: salesOrderCode,
-          quotationCode: quotation.code,
-          customerId: quotation.customerId,
-          customerName: quotation.customer.name,
-          customerPhone: quotation.customer.phone,
-          // Địa chỉ giao hàng (009-in-phieu-san-xuat.md) — auto copy từ
-          // Customer tại Approve, sau đó là nguồn dữ liệu địa chỉ giao hàng
-          // duy nhất cho đơn (sửa được qua updateDeliveryAddress(), không đọc
-          // lại Customer).
-          deliveryName: quotation.customer.name,
-          deliveryPhone: quotation.customer.phone,
-          deliveryAddress: quotation.customer.address,
-          deliveryProvince: quotation.customer.province,
-          deliveryDistrict: quotation.customer.district,
-          deliveryWard: quotation.customer.ward,
-          // Thông tin nhà xe mặc định (chốt 24/07/2026) — auto copy từ
-          // Customer.defaultCarrier* tại Approve nếu khách có sẵn, giống hệt
-          // cách deliveryAddress hoạt động. Customer không có default thì vẫn
-          // để trống như trước, người dùng tự nhập qua CarrierInfoDialog. Sau
-          // Approve không đọc lại Customer nữa — sửa được qua carrier info
-          // dialog ở từng đơn.
-          carrierName: quotation.customer.defaultCarrierName,
-          carrierPhone: quotation.customer.defaultCarrierPhone,
-          carrierNote: quotation.customer.defaultCarrierNote,
-          // Hạn giao hàng (fix 19/07/2026) — snapshot từ Quotation.expectedDeliveryDate
-          // (nhập tay lúc tạo/sửa báo giá) tại Approve, không đọc lại Quotation sau đó.
-          expectedDeliveryDate: quotation.expectedDeliveryDate,
-          status: SalesOrderStatus.IN_PRODUCTION,
-          totalAmount,
-          plannedCost,
-          plannedProfit,
-          totalProductionOrders,
-          note: quotation.note,
-          // Snapshot người phụ trách (report.md C1) — copy trong transaction
-          // Approve, không đọc lại Master Data sau khi tạo.
-          ownerId: owner?.id ?? null,
-          ownerName: owner ? (owner.name ?? owner.email) : null,
-          // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026) — snapshot từ Quotation
-          // tại Approve. totalAmount (doanh thu) giữ nguyên công thức cũ.
-          totalVatAmount,
-          discountAmount: quotation.discountAmount,
-          discountReason: quotation.discountReason,
-          discountBy: quotation.discountBy,
-          shippingFee: quotation.shippingFee,
-          grandTotal,
-        },
-      });
-
-      // Task 02 (Debt module) — Receivable sinh đồng thời với SalesOrder, cùng
-      // transaction — snapshot Credit Policy (debtLimitSnapshot/debtTermDaysSnapshot)
-      // từ Customer tại thời điểm này. dueDate = NULL cho tới khi Delivered.
-      // totalAmount/remainingAmount = grandTotal (số tiền thực thu, đã gồm VAT
-      // và trừ Giảm thêm — chốt 16/07/2026), KHÔNG phải doanh thu totalAmount.
-      await tx.receivable.create({
-        data: {
-          salesOrderId: salesOrder.id,
-          customerId: quotation.customerId,
-          totalAmount: grandTotal,
-          remainingAmount: grandTotal,
-          totalAmountBeforeVat,
-          remainingAmountBeforeVat: totalAmountBeforeVat,
-          debtLimitSnapshot: Number(quotation.customer.debtLimit),
-          debtTermDaysSnapshot: quotation.customer.debtTermDays,
-        },
-      });
-
-      // Group items by productionCenterId for ProductionOrder creation
-      const centerMap = new Map<
-        string,
-        {
-          centerName: string;
-          items: Array<{
-            salesOrderItemId: string;
-            productId: string;
-            productCode: string;
-            productName: string;
-            quantity: number;
-          }>;
-        }
-      >();
-
-      // Create SalesOrderItems + OrderBOMs
-      for (const {
-        item,
-        materialRequirementVersionId,
-        bomLines,
-        itemPlannedCost,
-      } of itemComputations) {
-        const product = item.product!;
-        const soItem = await tx.salesOrderItem.create({
+        // Create SalesOrder — Snapshot Customer + Planned Financials known upfront
+        const salesOrder = await tx.salesOrder.create({
           data: {
-            salesOrderId: salesOrder.id,
-            itemType: 'PRODUCT',
-            productId: item.productId,
-            productCode: product.code,
-            productName: product.name,
-            // Redundant Reference + snapshot phục vụ Báo cáo B2/B4 (report.md)
-            // — copy trong transaction Approve, không đọc lại Master Data sau đó.
-            productTypeId: product.productTypeId,
-            productTypeName: product.productType.name,
-            productionCenterId: product.productionCenterId,
-            productionCenterName: product.productionCenter.name,
-            pricingRuleVersionId: item.pricingRuleVersionId,
-            systemPrice: Number(item.systemPrice),
-            unitPrice: item.unitPrice !== null ? Number(item.unitPrice) : null,
-            discountPercent: Number(item.discountPercent),
-            // Snapshot y nguyên, không tính lại (023-phu-phi) — giống finalPrice.
-            surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
-            finalPrice: Number(item.finalPrice),
-            quantity: Number(item.quantity),
-            subtotal: Number(item.subtotal),
-            vatRate: Number(item.vatRate),
-            vatAmount: Number(item.vatAmount),
-            note: item.note,
-            materialRequirementVersionId,
-            plannedCost: itemPlannedCost,
-            displayOrder: item.displayOrder,
-            parameters: {
-              create: item.parameters.map((p) => ({
-                name: p.name,
-                label: p.label,
-                value: p.value,
-                valueLabel: p.valueLabel,
-                unit: p.unit,
-                displayOrder: p.displayOrder,
-              })),
-            },
+            code: salesOrderCode,
+            quotationCode: quotation.code,
+            customerId: quotation.customerId,
+            customerName: quotation.customer.name,
+            customerPhone: quotation.customer.phone,
+            // Địa chỉ giao hàng (009-in-phieu-san-xuat.md) — auto copy từ
+            // Customer tại Approve, sau đó là nguồn dữ liệu địa chỉ giao hàng
+            // duy nhất cho đơn (sửa được qua updateDeliveryAddress(), không đọc
+            // lại Customer).
+            deliveryName: quotation.customer.name,
+            deliveryPhone: quotation.customer.phone,
+            deliveryAddress: quotation.customer.address,
+            deliveryProvince: quotation.customer.province,
+            deliveryDistrict: quotation.customer.district,
+            deliveryWard: quotation.customer.ward,
+            // Thông tin nhà xe mặc định (chốt 24/07/2026) — auto copy từ
+            // Customer.defaultCarrier* tại Approve nếu khách có sẵn, giống hệt
+            // cách deliveryAddress hoạt động. Customer không có default thì vẫn
+            // để trống như trước, người dùng tự nhập qua CarrierInfoDialog. Sau
+            // Approve không đọc lại Customer nữa — sửa được qua carrier info
+            // dialog ở từng đơn.
+            carrierName: quotation.customer.defaultCarrierName,
+            carrierPhone: quotation.customer.defaultCarrierPhone,
+            carrierNote: quotation.customer.defaultCarrierNote,
+            // Hạn giao hàng (fix 19/07/2026) — snapshot từ Quotation.expectedDeliveryDate
+            // (nhập tay lúc tạo/sửa báo giá) tại Approve, không đọc lại Quotation sau đó.
+            expectedDeliveryDate: quotation.expectedDeliveryDate,
+            status: SalesOrderStatus.IN_PRODUCTION,
+            totalAmount,
+            plannedCost,
+            plannedProfit,
+            totalProductionOrders,
+            note: quotation.note,
+            // Snapshot người phụ trách (report.md C1) — copy trong transaction
+            // Approve, không đọc lại Master Data sau khi tạo.
+            ownerId: owner?.id ?? null,
+            ownerName: owner ? (owner.name ?? owner.email) : null,
+            // VAT + Giảm thêm (Sprint 04, chốt 16/07/2026) — snapshot từ Quotation
+            // tại Approve. totalAmount (doanh thu) giữ nguyên công thức cũ.
+            totalVatAmount,
+            discountAmount: quotation.discountAmount,
+            discountReason: quotation.discountReason,
+            discountBy: quotation.discountBy,
+            shippingFee: quotation.shippingFee,
+            grandTotal,
           },
         });
 
-        // Chỉ chứa các dòng đã qua Filter condition — vật tư không thuộc config
-        // khách chọn (vd màu khác) không xuất hiện trong OrderBOM.
-        if (bomLines.length > 0) {
-          await tx.orderBOM.create({
+        // Task 02 (Debt module) — Receivable sinh đồng thời với SalesOrder, cùng
+        // transaction — snapshot Credit Policy (debtLimitSnapshot/debtTermDaysSnapshot)
+        // từ Customer tại thời điểm này. dueDate = NULL cho tới khi Delivered.
+        // totalAmount/remainingAmount = grandTotal (số tiền thực thu, đã gồm VAT
+        // và trừ Giảm thêm — chốt 16/07/2026), KHÔNG phải doanh thu totalAmount.
+        await tx.receivable.create({
+          data: {
+            salesOrderId: salesOrder.id,
+            customerId: quotation.customerId,
+            totalAmount: grandTotal,
+            remainingAmount: grandTotal,
+            totalAmountBeforeVat,
+            remainingAmountBeforeVat: totalAmountBeforeVat,
+            debtLimitSnapshot: Number(quotation.customer.debtLimit),
+            debtTermDaysSnapshot: quotation.customer.debtTermDays,
+          },
+        });
+
+        // Group items by productionCenterId for ProductionOrder creation
+        const centerMap = new Map<
+          string,
+          {
+            centerName: string;
+            items: Array<{
+              salesOrderItemId: string;
+              productId: string;
+              productCode: string;
+              productName: string;
+              quantity: number;
+            }>;
+          }
+        >();
+
+        // Create SalesOrderItems + OrderBOMs
+        for (const {
+          item,
+          materialRequirementVersionId,
+          bomLines,
+          itemPlannedCost,
+        } of itemComputations) {
+          const product = item.product!;
+          const soItem = await tx.salesOrderItem.create({
             data: {
               salesOrderId: salesOrder.id,
-              salesOrderItemId: soItem.id,
+              itemType: 'PRODUCT',
+              productId: item.productId,
+              productCode: product.code,
+              productName: product.name,
+              // Redundant Reference + snapshot phục vụ Báo cáo B2/B4 (report.md)
+              // — copy trong transaction Approve, không đọc lại Master Data sau đó.
+              productTypeId: product.productTypeId,
+              productTypeName: product.productType.name,
+              productionCenterId: product.productionCenterId,
+              productionCenterName: product.productionCenter.name,
+              pricingRuleVersionId: item.pricingRuleVersionId,
+              systemPrice: Number(item.systemPrice),
+              unitPrice:
+                item.unitPrice !== null ? Number(item.unitPrice) : null,
+              discountPercent: Number(item.discountPercent),
+              // Snapshot y nguyên, không tính lại (023-phu-phi) — giống finalPrice.
+              surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
+              finalPrice: Number(item.finalPrice),
+              quantity: Number(item.quantity),
+              subtotal: Number(item.subtotal),
+              vatRate: Number(item.vatRate),
+              vatAmount: Number(item.vatAmount),
+              note: item.note,
               materialRequirementVersionId,
               plannedCost: itemPlannedCost,
-              items: {
-                create: bomLines.map((line) => ({
-                  materialId: line.materialId,
-                  materialCode: line.materialCode,
-                  materialName: line.materialName,
-                  materialUnit: line.materialUnit,
-                  expression: line.expression,
-                  wastePercent: line.wastePercent,
-                  roundType: line.roundType,
-                  roundValue: line.roundValue,
-                  quantity: line.quantity,
-                  unitPrice: line.unitPrice,
-                  lineTotal: line.lineTotal,
+              displayOrder: item.displayOrder,
+              parameters: {
+                create: item.parameters.map((p) => ({
+                  name: p.name,
+                  label: p.label,
+                  value: p.value,
+                  valueLabel: p.valueLabel,
+                  unit: p.unit,
+                  displayOrder: p.displayOrder,
                 })),
               },
             },
           });
-        }
 
-        // Group by production center
-        const centerId = product.productionCenterId;
-        const centerName = product.productionCenter.name;
-        if (!centerMap.has(centerId)) {
-          centerMap.set(centerId, { centerName, items: [] });
-        }
-        centerMap.get(centerId)!.items.push({
-          salesOrderItemId: soItem.id,
-          productId: item.productId!,
-          productCode: product.code,
-          productName: product.name,
-          quantity: Number(item.quantity),
-        });
-      }
+          // Chỉ chứa các dòng đã qua Filter condition — vật tư không thuộc config
+          // khách chọn (vd màu khác) không xuất hiện trong OrderBOM.
+          if (bomLines.length > 0) {
+            await tx.orderBOM.create({
+              data: {
+                salesOrderId: salesOrder.id,
+                salesOrderItemId: soItem.id,
+                materialRequirementVersionId,
+                plannedCost: itemPlannedCost,
+                items: {
+                  create: bomLines.map((line) => ({
+                    materialId: line.materialId,
+                    materialCode: line.materialCode,
+                    materialName: line.materialName,
+                    materialUnit: line.materialUnit,
+                    expression: line.expression,
+                    wastePercent: line.wastePercent,
+                    roundType: line.roundType,
+                    roundValue: line.roundValue,
+                    quantity: line.quantity,
+                    unitPrice: line.unitPrice,
+                    lineTotal: line.lineTotal,
+                  })),
+                },
+              },
+            });
+          }
 
-      // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — tạo SalesOrderItem
-      // riêng cho dòng MATERIAL, KHÔNG group vào centerMap (không sinh
-      // Production Order — vật tư bán lẻ khách tự lắp, không qua sản xuất).
-      for (const { item, itemPlannedCost } of materialItemComputations) {
-        await tx.salesOrderItem.create({
-          data: {
-            salesOrderId: salesOrder.id,
-            itemType: 'MATERIAL',
-            materialId: item.materialId,
-            materialCode: item.materialCode,
-            materialName: item.materialName,
-            materialUnit: item.materialUnit,
-            systemPrice: Number(item.systemPrice),
-            discountPercent: Number(item.discountPercent),
-            surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
-            finalPrice: Number(item.finalPrice),
+          // Group by production center
+          const centerId = product.productionCenterId;
+          const centerName = product.productionCenter.name;
+          if (!centerMap.has(centerId)) {
+            centerMap.set(centerId, { centerName, items: [] });
+          }
+          centerMap.get(centerId)!.items.push({
+            salesOrderItemId: soItem.id,
+            productId: item.productId!,
+            productCode: product.code,
+            productName: product.name,
             quantity: Number(item.quantity),
-            subtotal: Number(item.subtotal),
-            vatRate: Number(item.vatRate),
-            vatAmount: Number(item.vatAmount),
-            note: item.note,
-            plannedCost: itemPlannedCost,
-            displayOrder: item.displayOrder,
-          },
-        });
-      }
+          });
+        }
 
-      // Create Production Orders (one per production center)
-      const productionOrderCodes: string[] = [];
-
-      for (const [centerId, centerData] of centerMap) {
-        const poRunning = await tx.runningNumber.update({
-          where: { type: 'PRODUCTION_ORDER' },
-          data: { lastNumber: { increment: 1 } },
-        });
-        const poCode = `${poRunning.prefix}${String(poRunning.lastNumber).padStart(poRunning.paddingLength, '0')}`;
-        productionOrderCodes.push(poCode);
-
-        const productionOrder = await tx.productionOrder.create({
-          data: {
-            code: poCode,
-            salesOrderId: salesOrder.id,
-            productionCenterId: centerId,
-            productionCenterName: centerData.centerName,
-            status: ProductionOrderStatus.PENDING,
-            items: {
-              create: centerData.items.map((i) => ({
-                salesOrderItemId: i.salesOrderItemId,
-                productId: i.productId,
-                productCode: i.productCode,
-                productName: i.productName,
-                quantity: i.quantity,
-              })),
+        // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — tạo SalesOrderItem
+        // riêng cho dòng MATERIAL, KHÔNG group vào centerMap (không sinh
+        // Production Order — vật tư bán lẻ khách tự lắp, không qua sản xuất).
+        for (const { item, itemPlannedCost } of materialItemComputations) {
+          await tx.salesOrderItem.create({
+            data: {
+              salesOrderId: salesOrder.id,
+              itemType: 'MATERIAL',
+              materialId: item.materialId,
+              materialCode: item.materialCode,
+              materialName: item.materialName,
+              materialUnit: item.materialUnit,
+              systemPrice: Number(item.systemPrice),
+              discountPercent: Number(item.discountPercent),
+              surchargeAfterDiscount: Number(item.surchargeAfterDiscount ?? 0),
+              finalPrice: Number(item.finalPrice),
+              quantity: Number(item.quantity),
+              subtotal: Number(item.subtotal),
+              vatRate: Number(item.vatRate),
+              vatAmount: Number(item.vatAmount),
+              note: item.note,
+              plannedCost: itemPlannedCost,
+              displayOrder: item.displayOrder,
             },
-          },
-        });
+          });
+        }
 
-        // Task 02 (Production module) — ghi Timeline cho từng Production Order
-        // vừa tạo, trong cùng transaction approve() này.
-        await tx.productionOrderTimeline.create({
+        // Create Production Orders (one per production center)
+        const productionOrderCodes: string[] = [];
+
+        for (const [centerId, centerData] of centerMap) {
+          const poRunning = await tx.runningNumber.update({
+            where: { type: 'PRODUCTION_ORDER' },
+            data: { lastNumber: { increment: 1 } },
+          });
+          const poCode = `${poRunning.prefix}${String(poRunning.lastNumber).padStart(poRunning.paddingLength, '0')}`;
+          productionOrderCodes.push(poCode);
+
+          const productionOrder = await tx.productionOrder.create({
+            data: {
+              code: poCode,
+              salesOrderId: salesOrder.id,
+              productionCenterId: centerId,
+              productionCenterName: centerData.centerName,
+              status: ProductionOrderStatus.PENDING,
+              items: {
+                create: centerData.items.map((i) => ({
+                  salesOrderItemId: i.salesOrderItemId,
+                  productId: i.productId,
+                  productCode: i.productCode,
+                  productName: i.productName,
+                  quantity: i.quantity,
+                })),
+              },
+            },
+          });
+
+          // Task 02 (Production module) — ghi Timeline cho từng Production Order
+          // vừa tạo, trong cùng transaction approve() này.
+          await tx.productionOrderTimeline.create({
+            data: {
+              productionOrderId: productionOrder.id,
+              action: ProductionOrderTimelineAction.PRODUCTION_ORDER_CREATED,
+              actorType: ProductionOrderTimelineActorType.SYSTEM,
+              payload: { salesOrderCode },
+            },
+          });
+        }
+
+        // Update Quotation: set APPROVED + salesOrderId
+        const updated = await tx.quotation.update({
+          where: { id },
           data: {
-            productionOrderId: productionOrder.id,
-            action: ProductionOrderTimelineAction.PRODUCTION_ORDER_CREATED,
-            actorType: ProductionOrderTimelineActorType.SYSTEM,
-            payload: { salesOrderCode },
+            status: QuotationStatus.APPROVED,
+            salesOrderId: salesOrder.id,
+          },
+          include: QUOTATION_INCLUDE,
+        });
+
+        // Write Timeline (Quotation) — createdBy/createdByName dùng chính
+        // approverUserId đã có sẵn (người bấm Approve), không phải owner.
+        await tx.quotationTimeline.create({
+          data: {
+            quotationId: id,
+            action: QuotationTimelineAction.QUOTATION_APPROVED,
+            payload: {
+              code: quotation.code,
+              salesOrderId: salesOrder.id,
+              salesOrderCode,
+              productionOrders: productionOrderCodes,
+            },
+            createdBy: approverUserId ?? null,
+            createdByName: await resolveActorName(tx, approverUserId),
           },
         });
-      }
 
-      // Update Quotation: set APPROVED + salesOrderId
-      const updated = await tx.quotation.update({
-        where: { id },
-        data: {
-          status: QuotationStatus.APPROVED,
-          salesOrderId: salesOrder.id,
-        },
-        include: QUOTATION_INCLUDE,
-      });
-
-      // Write Timeline (Quotation) — createdBy/createdByName dùng chính
-      // approverUserId đã có sẵn (người bấm Approve), không phải owner.
-      await tx.quotationTimeline.create({
-        data: {
-          quotationId: id,
-          action: QuotationTimelineAction.QUOTATION_APPROVED,
-          payload: {
-            code: quotation.code,
+        // Write Timeline (SalesOrder) — Task 05
+        await tx.salesOrderTimeline.create({
+          data: {
             salesOrderId: salesOrder.id,
-            salesOrderCode,
-            productionOrders: productionOrderCodes,
+            action: SalesOrderTimelineAction.SALES_ORDER_CREATED,
+            actorType: SalesOrderTimelineActorType.SYSTEM,
+            // Task 02 (Debt module) — không tạo action Timeline riêng cho việc
+            // sinh Receivable, gộp vào payload có sẵn của SALES_ORDER_CREATED.
+            payload: { quotationCode: quotation.code, receivableCreated: true },
           },
-          createdBy: approverUserId ?? null,
-          createdByName: await resolveActorName(tx, approverUserId),
-        },
-      });
+        });
 
-      // Write Timeline (SalesOrder) — Task 05
-      await tx.salesOrderTimeline.create({
-        data: {
-          salesOrderId: salesOrder.id,
-          action: SalesOrderTimelineAction.SALES_ORDER_CREATED,
-          actorType: SalesOrderTimelineActorType.SYSTEM,
-          // Task 02 (Debt module) — không tạo action Timeline riêng cho việc
-          // sinh Receivable, gộp vào payload có sẵn của SALES_ORDER_CREATED.
-          payload: { quotationCode: quotation.code, receivableCreated: true },
-        },
-      });
+        await tx.salesOrderTimeline.create({
+          data: {
+            salesOrderId: salesOrder.id,
+            action: SalesOrderTimelineAction.PRODUCTION_ORDERS_GENERATED,
+            actorType: SalesOrderTimelineActorType.SYSTEM,
+            payload: { productionOrderCodes },
+          },
+        });
 
-      await tx.salesOrderTimeline.create({
-        data: {
-          salesOrderId: salesOrder.id,
-          action: SalesOrderTimelineAction.PRODUCTION_ORDERS_GENERATED,
-          actorType: SalesOrderTimelineActorType.SYSTEM,
-          payload: { productionOrderCodes },
-        },
-      });
-
-      return updated;
-    });
+        return updated;
+      }),
+    );
   }
 
   // ─────────────────────────────────────────────────────
@@ -2146,5 +2154,64 @@ export class QuotationWorkflowService {
     }
 
     return result;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Dashboard Alerts (026-cai-tien-dashboard.md mục 3a) — chỉ đọc, không
+  // Business Logic mới.
+  // ─────────────────────────────────────────────────────
+
+  // Báo giá SENT lâu chưa có phản hồi từ khách. Quotation không có cột
+  // "ngày gửi" riêng — đọc mốc SENT qua QuotationTimeline (action
+  // QUOTATION_SENT), giống cách SalesOrderTimeline lưu mốc SHIPPED. Không
+  // hard-code số ngày — đọc Settings.Dashboard.quotationPendingDays nếu
+  // caller không truyền.
+  async getPendingResponseQuotations(pendingDays?: number) {
+    const days =
+      pendingDays ??
+      (await this.settingService.getNumberValue(
+        'Dashboard',
+        'quotationPendingDays',
+      ));
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - days);
+
+    const sentTimelines = await this.prisma.quotationTimeline.findMany({
+      where: {
+        action: QuotationTimelineAction.QUOTATION_SENT,
+        createdAt: { lte: threshold },
+      },
+      select: { quotationId: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      distinct: ['quotationId'],
+    });
+    if (sentTimelines.length === 0) return [];
+
+    const quotations = await this.prisma.quotation.findMany({
+      where: {
+        id: { in: sentTimelines.map((t) => t.quotationId) },
+        status: QuotationStatus.SENT,
+      },
+      select: {
+        id: true,
+        code: true,
+        customerId: true,
+        customer: { select: { name: true, phone: true } },
+      },
+    });
+
+    const sentAtById = new Map(
+      sentTimelines.map((t) => [t.quotationId, t.createdAt]),
+    );
+    return quotations
+      .map((q) => ({
+        id: q.id,
+        code: q.code,
+        customerId: q.customerId,
+        customerName: q.customer.name,
+        customerPhone: q.customer.phone,
+        sentAt: sentAtById.get(q.id)!,
+      }))
+      .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
   }
 }

@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma, OpeningBalanceTimelineAction, OpeningBalanceTimelineActorType } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import {
+  Prisma,
+  OpeningBalanceTimelineAction,
+  OpeningBalanceTimelineActorType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { CreateOpeningBalanceDto } from './dto/create-opening-balance.dto';
 import { ReduceOpeningBalanceDto } from './dto/reduce-opening-balance.dto';
 
@@ -43,35 +52,37 @@ export class OpeningBalanceService {
     const amount = dto.amount != null ? dto.amount : dto.amountBeforeVat;
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const code = await this.nextOpeningBalanceCode(tx);
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextOpeningBalanceCode(tx);
 
-      const openingBalance = await tx.openingBalance.create({
-        data: {
-          code,
-          customerId: dto.customerId,
-          amountBeforeVat: dto.amountBeforeVat,
-          amount,
-          remainingAmountBeforeVat: dto.amountBeforeVat,
-          remainingAmount: amount,
-          note: dto.note?.trim() || null,
-          createdBy: userId ?? null,
-        },
-      });
+        const openingBalance = await tx.openingBalance.create({
+          data: {
+            code,
+            customerId: dto.customerId,
+            amountBeforeVat: dto.amountBeforeVat,
+            amount,
+            remainingAmountBeforeVat: dto.amountBeforeVat,
+            remainingAmount: amount,
+            note: dto.note?.trim() || null,
+            createdBy: userId ?? null,
+          },
+        });
 
-      await tx.openingBalanceTimeline.create({
-        data: {
-          openingBalanceId: openingBalance.id,
-          action: OpeningBalanceTimelineAction.OPENING_BALANCE_CREATED,
-          actorType: OpeningBalanceTimelineActorType.USER,
-          payload: { amountBeforeVat: dto.amountBeforeVat, amount },
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
+        await tx.openingBalanceTimeline.create({
+          data: {
+            openingBalanceId: openingBalance.id,
+            action: OpeningBalanceTimelineAction.OPENING_BALANCE_CREATED,
+            actorType: OpeningBalanceTimelineActorType.USER,
+            payload: { amountBeforeVat: dto.amountBeforeVat, amount },
+            createdBy: userId ?? null,
+            createdByName,
+          },
+        });
 
-      return openingBalance;
-    });
+        return openingBalance;
+      }),
+    );
   }
 
   async findAllByCustomer(customerId: string) {
@@ -97,7 +108,11 @@ export class OpeningBalanceService {
   // (opening-balance.md). Không có VAT-split engine ở đây — giảm CẢ
   // remainingAmount lẫn remainingAmountBeforeVat cùng 1 số tiền. Kiểu Manual
   // Override (bắt buộc lý do, ghi Timeline), không phải Payment.
-  async reduce(id: string, dto: ReduceOpeningBalanceDto, userId?: string | null) {
+  async reduce(
+    id: string,
+    dto: ReduceOpeningBalanceDto,
+    userId?: string | null,
+  ) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Lý do là bắt buộc.');
     }

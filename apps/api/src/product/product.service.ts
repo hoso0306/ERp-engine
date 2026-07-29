@@ -11,6 +11,7 @@ import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
 import { ExcelService } from '../shared/excel/excel.service';
 import { validate as validateExpressionSyntax } from '../shared/expression';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import {
   Prisma,
   ProductStatus,
@@ -93,14 +94,16 @@ export class ProductService {
       where: { name: dto.name.trim() },
     });
     if (existing) throw new ConflictException('Tên xưởng đã tồn tại.');
-    const code = await this.generateCode('PRODUCTION_CENTER');
-    return this.prisma.productionCenter.create({
-      data: {
-        code,
-        name: dto.name.trim(),
-        description: dto.description?.trim() || null,
-        isActive: dto.isActive ?? true,
-      },
+    return retryOnCodeConflict(async () => {
+      const code = await this.generateCode('PRODUCTION_CENTER');
+      return this.prisma.productionCenter.create({
+        data: {
+          code,
+          name: dto.name.trim(),
+          description: dto.description?.trim() || null,
+          isActive: dto.isActive ?? true,
+        },
+      });
     });
   }
 
@@ -389,37 +392,39 @@ export class ProductService {
       retailConversionFactor: dto.retailConversionFactor ?? null,
     });
 
-    const code = await this.generateCode('MATERIAL');
-    return this.prisma.material.create({
-      data: {
-        code,
-        name: dto.name.trim(),
-        unitId: dto.unitId,
-        note: dto.note?.trim() || null,
-        minimumStock: dto.minimumStock ?? null,
-        retailPrice: dto.retailPrice ?? null,
-        isRetailable: dto.isRetailable ?? false,
-        retailUnitId: dto.retailUnitId ?? null,
-        retailConversionFactor: dto.retailConversionFactor ?? null,
-        // Mặc định 10% (chốt 28/07/2026) — người dùng tự sửa nếu khác.
-        retailVatRate: dto.retailVatRate ?? 10,
-        ...(dto.productionCenterIds && dto.productionCenterIds.length > 0
-          ? {
-              productionCenters: {
-                create: dto.productionCenterIds.map((id) => ({
-                  productionCenterId: id,
-                })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        unit: { select: { id: true, name: true } },
-        retailUnit: { select: { id: true, name: true } },
-        productionCenters: {
-          select: { productionCenter: { select: { id: true, name: true } } },
+    return retryOnCodeConflict(async () => {
+      const code = await this.generateCode('MATERIAL');
+      return this.prisma.material.create({
+        data: {
+          code,
+          name: dto.name.trim(),
+          unitId: dto.unitId,
+          note: dto.note?.trim() || null,
+          minimumStock: dto.minimumStock ?? null,
+          retailPrice: dto.retailPrice ?? null,
+          isRetailable: dto.isRetailable ?? false,
+          retailUnitId: dto.retailUnitId ?? null,
+          retailConversionFactor: dto.retailConversionFactor ?? null,
+          // Mặc định 10% (chốt 28/07/2026) — người dùng tự sửa nếu khác.
+          retailVatRate: dto.retailVatRate ?? 10,
+          ...(dto.productionCenterIds && dto.productionCenterIds.length > 0
+            ? {
+                productionCenters: {
+                  create: dto.productionCenterIds.map((id) => ({
+                    productionCenterId: id,
+                  })),
+                },
+              }
+            : {}),
         },
-      },
+        include: {
+          unit: { select: { id: true, name: true } },
+          retailUnit: { select: { id: true, name: true } },
+          productionCenters: {
+            select: { productionCenter: { select: { id: true, name: true } } },
+          },
+        },
+      });
     });
   }
 
@@ -742,23 +747,26 @@ export class ProductService {
     await this.findOneProductType(dto.productTypeId);
     await this.findOneUnit(dto.unitId);
     await this.findOneProductionCenter(dto.productionCenterId);
+    const productionCenterId = dto.productionCenterId;
 
-    const code = await this.generateCode('PRODUCT');
-    return this.prisma.product.create({
-      data: {
-        code,
-        name: dto.name.trim(),
-        productTypeId: dto.productTypeId,
-        unitId: dto.unitId,
-        productionCenterId: dto.productionCenterId,
-        description: dto.description?.trim() || null,
-        status: 'DRAFT',
-      },
-      include: {
-        productType: { select: { id: true, name: true } },
-        unit: { select: { id: true, name: true } },
-        productionCenter: { select: { id: true, code: true, name: true } },
-      },
+    return retryOnCodeConflict(async () => {
+      const code = await this.generateCode('PRODUCT');
+      return this.prisma.product.create({
+        data: {
+          code,
+          name: dto.name.trim(),
+          productTypeId: dto.productTypeId,
+          unitId: dto.unitId,
+          productionCenterId,
+          description: dto.description?.trim() || null,
+          status: 'DRAFT',
+        },
+        include: {
+          productType: { select: { id: true, name: true } },
+          unit: { select: { id: true, name: true } },
+          productionCenter: { select: { id: true, code: true, name: true } },
+        },
+      });
     });
   }
 

@@ -52,6 +52,10 @@ if [ "$HEALTHY" -eq 0 ]; then
 fi
 
 echo ""
+echo "==> Kiểm tra running_numbers (phát hiện sớm lỗi 'Unique constraint failed' khi tạo mới)..."
+./scripts/audit-running-numbers.sh || true
+
+echo ""
 echo "==> Nếu đây là LẦN DEPLOY ĐẦU TIÊN, chạy seed dữ liệu khởi tạo (Role/Permission/Owner):"
 echo "    docker compose -f $COMPOSE_FILE exec api npx prisma db seed"
 echo "    -> Mật khẩu tạm của Owner chỉ in ra MỘT LẦN trong log ngay sau lệnh trên — lưu lại ngay,"

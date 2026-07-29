@@ -14,6 +14,7 @@ import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-
 import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
 import { Prisma, SalesOrderStatus } from '@prisma/client';
 import { OpeningBalanceService } from '../debt/opening-balance.service';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 
 const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
 const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
@@ -110,38 +111,40 @@ export class CustomerService {
       throw new ConflictException('Số điện thoại đã tồn tại.');
     }
 
-    const code = await this.generateCode('CUSTOMER');
     const customerGroupId =
       dto.customerGroupId || (await this.getDefaultCustomerGroupId());
 
-    return this.prisma.customer.create({
-      data: {
-        code,
-        name: dto.name.trim(),
-        phone: dto.phone.trim(),
-        email: dto.email?.trim() || null,
-        companyName: dto.companyName?.trim() || null,
-        taxCode: dto.taxCode?.trim() || null,
-        province: dto.province?.trim() || null,
-        district: dto.district?.trim() || null,
-        ward: dto.ward?.trim() || null,
-        address: dto.address?.trim() || null,
-        customerGroupId,
-        deliveryRouteId: dto.deliveryRouteId || null,
-        saleId: dto.saleId || null,
-        priority: dto.priority || 'MEDIUM',
-        status: dto.status || 'ACTIVE',
-        debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
-        debtTermDays: dto.debtTermDays ?? 30,
-        note: dto.note?.trim() || null,
-        defaultCarrierName: dto.defaultCarrierName?.trim() || null,
-        defaultCarrierPhone: dto.defaultCarrierPhone?.trim() || null,
-        defaultCarrierNote: dto.defaultCarrierNote?.trim() || null,
-      },
-      include: {
-        customerGroup: { select: { id: true, name: true } },
-        deliveryRoute: { select: { id: true, name: true } },
-      },
+    return retryOnCodeConflict(async () => {
+      const code = await this.generateCode('CUSTOMER');
+      return this.prisma.customer.create({
+        data: {
+          code,
+          name: dto.name.trim(),
+          phone: dto.phone.trim(),
+          email: dto.email?.trim() || null,
+          companyName: dto.companyName?.trim() || null,
+          taxCode: dto.taxCode?.trim() || null,
+          province: dto.province?.trim() || null,
+          district: dto.district?.trim() || null,
+          ward: dto.ward?.trim() || null,
+          address: dto.address?.trim() || null,
+          customerGroupId,
+          deliveryRouteId: dto.deliveryRouteId || null,
+          saleId: dto.saleId || null,
+          priority: dto.priority || 'MEDIUM',
+          status: dto.status || 'ACTIVE',
+          debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
+          debtTermDays: dto.debtTermDays ?? 30,
+          note: dto.note?.trim() || null,
+          defaultCarrierName: dto.defaultCarrierName?.trim() || null,
+          defaultCarrierPhone: dto.defaultCarrierPhone?.trim() || null,
+          defaultCarrierNote: dto.defaultCarrierNote?.trim() || null,
+        },
+        include: {
+          customerGroup: { select: { id: true, name: true } },
+          deliveryRoute: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 
@@ -454,6 +457,20 @@ export class CustomerService {
     }));
 
     await this.excel.export(res, 'khach-hang', columns, rows);
+  }
+
+  // Xuất dữ liệu backup (report.md mục "Xuất dữ liệu backup", E4) — lọc theo
+  // createdAt trong kỳ, cùng loại trừ deletedAt như exportExcel() (chốt
+  // 28/07/2026: khách đã xoá mềm không đưa vào bản backup này).
+  async getAllCustomersRaw(from: Date, to: Date) {
+    return this.prisma.customer.findMany({
+      where: { deletedAt: null, createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        customerGroup: { select: { name: true } },
+        deliveryRoute: { select: { name: true } },
+      },
+    });
   }
 
   private async getGroupRouteNames() {
@@ -870,30 +887,32 @@ export class CustomerService {
       : null;
 
     for (const { dto } of toCreate) {
-      const code = await this.generateCode('CUSTOMER');
-      await this.prisma.customer.create({
-        data: {
-          code,
-          name: dto.name,
-          phone: dto.phone,
-          email: dto.email || null,
-          companyName: dto.companyName || null,
-          taxCode: dto.taxCode || null,
-          province: dto.province || null,
-          district: dto.district || null,
-          ward: dto.ward || null,
-          address: dto.address || null,
-          customerGroupId: dto.customerGroupId || defaultGroupId,
-          deliveryRouteId: dto.deliveryRouteId || null,
-          priority: dto.priority || 'MEDIUM',
-          status: dto.status || 'ACTIVE',
-          debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
-          debtTermDays: dto.debtTermDays ?? 30,
-          note: dto.note || null,
-          defaultCarrierName: dto.defaultCarrierName || null,
-          defaultCarrierPhone: dto.defaultCarrierPhone || null,
-          defaultCarrierNote: dto.defaultCarrierNote || null,
-        },
+      await retryOnCodeConflict(async () => {
+        const code = await this.generateCode('CUSTOMER');
+        return this.prisma.customer.create({
+          data: {
+            code,
+            name: dto.name,
+            phone: dto.phone,
+            email: dto.email || null,
+            companyName: dto.companyName || null,
+            taxCode: dto.taxCode || null,
+            province: dto.province || null,
+            district: dto.district || null,
+            ward: dto.ward || null,
+            address: dto.address || null,
+            customerGroupId: dto.customerGroupId || defaultGroupId,
+            deliveryRouteId: dto.deliveryRouteId || null,
+            priority: dto.priority || 'MEDIUM',
+            status: dto.status || 'ACTIVE',
+            debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
+            debtTermDays: dto.debtTermDays ?? 30,
+            note: dto.note || null,
+            defaultCarrierName: dto.defaultCarrierName || null,
+            defaultCarrierPhone: dto.defaultCarrierPhone || null,
+            defaultCarrierNote: dto.defaultCarrierNote || null,
+          },
+        });
       });
     }
 
@@ -939,11 +958,16 @@ export class CustomerService {
 
     const existing = await this.prisma.customerProductDiscount.findUnique({
       where: {
-        customerId_productTypeId: { customerId, productTypeId: dto.productTypeId },
+        customerId_productTypeId: {
+          customerId,
+          productTypeId: dto.productTypeId,
+        },
       },
     });
     if (existing) {
-      throw new ConflictException('Loại sản phẩm này đã được cấu hình chiết khấu.');
+      throw new ConflictException(
+        'Loại sản phẩm này đã được cấu hình chiết khấu.',
+      );
     }
 
     return this.prisma.customerProductDiscount.create({
@@ -1005,7 +1029,10 @@ export class CustomerService {
 
     const discount = await this.prisma.customerProductDiscount.findUnique({
       where: {
-        customerId_productTypeId: { customerId, productTypeId: product.productTypeId },
+        customerId_productTypeId: {
+          customerId,
+          productTypeId: product.productTypeId,
+        },
       },
     });
     return { discountPercent: discount ? Number(discount.discountPercent) : 0 };

@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { CreateReturnDto } from './dto/create-return.dto';
 import { ReturnQueryDto } from './dto/return-query.dto';
 import { RecoveryInventoryQueryDto } from './dto/recovery-inventory-query.dto';
@@ -226,79 +227,81 @@ export class ReturnService {
       totalValue += lineSubtotal + lineVat;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const running = await tx.runningNumber.update({
-        where: { type: 'RETURN' },
-        data: { lastNumber: { increment: 1 } },
-      });
-      const returnCode = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const running = await tx.runningNumber.update({
+          where: { type: 'RETURN' },
+          data: { lastNumber: { increment: 1 } },
+        });
+        const returnCode = `${running.prefix}${String(running.lastNumber).padStart(running.paddingLength, '0')}`;
 
-      const ret = await tx.return.create({
-        data: {
-          code: returnCode,
-          salesOrderId: salesOrder.id,
-          salesOrderCode: salesOrder.code,
-          customerId: salesOrder.customerId,
-          customerName: salesOrder.customerName,
-          returnDate: dto.returnDate ? new Date(dto.returnDate) : new Date(),
-          receivedBy: dto.receivedBy?.trim() || null,
-          note: dto.note?.trim() || null,
-          totalValue,
-        },
-      });
-
-      let recoverySeq = 0;
-      for (const item of dto.items) {
-        const soItem = salesOrderItemMap.get(item.salesOrderItemId)!;
-        const productParameters = soItem.parameters.map((p) => ({
-          name: p.name,
-          label: p.label,
-          value: p.value,
-          unit: p.unit,
-          displayOrder: p.displayOrder,
-        }));
-
-        const returnItem = await tx.returnItem.create({
+        const ret = await tx.return.create({
           data: {
-            returnId: ret.id,
-            salesOrderItemId: soItem.id,
-            // Đã chặn dòng MATERIAL ở validate phía trên — productCode/Name
-            // luôn có giá trị ở đây (chỉ còn dòng PRODUCT).
-            productCode: soItem.productCode!,
-            productName: soItem.productName!,
-            productParameters,
-            orderedQuantity: soItem.quantity,
-            returnedQuantity: item.returnedQuantity,
-            unitPriceSnapshot: soItem.finalPrice,
-            vatRate: soItem.vatRate,
-            reason: item.reason as ReturnReason,
-            note: item.note?.trim() || null,
+            code: returnCode,
+            salesOrderId: salesOrder.id,
+            salesOrderCode: salesOrder.code,
+            customerId: salesOrder.customerId,
+            customerName: salesOrder.customerName,
+            returnDate: dto.returnDate ? new Date(dto.returnDate) : new Date(),
+            receivedBy: dto.receivedBy?.trim() || null,
+            note: dto.note?.trim() || null,
+            totalValue,
           },
         });
 
-        // RecoveryInventory sinh tự động, cùng transaction — không có Running
-        // Number riêng cho Recovery Inventory trong tài liệu, dùng mã Return
-        // + số thứ tự dòng để đảm bảo duy nhất và vẫn truy vết được nguồn gốc.
-        recoverySeq += 1;
-        await tx.recoveryInventory.create({
-          data: {
-            code: `${returnCode}-${recoverySeq}`,
-            returnItemId: returnItem.id,
-            createdFromReturnCode: returnCode,
-            productCode: soItem.productCode!,
-            productName: soItem.productName!,
-            productParameters,
-            quantity: item.returnedQuantity,
-            status: RecoveryInventoryStatus.AVAILABLE,
-          },
-        });
-      }
+        let recoverySeq = 0;
+        for (const item of dto.items) {
+          const soItem = salesOrderItemMap.get(item.salesOrderItemId)!;
+          const productParameters = soItem.parameters.map((p) => ({
+            name: p.name,
+            label: p.label,
+            value: p.value,
+            unit: p.unit,
+            displayOrder: p.displayOrder,
+          }));
 
-      return tx.return.findUniqueOrThrow({
-        where: { id: ret.id },
-        include: RETURN_INCLUDE,
-      });
-    });
+          const returnItem = await tx.returnItem.create({
+            data: {
+              returnId: ret.id,
+              salesOrderItemId: soItem.id,
+              // Đã chặn dòng MATERIAL ở validate phía trên — productCode/Name
+              // luôn có giá trị ở đây (chỉ còn dòng PRODUCT).
+              productCode: soItem.productCode!,
+              productName: soItem.productName!,
+              productParameters,
+              orderedQuantity: soItem.quantity,
+              returnedQuantity: item.returnedQuantity,
+              unitPriceSnapshot: soItem.finalPrice,
+              vatRate: soItem.vatRate,
+              reason: item.reason as ReturnReason,
+              note: item.note?.trim() || null,
+            },
+          });
+
+          // RecoveryInventory sinh tự động, cùng transaction — không có Running
+          // Number riêng cho Recovery Inventory trong tài liệu, dùng mã Return
+          // + số thứ tự dòng để đảm bảo duy nhất và vẫn truy vết được nguồn gốc.
+          recoverySeq += 1;
+          await tx.recoveryInventory.create({
+            data: {
+              code: `${returnCode}-${recoverySeq}`,
+              returnItemId: returnItem.id,
+              createdFromReturnCode: returnCode,
+              productCode: soItem.productCode!,
+              productName: soItem.productName!,
+              productParameters,
+              quantity: item.returnedQuantity,
+              status: RecoveryInventoryStatus.AVAILABLE,
+            },
+          });
+        }
+
+        return tx.return.findUniqueOrThrow({
+          where: { id: ret.id },
+          include: RETURN_INCLUDE,
+        });
+      }),
+    );
   }
 
   // ─────────────────────────────────────────────────────

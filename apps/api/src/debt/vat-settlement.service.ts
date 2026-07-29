@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import {
   calcFinalPrice,
@@ -39,7 +40,12 @@ const VAT_SETTLEMENT_DETAIL_INCLUDE = {
       receivable: {
         include: {
           salesOrder: {
-            select: { id: true, code: true, customerName: true, customerPhone: true },
+            select: {
+              id: true,
+              code: true,
+              customerName: true,
+              customerPhone: true,
+            },
           },
         },
       },
@@ -118,7 +124,9 @@ export class VatSettlementService {
         salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
         vatSettlementItems: {
           none: {
-            vatSettlement: { status: { notIn: VatSettlementService.INACTIVE_STATUSES } },
+            vatSettlement: {
+              status: { notIn: VatSettlementService.INACTIVE_STATUSES },
+            },
           },
         },
       },
@@ -203,7 +211,10 @@ export class VatSettlementService {
         );
       }
       const alreadyActive = r.vatSettlementItems.some(
-        (item) => !VatSettlementService.INACTIVE_STATUSES.includes(item.vatSettlement.status),
+        (item) =>
+          !VatSettlementService.INACTIVE_STATUSES.includes(
+            item.vatSettlement.status,
+          ),
       );
       if (alreadyActive) {
         throw new BadRequestException(
@@ -223,49 +234,51 @@ export class VatSettlementService {
     const totalAmount = items.reduce((s, i) => s + i.amount, 0);
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const code = await this.nextVatSettlementCode(tx);
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextVatSettlementCode(tx);
 
-      const settlement = await tx.vatSettlement.create({
-        data: { code, customerId: dto.customerId, totalAmount },
-      });
+        const settlement = await tx.vatSettlement.create({
+          data: { code, customerId: dto.customerId, totalAmount },
+        });
 
-      for (const item of items) {
-        await tx.vatSettlementItem.create({
+        for (const item of items) {
+          await tx.vatSettlementItem.create({
+            data: {
+              vatSettlementId: settlement.id,
+              receivableId: item.receivableId,
+              amount: item.amount,
+            },
+          });
+        }
+
+        await tx.vatSettlementTimeline.create({
           data: {
             vatSettlementId: settlement.id,
-            receivableId: item.receivableId,
-            amount: item.amount,
+            action: VatSettlementTimelineAction.VAT_SETTLEMENT_CREATED,
+            actorType: VatSettlementTimelineActorType.USER,
+            payload: { totalAmount, receivableCount: items.length },
+            createdBy: userId ?? null,
+            createdByName,
           },
         });
-      }
 
-      await tx.vatSettlementTimeline.create({
-        data: {
-          vatSettlementId: settlement.id,
-          action: VatSettlementTimelineAction.VAT_SETTLEMENT_CREATED,
-          actorType: VatSettlementTimelineActorType.USER,
-          payload: { totalAmount, receivableCount: items.length },
-          createdBy: userId ?? null,
+        await this.writeSalesOrderTimelines(
+          tx,
+          items,
+          code,
+          'CREATED',
+          totalAmount,
+          userId,
           createdByName,
-        },
-      });
+        );
 
-      await this.writeSalesOrderTimelines(
-        tx,
-        items,
-        code,
-        'CREATED',
-        totalAmount,
-        userId,
-        createdByName,
-      );
-
-      return tx.vatSettlement.findUniqueOrThrow({
-        where: { id: settlement.id },
-        include: VAT_SETTLEMENT_DETAIL_INCLUDE,
-      });
-    });
+        return tx.vatSettlement.findUniqueOrThrow({
+          where: { id: settlement.id },
+          include: VAT_SETTLEMENT_DETAIL_INCLUDE,
+        });
+      }),
+    );
   }
 
   // "Phục dựng hoá đơn" cho Công nợ đầu kỳ (opening-balance.md) — nguồn thứ 2,
@@ -335,11 +348,16 @@ export class VatSettlementService {
       const product = await this.prisma.product.findUnique({
         where: { id: line.productId },
         include: {
-          parameters: { include: { options: true }, orderBy: { displayOrder: 'asc' } },
+          parameters: {
+            include: { options: true },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
       });
       if (!product) {
-        throw new NotFoundException(`Sản phẩm ${line.productId} không tồn tại.`);
+        throw new NotFoundException(
+          `Sản phẩm ${line.productId} không tồn tại.`,
+        );
       }
 
       const priceResult = await this.pricingEngineService.calculate({
@@ -358,11 +376,17 @@ export class VatSettlementService {
             },
           },
         });
-      const discountPercent = Number(customerProductDiscount?.discountPercent ?? 0);
+      const discountPercent = Number(
+        customerProductDiscount?.discountPercent ?? 0,
+      );
 
       const systemPrice = priceResult.systemPrice;
       const surchargeAfterDiscount = priceResult.surchargeAfterDiscount;
-      const finalPrice = calcFinalPrice(systemPrice, discountPercent, surchargeAfterDiscount);
+      const finalPrice = calcFinalPrice(
+        systemPrice,
+        discountPercent,
+        surchargeAfterDiscount,
+      );
       const subtotal = calcSubtotal(finalPrice, line.quantity);
       const vatRate = priceResult.vatRate;
       const vatAmount = calcVatAmount(subtotal, vatRate);
@@ -388,7 +412,9 @@ export class VatSettlementService {
             name: p.name,
             label: productParam?.label ?? p.name,
             value: p.value,
-            valueLabel: productParam?.options.find((o) => o.value === p.value)?.label ?? null,
+            valueLabel:
+              productParam?.options.find((o) => o.value === p.value)?.label ??
+              null,
             unit: productParam?.unit ?? null,
             displayOrder: productParam?.displayOrder ?? idx,
           };
@@ -399,75 +425,86 @@ export class VatSettlementService {
     const totalVatAmount = lines.reduce((s, l) => s + l.vatAmount, 0);
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const code = await this.nextVatSettlementCode(tx);
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextVatSettlementCode(tx);
 
-      const settlement = await tx.vatSettlement.create({
-        data: { code, customerId: openingBalance.customerId, totalAmount: totalVatAmount },
-      });
-
-      const item = await tx.vatSettlementItem.create({
-        data: {
-          vatSettlementId: settlement.id,
-          openingBalanceId: openingBalance.id,
-          amount: totalVatAmount,
-        },
-      });
-
-      for (const line of lines) {
-        await tx.vatSettlementItemLine.create({
+        const settlement = await tx.vatSettlement.create({
           data: {
-            vatSettlementItemId: item.id,
-            productId: line.productId,
-            productCode: line.productCode,
-            productName: line.productName,
-            quantity: line.quantity,
-            pricingRuleVersionId: line.pricingRuleVersionId,
-            systemPrice: line.systemPrice,
-            discountPercent: line.discountPercent,
-            surchargeAfterDiscount: line.surchargeAfterDiscount,
-            finalPrice: line.finalPrice,
-            subtotal: line.subtotal,
-            vatRate: line.vatRate,
-            vatAmount: line.vatAmount,
-            parameters: { create: line.parameters },
+            code,
+            customerId: openingBalance.customerId,
+            totalAmount: totalVatAmount,
           },
         });
-      }
 
-      await tx.vatSettlementTimeline.create({
-        data: {
-          vatSettlementId: settlement.id,
-          action: VatSettlementTimelineAction.VAT_SETTLEMENT_CREATED,
-          actorType: VatSettlementTimelineActorType.USER,
-          payload: {
-            totalAmount: totalVatAmount,
+        const item = await tx.vatSettlementItem.create({
+          data: {
+            vatSettlementId: settlement.id,
             openingBalanceId: openingBalance.id,
-            lineCount: lines.length,
+            amount: totalVatAmount,
           },
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
+        });
 
-      // Không ghi SalesOrderTimeline — nguồn là Công nợ đầu kỳ, không có Sales
-      // Order nào liên quan (khác path Receivable ở create()).
+        for (const line of lines) {
+          await tx.vatSettlementItemLine.create({
+            data: {
+              vatSettlementItemId: item.id,
+              productId: line.productId,
+              productCode: line.productCode,
+              productName: line.productName,
+              quantity: line.quantity,
+              pricingRuleVersionId: line.pricingRuleVersionId,
+              systemPrice: line.systemPrice,
+              discountPercent: line.discountPercent,
+              surchargeAfterDiscount: line.surchargeAfterDiscount,
+              finalPrice: line.finalPrice,
+              subtotal: line.subtotal,
+              vatRate: line.vatRate,
+              vatAmount: line.vatAmount,
+              parameters: { create: line.parameters },
+            },
+          });
+        }
 
-      return tx.vatSettlement.findUniqueOrThrow({
-        where: { id: settlement.id },
-        include: VAT_SETTLEMENT_DETAIL_INCLUDE,
-      });
-    });
+        await tx.vatSettlementTimeline.create({
+          data: {
+            vatSettlementId: settlement.id,
+            action: VatSettlementTimelineAction.VAT_SETTLEMENT_CREATED,
+            actorType: VatSettlementTimelineActorType.USER,
+            payload: {
+              totalAmount: totalVatAmount,
+              openingBalanceId: openingBalance.id,
+              lineCount: lines.length,
+            },
+            createdBy: userId ?? null,
+            createdByName,
+          },
+        });
+
+        // Không ghi SalesOrderTimeline — nguồn là Công nợ đầu kỳ, không có Sales
+        // Order nào liên quan (khác path Receivable ở create()).
+
+        return tx.vatSettlement.findUniqueOrThrow({
+          where: { id: settlement.id },
+          include: VAT_SETTLEMENT_DETAIL_INCLUDE,
+        });
+      }),
+    );
   }
 
   async send(id: string, userId?: string | null) {
     const settlement = await this.prisma.vatSettlement.findUnique({
       where: { id },
-      include: { items: { include: { receivable: { select: { salesOrderId: true } } } } },
+      include: {
+        items: { include: { receivable: { select: { salesOrderId: true } } } },
+      },
     });
-    if (!settlement) throw new NotFoundException('VAT Settlement không tồn tại.');
+    if (!settlement)
+      throw new NotFoundException('VAT Settlement không tồn tại.');
     if (settlement.status !== VatSettlementStatus.DRAFT) {
-      throw new BadRequestException('Chỉ có thể gửi khách khi VAT Settlement đang ở trạng thái Nháp.');
+      throw new BadRequestException(
+        'Chỉ có thể gửi khách khi VAT Settlement đang ở trạng thái Nháp.',
+      );
     }
 
     const createdByName = await resolveActorName(this.prisma, userId);
@@ -517,11 +554,16 @@ export class VatSettlementService {
   async cancel(id: string, userId?: string | null) {
     const settlement = await this.prisma.vatSettlement.findUnique({
       where: { id },
-      include: { items: { include: { receivable: { select: { salesOrderId: true } } } } },
+      include: {
+        items: { include: { receivable: { select: { salesOrderId: true } } } },
+      },
     });
-    if (!settlement) throw new NotFoundException('VAT Settlement không tồn tại.');
+    if (!settlement)
+      throw new NotFoundException('VAT Settlement không tồn tại.');
     if (settlement.status !== VatSettlementStatus.DRAFT) {
-      throw new BadRequestException('Chỉ có thể huỷ khi VAT Settlement đang ở trạng thái Nháp.');
+      throw new BadRequestException(
+        'Chỉ có thể huỷ khi VAT Settlement đang ở trạng thái Nháp.',
+      );
     }
 
     const createdByName = await resolveActorName(this.prisma, userId);
@@ -573,11 +615,16 @@ export class VatSettlementService {
   ) {
     const settlement = await this.prisma.vatSettlement.findUnique({
       where: { id },
-      include: { items: { include: { receivable: { select: { salesOrderId: true } } } } },
+      include: {
+        items: { include: { receivable: { select: { salesOrderId: true } } } },
+      },
     });
-    if (!settlement) throw new NotFoundException('VAT Settlement không tồn tại.');
+    if (!settlement)
+      throw new NotFoundException('VAT Settlement không tồn tại.');
     if (settlement.status !== VatSettlementStatus.SENT) {
-      throw new BadRequestException('Chỉ có thể ghi nhận thanh toán khi VAT Settlement đang ở trạng thái Đã gửi.');
+      throw new BadRequestException(
+        'Chỉ có thể ghi nhận thanh toán khi VAT Settlement đang ở trạng thái Đã gửi.',
+      );
     }
 
     const paymentMethod = this.validatePaymentMethod(
@@ -586,54 +633,61 @@ export class VatSettlementService {
     );
     const createdByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.create({
-        data: {
-          code: await this.nextVatSettlementPaymentCode(tx),
-          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
-          amount: settlement.totalAmount,
-          paymentMethod,
-          referenceNumber: dto.referenceNumber?.trim() || null,
-          note: dto.note?.trim() || null,
-          vatSettlementId: id,
-        },
-      });
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const payment = await tx.payment.create({
+          data: {
+            code: await this.nextVatSettlementPaymentCode(tx),
+            paymentDate: dto.paymentDate
+              ? new Date(dto.paymentDate)
+              : new Date(),
+            amount: settlement.totalAmount,
+            paymentMethod,
+            referenceNumber: dto.referenceNumber?.trim() || null,
+            note: dto.note?.trim() || null,
+            vatSettlementId: id,
+          },
+        });
 
-      await tx.vatSettlement.update({
-        where: { id },
-        data: { status: VatSettlementStatus.PAID, paymentId: payment.id },
-      });
+        await tx.vatSettlement.update({
+          where: { id },
+          data: { status: VatSettlementStatus.PAID, paymentId: payment.id },
+        });
 
-      await tx.vatSettlementTimeline.create({
-        data: {
-          vatSettlementId: id,
-          action: VatSettlementTimelineAction.VAT_SETTLEMENT_PAID,
-          actorType: VatSettlementTimelineActorType.USER,
-          payload: { paymentCode: payment.code, amount: Number(settlement.totalAmount) },
-          createdBy: userId ?? null,
+        await tx.vatSettlementTimeline.create({
+          data: {
+            vatSettlementId: id,
+            action: VatSettlementTimelineAction.VAT_SETTLEMENT_PAID,
+            actorType: VatSettlementTimelineActorType.USER,
+            payload: {
+              paymentCode: payment.code,
+              amount: Number(settlement.totalAmount),
+            },
+            createdBy: userId ?? null,
+            createdByName,
+          },
+        });
+
+        await this.writeSalesOrderTimelines(
+          tx,
+          // opening-balance.md — item nguồn Công nợ đầu kỳ không có Receivable/
+          // SalesOrder gốc (receivable = null), lọc bỏ trước khi ghi SalesOrderTimeline.
+          settlement.items
+            .filter((i) => i.receivable)
+            .map((i) => ({ salesOrderId: i.receivable!.salesOrderId })),
+          settlement.code,
+          'PAID',
+          Number(settlement.totalAmount),
+          userId,
           createdByName,
-        },
-      });
+        );
 
-      await this.writeSalesOrderTimelines(
-        tx,
-        // opening-balance.md — item nguồn Công nợ đầu kỳ không có Receivable/
-        // SalesOrder gốc (receivable = null), lọc bỏ trước khi ghi SalesOrderTimeline.
-        settlement.items
-          .filter((i) => i.receivable)
-          .map((i) => ({ salesOrderId: i.receivable!.salesOrderId })),
-        settlement.code,
-        'PAID',
-        Number(settlement.totalAmount),
-        userId,
-        createdByName,
-      );
-
-      return tx.vatSettlement.findUniqueOrThrow({
-        where: { id },
-        include: VAT_SETTLEMENT_DETAIL_INCLUDE,
-      });
-    });
+        return tx.vatSettlement.findUniqueOrThrow({
+          where: { id },
+          include: VAT_SETTLEMENT_DETAIL_INCLUDE,
+        });
+      }),
+    );
   }
 
   async markInvoiced(
@@ -650,11 +704,16 @@ export class VatSettlementService {
 
     const settlement = await this.prisma.vatSettlement.findUnique({
       where: { id },
-      include: { items: { include: { receivable: { select: { salesOrderId: true } } } } },
+      include: {
+        items: { include: { receivable: { select: { salesOrderId: true } } } },
+      },
     });
-    if (!settlement) throw new NotFoundException('VAT Settlement không tồn tại.');
+    if (!settlement)
+      throw new NotFoundException('VAT Settlement không tồn tại.');
     if (settlement.status !== VatSettlementStatus.PAID) {
-      throw new BadRequestException('Chỉ có thể đánh dấu đã xuất hóa đơn khi VAT Settlement đang ở trạng thái Đã thanh toán.');
+      throw new BadRequestException(
+        'Chỉ có thể đánh dấu đã xuất hóa đơn khi VAT Settlement đang ở trạng thái Đã thanh toán.',
+      );
     }
 
     const createdByName = await resolveActorName(this.prisma, userId);
@@ -674,7 +733,10 @@ export class VatSettlementService {
           vatSettlementId: id,
           action: VatSettlementTimelineAction.VAT_SETTLEMENT_INVOICED,
           actorType: VatSettlementTimelineActorType.USER,
-          payload: { invoiceNumber: dto.invoiceNumber.trim(), invoiceDate: dto.invoiceDate },
+          payload: {
+            invoiceNumber: dto.invoiceNumber.trim(),
+            invoiceDate: dto.invoiceDate,
+          },
           createdBy: userId ?? null,
           createdByName,
         },
