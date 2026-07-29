@@ -560,9 +560,21 @@ export class SalesOrderService {
   // Dashboard (Module Dashboard, Task 00) — chỉ đọc, không Business Logic mới.
   // ─────────────────────────────────────────────────────
 
-  async getDashboardSummary() {
+  // range (026/027-cai-tien-dashboard.md — khối Kinh doanh giờ có bộ lọc
+  // riêng, mặc định "Hôm nay") — khi truyền, tính lại theo đúng createdAt
+  // trong khoảng đã chọn thay vì all-time. Không truyền = all-time (giữ
+  // tương thích ngược cho nơi khác đang gọi không range).
+  async getDashboardSummary(range?: { from?: Date; to?: Date }) {
+    const dateFilter: Prisma.DateTimeFilter | undefined =
+      range?.from || range?.to
+        ? {
+            ...(range.from ? { gte: range.from } : {}),
+            ...(range.to ? { lte: range.to } : {}),
+          }
+        : undefined;
     const notCancelled: Prisma.SalesOrderWhereInput = {
       status: { not: SalesOrderStatus.CANCELLED },
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
     };
 
     const [totals, statusCounts] = await Promise.all([
@@ -572,6 +584,7 @@ export class SalesOrderService {
       }),
       this.prisma.salesOrder.groupBy({
         by: ['status'],
+        where: dateFilter ? { createdAt: dateFilter } : undefined,
         _count: { _all: true },
       }),
     ]);
@@ -651,6 +664,33 @@ export class SalesOrderService {
       },
       orderBy: { expectedDeliveryDate: 'asc' },
     });
+  }
+
+  // Dải tổng hợp "Hôm nay" (Dashboard, 026-cai-tien-dashboard.md mục 5) —
+  // luôn tính đúng khoảng "hôm nay" do DashboardService truyền vào, KHÔNG
+  // theo bộ lọc đầu trang Dashboard (khác getDashboardSummary() vốn all-time,
+  // và khác các khối Sản xuất/Hàng hoàn có range riêng theo bộ lọc). "Đơn đã
+  // giao xe" đọc qua SalesOrderTimeline action SHIPPED — SalesOrder không có
+  // cột shippedAt riêng.
+  async getTodaySummary(range: { from: Date; to: Date }) {
+    const [newOrders, shippedTimelines] = await Promise.all([
+      this.prisma.salesOrder.count({
+        where: {
+          createdAt: { gte: range.from, lte: range.to },
+          status: { not: SalesOrderStatus.CANCELLED },
+        },
+      }),
+      this.prisma.salesOrderTimeline.findMany({
+        where: {
+          action: SalesOrderTimelineAction.SHIPPED,
+          createdAt: { gte: range.from, lte: range.to },
+        },
+        select: { salesOrderId: true },
+        distinct: ['salesOrderId'],
+      }),
+    ]);
+
+    return { newOrders, shippedOrders: shippedTimelines.length };
   }
 
   // ─────────────────────────────────────────────────────
@@ -1066,5 +1106,38 @@ export class SalesOrderService {
         }))
         .sort((a, b) => b.revenue - a.revenue),
     };
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Xuất dữ liệu backup (report.md mục "Xuất dữ liệu backup") — liệt kê
+  // TOÀN BỘ SalesOrder trong kỳ, KHÔNG loại CANCELLED (khác Quy tắc loại trừ
+  // áp dụng cho 14 báo cáo phân tích) — mục đích là bản sao đầy đủ dữ liệu,
+  // thiếu đơn đã huỷ là backup không đầy đủ.
+  // ─────────────────────────────────────────────────────
+
+  async getAllOrdersRaw(from: Date, to: Date) {
+    return this.prisma.salesOrder.findMany({
+      where: { createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        code: true,
+        quotationCode: true,
+        customerName: true,
+        customerPhone: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        totalVatAmount: true,
+        discountAmount: true,
+        shippingFee: true,
+        grandTotal: true,
+        plannedCost: true,
+        plannedProfit: true,
+        ownerName: true,
+        expectedDeliveryDate: true,
+        actualDeliveryDate: true,
+        createdAt: true,
+      },
+    });
   }
 }

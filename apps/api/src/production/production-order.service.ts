@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import { SettingService } from '../setting/setting.service';
 
 const PRODUCTION_ORDER_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -51,6 +52,7 @@ export class ProductionOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly salesOrderService: SalesOrderService,
+    private readonly settingService: SettingService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -403,22 +405,36 @@ export class ProductionOrderService {
     return { pending, inProduction, completed, cancelled };
   }
 
-  // Trả về toàn bộ xưởng đã sắp xếp theo số lượng Phiếu sản xuất (không huỷ) giảm dần
-  // — Dashboard tự lấy đầu danh sách cho "nhiều việc nhất", cuối danh sách cho
-  // "ít việc nhất" từ cùng một query, tránh N+1 (xem 009-dashboard.md Task 07).
+  // Trả về TOÀN BỘ xưởng đang hoạt động (kể cả xưởng chưa có phiếu nào —
+  // hiện 0, dashboard rà soát mục "Xưởng sản xuất hiện tại"), sắp theo số
+  // lượng Phiếu sản xuất (không huỷ) giảm dần — Dashboard tự lấy đầu danh
+  // sách cho "nhiều việc nhất", cuối danh sách cho "ít việc nhất". Xưởng
+  // isActive=false không hiện (đã ngưng hoạt động, không còn vai trò vận
+  // hành để theo dõi trên Dashboard).
   async getBusyCenters() {
-    const grouped = await this.prisma.productionOrder.groupBy({
-      by: ['productionCenterId', 'productionCenterName'],
-      where: { status: { not: ProductionOrderStatus.CANCELLED } },
-      _count: { _all: true },
-      orderBy: { _count: { productionCenterId: 'desc' } },
-    });
+    const [centers, grouped] = await Promise.all([
+      this.prisma.productionCenter.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+      }),
+      this.prisma.productionOrder.groupBy({
+        by: ['productionCenterId'],
+        where: { status: { not: ProductionOrderStatus.CANCELLED } },
+        _count: { _all: true },
+      }),
+    ]);
 
-    return grouped.map((g) => ({
-      productionCenterId: g.productionCenterId,
-      productionCenterName: g.productionCenterName,
-      orderCount: g._count._all,
-    }));
+    const countByCenterId = new Map(
+      grouped.map((g) => [g.productionCenterId, g._count._all]),
+    );
+
+    return centers
+      .map((c) => ({
+        productionCenterId: c.id,
+        productionCenterName: c.name,
+        orderCount: countByCenterId.get(c.id) ?? 0,
+      }))
+      .sort((a, b) => b.orderCount - a.orderCount);
   }
 
   // Tiến độ sản xuất theo từng Sales Order đang IN_PRODUCTION — đọc trực tiếp
@@ -430,6 +446,7 @@ export class ProductionOrderService {
       select: {
         id: true,
         code: true,
+        customerName: true,
         completedProductionOrders: true,
         totalProductionOrders: true,
       },
@@ -453,6 +470,7 @@ export class ProductionOrderService {
       orders: orders.map((o) => ({
         salesOrderId: o.id,
         salesOrderCode: o.code,
+        customerName: o.customerName,
         completed: o.completedProductionOrders,
         total: o.totalProductionOrders,
         progressPercent:
@@ -463,5 +481,39 @@ export class ProductionOrderService {
             : 0,
       })),
     };
+  }
+
+  // Cảnh báo Phiếu SX trễ SLA (Dashboard Alerts, 026-cai-tien-dashboard.md
+  // mục 3b) — hạn SX là Derived Data tính runtime = createdAt + N ngày
+  // (Nguyên tắc 13 — không lưu field mới trên ProductionOrder). Không
+  // hard-code số ngày — đọc Settings.Dashboard.productionOrderSlaDays nếu
+  // caller không truyền.
+  async getOverdueProductionOrders(slaDays?: number) {
+    const days =
+      slaDays ??
+      (await this.settingService.getNumberValue(
+        'Dashboard',
+        'productionOrderSlaDays',
+      ));
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - days);
+
+    return this.prisma.productionOrder.findMany({
+      where: {
+        status: {
+          in: [ProductionOrderStatus.PENDING, ProductionOrderStatus.IN_PRODUCTION],
+        },
+        createdAt: { lte: threshold },
+      },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        productionCenterName: true,
+        createdAt: true,
+        salesOrder: { select: { id: true, code: true, customerName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 }

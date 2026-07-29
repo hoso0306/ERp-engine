@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader, Loading, ErrorState, EmptyState, DateRangeFilter, endOfDayBound } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,8 +31,9 @@ interface ReturnRow {
   _count: { items: number };
 }
 
-export default function ReturnsPage() {
+function ReturnsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { hasPermission } = useAuth();
   const [tab, setTab] = useState("returns");
 
@@ -60,6 +61,22 @@ export default function ReturnsPage() {
   const [markUsedTarget, setMarkUsedTarget] = useState<RecoveryInventoryRow | null>(null);
   const [disposeTarget, setDisposeTarget] = useState<RecoveryInventoryRow | null>(null);
   const [editTarget, setEditTarget] = useState<RecoveryInventoryRow | null>(null);
+
+  // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — tile "Tồn
+  // kho thu hồi lâu" đưa thẳng sang tab Kho thu hồi, lọc "Còn trong kho",
+  // sắp xếp ngày tạo tăng dần (hàng cũ nhất lên trước) — trang chưa có filter
+  // "quá N ngày" thật sự, đây là cách tiếp cận gần nhất bằng filter sẵn có.
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam === "recovery") {
+      setTab("recovery");
+      const statusParam = searchParams.get("status");
+      if (statusParam) setRecoveryStatus(statusParam);
+      const sortParam = searchParams.get("sort");
+      if (sortParam) setRecoverySortBy(sortParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
@@ -311,5 +328,13 @@ export default function ReturnsPage() {
         onConfirm={handleDispose}
       />
     </div>
+  );
+}
+
+export default function ReturnsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReturnsPageContent />
+    </Suspense>
   );
 }

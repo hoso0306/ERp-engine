@@ -56,6 +56,26 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   OTHER: 'Khác',
 };
 
+// Khớp enum PaymentType (schema.prisma) — chỉ dùng cho export "Xuất dữ liệu
+// backup" bên dưới.
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  NORMAL: 'Thường',
+  REVERSAL: 'Đảo chiều',
+};
+
+// Khớp enum Priority/CustomerStatus (schema.prisma) — chỉ dùng cho export
+// "Xuất dữ liệu backup" bên dưới, cùng nhãn đã dùng ở FE (customer-table.tsx).
+const CUSTOMER_PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Thấp',
+  MEDIUM: 'Trung bình',
+  HIGH: 'Cao',
+};
+
+const CUSTOMER_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Đang hoạt động',
+  INACTIVE: 'Ngừng hoạt động',
+};
+
 // Report là Presentation Layer (report.md): không Prisma, không Business
 // Logic — chỉ gọi Service của module sở hữu dữ liệu và trình bày lại.
 @Injectable()
@@ -253,6 +273,16 @@ export class ReportService {
         return this.buildRevenueByCustomerExport(range);
       case 'returns':
         return this.buildReturnsExport(range);
+      // Xuất dữ liệu backup (report.md mục "Xuất dữ liệu backup") — NGOÀI
+      // catalog 14 báo cáo phân tích, chỉ dùng chung route/hạ tầng export.
+      case 'orders-list':
+        return this.buildOrdersListExport(range);
+      case 'receivables-list':
+        return this.buildReceivablesListExport(range);
+      case 'payments-list':
+        return this.buildPaymentsListExport(range);
+      case 'customers-list':
+        return this.buildCustomersListExport(range);
       default:
         throw new BadRequestException(`Báo cáo "${name}" không tồn tại.`);
     }
@@ -651,6 +681,189 @@ export class ReportService {
           value: c.returnCount,
         })),
       ],
+    };
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Xuất dữ liệu backup (report.md mục "Xuất dữ liệu backup") — liệt kê
+  // TOÀN BỘ bản ghi trong kỳ (KHÔNG loại CANCELLED, khác Quy tắc loại trừ
+  // của 14 báo cáo phân tích ở trên) — phục vụ backup dữ liệu, không phải
+  // phân tích kinh doanh.
+  // ─────────────────────────────────────────────────────
+
+  private async buildOrdersListExport(
+    range: ReportRange,
+  ): Promise<ReportExportData> {
+    const orders = await this.salesOrderService.getAllOrdersRaw(
+      range.from,
+      range.to,
+    );
+    return {
+      title: 'Xuất dữ liệu backup — Đơn hàng',
+      landscape: true,
+      columns: [
+        { header: 'Mã đơn', key: 'code', width: 14 },
+        { header: 'Mã báo giá', key: 'quotationCode', width: 14 },
+        { header: 'Khách hàng', key: 'customerName', width: 24 },
+        { header: 'SĐT', key: 'customerPhone', width: 14, numFmt: '@' },
+        { header: 'Trạng thái', key: 'status', width: 18 },
+        { header: 'Thanh toán', key: 'paymentStatus', width: 16 },
+        { header: 'Tổng tiền', key: 'totalAmount', width: 16, align: 'right' },
+        { header: 'VAT', key: 'totalVatAmount', width: 14, align: 'right' },
+        { header: 'Giảm giá', key: 'discountAmount', width: 14, align: 'right' },
+        { header: 'Phí ship', key: 'shippingFee', width: 12, align: 'right' },
+        { header: 'Tổng thanh toán', key: 'grandTotal', width: 16, align: 'right' },
+        { header: 'Giá vốn KH', key: 'plannedCost', width: 14, align: 'right' },
+        { header: 'Lợi nhuận KH', key: 'plannedProfit', width: 14, align: 'right' },
+        { header: 'Nhân viên phụ trách', key: 'ownerName', width: 20 },
+        { header: 'Ngày giao dự kiến', key: 'expectedDeliveryDate', width: 16 },
+        { header: 'Ngày giao thực tế', key: 'actualDeliveryDate', width: 16 },
+        { header: 'Ngày tạo', key: 'createdAt', width: 16 },
+      ],
+      rows: orders.map((o) => ({
+        code: o.code,
+        quotationCode: o.quotationCode,
+        customerName: o.customerName,
+        customerPhone: o.customerPhone,
+        status: SALES_ORDER_STATUS_LABELS[o.status] ?? o.status,
+        paymentStatus: PAYMENT_STATUS_LABELS[o.paymentStatus] ?? o.paymentStatus,
+        totalAmount: Number(o.totalAmount),
+        totalVatAmount: Number(o.totalVatAmount),
+        discountAmount: Number(o.discountAmount),
+        shippingFee: Number(o.shippingFee),
+        grandTotal: Number(o.grandTotal),
+        plannedCost: Number(o.plannedCost),
+        plannedProfit: Number(o.plannedProfit),
+        ownerName: o.ownerName ?? '',
+        expectedDeliveryDate: o.expectedDeliveryDate
+          ? o.expectedDeliveryDate.toLocaleDateString('vi-VN')
+          : '',
+        actualDeliveryDate: o.actualDeliveryDate
+          ? o.actualDeliveryDate.toLocaleDateString('vi-VN')
+          : '',
+        createdAt: o.createdAt.toLocaleDateString('vi-VN'),
+      })),
+    };
+  }
+
+  private async buildReceivablesListExport(
+    range: ReportRange,
+  ): Promise<ReportExportData> {
+    const receivables = await this.debtService.getAllReceivablesRaw(
+      range.from,
+      range.to,
+    );
+    return {
+      title: 'Xuất dữ liệu backup — Công nợ',
+      landscape: true,
+      columns: [
+        { header: 'Mã đơn hàng', key: 'orderCode', width: 14 },
+        { header: 'Khách hàng', key: 'customerName', width: 24 },
+        { header: 'SĐT', key: 'customerPhone', width: 14, numFmt: '@' },
+        { header: 'Tổng tiền', key: 'totalAmount', width: 16, align: 'right' },
+        { header: 'Đã thu', key: 'paidAmount', width: 16, align: 'right' },
+        { header: 'Còn lại', key: 'remainingAmount', width: 16, align: 'right' },
+        { header: 'Tổng trước VAT', key: 'totalAmountBeforeVat', width: 16, align: 'right' },
+        { header: 'Còn lại trước VAT', key: 'remainingAmountBeforeVat', width: 16, align: 'right' },
+        { header: 'Hạn thanh toán', key: 'dueDate', width: 14 },
+        { header: 'Đóng không xuất HĐ', key: 'closedWithoutVat', width: 16 },
+        { header: 'Ngày tạo', key: 'createdAt', width: 16 },
+      ],
+      rows: receivables.map((r) => ({
+        orderCode: r.salesOrder.code,
+        customerName: r.salesOrder.customerName,
+        customerPhone: r.salesOrder.customerPhone,
+        totalAmount: Number(r.totalAmount),
+        paidAmount: Number(r.paidAmount),
+        remainingAmount: Number(r.remainingAmount),
+        totalAmountBeforeVat: Number(r.totalAmountBeforeVat),
+        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
+        dueDate: r.dueDate ? r.dueDate.toLocaleDateString('vi-VN') : '',
+        closedWithoutVat: r.closedWithoutVat ? 'Có' : 'Không',
+        createdAt: r.createdAt.toLocaleDateString('vi-VN'),
+      })),
+    };
+  }
+
+  private async buildPaymentsListExport(
+    range: ReportRange,
+  ): Promise<ReportExportData> {
+    const payments = await this.debtService.getAllPaymentsRaw(
+      range.from,
+      range.to,
+    );
+    return {
+      title: 'Xuất dữ liệu backup — Thanh toán',
+      landscape: true,
+      columns: [
+        { header: 'Mã phiếu thu', key: 'code', width: 14 },
+        { header: 'Ngày thu', key: 'paymentDate', width: 14 },
+        { header: 'Số tiền', key: 'amount', width: 16, align: 'right' },
+        { header: 'Hình thức TT', key: 'paymentMethod', width: 16 },
+        { header: 'Loại', key: 'type', width: 12 },
+        { header: 'Số tham chiếu', key: 'referenceNumber', width: 18 },
+        { header: 'Người tạo', key: 'createdBy', width: 18 },
+        { header: 'Ghi chú', key: 'note', width: 24 },
+        { header: 'Ngày tạo', key: 'createdAt', width: 16 },
+      ],
+      rows: payments.map((p) => ({
+        code: p.code,
+        paymentDate: p.paymentDate.toLocaleDateString('vi-VN'),
+        amount: Number(p.amount),
+        paymentMethod: PAYMENT_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod,
+        type: PAYMENT_TYPE_LABELS[p.type] ?? p.type,
+        referenceNumber: p.referenceNumber ?? '',
+        createdBy: p.createdBy ?? '',
+        note: p.note ?? '',
+        createdAt: p.createdAt.toLocaleDateString('vi-VN'),
+      })),
+    };
+  }
+
+  private async buildCustomersListExport(
+    range: ReportRange,
+  ): Promise<ReportExportData> {
+    const customers = await this.customerService.getAllCustomersRaw(
+      range.from,
+      range.to,
+    );
+    return {
+      title: 'Xuất dữ liệu backup — Khách hàng',
+      landscape: true,
+      columns: [
+        { header: 'Mã KH', key: 'code', width: 12 },
+        { header: 'Tên khách hàng', key: 'name', width: 24 },
+        { header: 'SĐT', key: 'phone', width: 14, numFmt: '@' },
+        { header: 'Email', key: 'email', width: 22 },
+        { header: 'Tên công ty', key: 'companyName', width: 22 },
+        { header: 'Mã số thuế', key: 'taxCode', width: 14, numFmt: '@' },
+        { header: 'Địa chỉ', key: 'address', width: 30 },
+        { header: 'Nhóm KH', key: 'groupName', width: 16 },
+        { header: 'Tuyến GH', key: 'routeName', width: 16 },
+        { header: 'Ưu tiên', key: 'priority', width: 12 },
+        { header: 'Trạng thái', key: 'status', width: 16 },
+        { header: 'Hạn mức CN', key: 'debtLimit', width: 14, align: 'right' },
+        { header: 'Thời hạn CN (ngày)', key: 'debtTermDays', width: 14, align: 'right' },
+        { header: 'Ngày tạo', key: 'createdAt', width: 16 },
+      ],
+      rows: customers.map((c) => ({
+        code: c.code,
+        name: c.name,
+        phone: c.phone,
+        email: c.email ?? '',
+        companyName: c.companyName ?? '',
+        taxCode: c.taxCode ?? '',
+        address: [c.address, c.ward, c.district, c.province]
+          .filter(Boolean)
+          .join(', '),
+        groupName: c.customerGroup?.name ?? '',
+        routeName: c.deliveryRoute?.name ?? '',
+        priority: CUSTOMER_PRIORITY_LABELS[c.priority] ?? c.priority,
+        status: CUSTOMER_STATUS_LABELS[c.status] ?? c.status,
+        debtLimit: Number(c.debtLimit),
+        debtTermDays: c.debtTermDays,
+        createdAt: c.createdAt.toLocaleDateString('vi-VN'),
+      })),
     };
   }
 }

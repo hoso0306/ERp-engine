@@ -47,6 +47,8 @@ describe('DebtService', () => {
       create: jest.Mock;
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
+      findMany: jest.Mock;
+      groupBy: jest.Mock;
     };
     paymentAllocation: { create: jest.Mock };
     salesOrderTimeline: { create: jest.Mock };
@@ -77,6 +79,8 @@ describe('DebtService', () => {
         create: jest.fn(),
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        groupBy: jest.fn().mockResolvedValue([]),
       },
       paymentAllocation: { create: jest.fn() },
       salesOrderTimeline: { create: jest.fn() },
@@ -1034,6 +1038,42 @@ describe('DebtService', () => {
           where: { id: { in: ['cust-3'] } },
         }),
       );
+    });
+  });
+
+  // 027-thiet-ke-lai-dashboard-bo-loc-rieng.md mục 4 — dùng chung 1 định
+  // nghĩa "phát sinh" cho cả Report (getDebtReport) và Dashboard.
+  describe('getReceivablesInRangeSummary()', () => {
+    it('trả về nợ mới phát sinh (loại SalesOrder CANCELLED) và tiền đã thu trong kỳ', async () => {
+      prisma.receivable.aggregate.mockResolvedValueOnce({
+        _sum: { totalAmount: 4000000 },
+        _count: { _all: 3 },
+      });
+      prisma.payment.findMany.mockResolvedValue([
+        { paymentDate: new Date('2026-07-15'), amount: 1000000 },
+        { paymentDate: new Date('2026-07-20'), amount: 500000 },
+      ]);
+      prisma.payment.groupBy.mockResolvedValue([
+        { paymentMethod: 'CASH', _sum: { amount: 1500000 }, _count: { _all: 2 } },
+      ]);
+
+      const from = new Date('2026-07-01');
+      const to = new Date('2026-07-31');
+      const result = await service.getReceivablesInRangeSummary(from, to);
+
+      expect(prisma.receivable.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            salesOrder: {
+              status: { not: 'CANCELLED' },
+              createdAt: { gte: from, lte: to },
+            },
+          },
+        }),
+      );
+      expect(result.newReceivableCount).toBe(3);
+      expect(result.newReceivableAmount).toBe(4000000);
+      expect(result.cashIn.totalCashIn).toBe(1500000);
     });
   });
 });

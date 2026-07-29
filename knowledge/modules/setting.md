@@ -137,9 +137,15 @@ topMaterials
 topProducts
 defaultDashboardPeriod
 upcomingDueDays
+quotationPendingDays
+productionOrderSlaDays
 ```
 
 `upcomingDueDays` dùng chung cho cả Dashboard lẫn `DebtService.getUpcomingDueReceivables()` — chỉ khai báo **một nơi duy nhất** ở đây (không lặp lại ở nhóm khác).
+
+`quotationPendingDays` (026-cai-tien-dashboard.md, mặc định 7) dùng chung cho Dashboard Alert "Báo giá gửi khách lâu chưa phản hồi" lẫn `QuotationWorkflowService.getPendingResponseQuotations()`.
+
+`productionOrderSlaDays` (026-cai-tien-dashboard.md, mặc định 2) — hạn sản xuất của Phiếu SX là Derived Data tính runtime (`ProductionOrder.createdAt` + số ngày này), không lưu field mới trên `ProductionOrder`. Dùng chung cho Dashboard Alert "Phiếu SX trễ SLA" lẫn `ProductionOrderService.getOverdueProductionOrders()`.
 
 Dashboard chỉ đọc các giá trị này, không lưu dữ liệu Dashboard.
 
@@ -325,6 +331,8 @@ topProducts
 topMaterials
 defaultDashboardPeriod
 upcomingDueDays
+quotationPendingDays
+productionOrderSlaDays
 ```
 
 Không lưu dữ liệu Dashboard trong Settings.
@@ -340,6 +348,8 @@ Settings không phụ thuộc Module nghiệp vụ nào.
 ## Module bị ảnh hưởng (cần sửa để đọc Settings thay vì hard-code)
 
 - **Debt module**: `DebtService.getUpcomingDueReceivables(days = 7)` — sửa để đọc `Settings.Dashboard.upcomingDueDays` thay vì tham số mặc định cứng.
+- **Quotation module**: `QuotationWorkflowService.getPendingResponseQuotations()` (026-cai-tien-dashboard.md) — đọc `Settings.Dashboard.quotationPendingDays` thay vì tham số mặc định cứng.
+- **Production module**: `ProductionOrderService.getOverdueProductionOrders()` (026-cai-tien-dashboard.md) — đọc `Settings.Dashboard.productionOrderSlaDays` thay vì tham số mặc định cứng.
 - **Quotation/SalesOrder (frontend print)**: `apps/web/.../quotations/[id]/print/page.tsx` — sửa để đọc `Settings.Company.*` và `Settings.Document.quotationDefaultTerms` thay vì placeholder hard-code.
 - Dashboard, Notification — đọc các giá trị tương ứng ở mục "Nhóm cấu hình".
 - **Script Backup** (`scripts/backup/` — đã có sẵn trong repo, không phải business module trong `03-danh-sach-module.md`): đọc `backupProvider`/`retentionDays`/`backupSchedule` từ nhóm "Backup Settings".

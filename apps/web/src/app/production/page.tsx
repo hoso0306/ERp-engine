@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader, Loading, ErrorState, EmptyState, todayISO, endOfDayBound } from "@/components/shared";
 import {
   ProductionFilter,
@@ -30,7 +31,8 @@ interface ProductionCenter {
   name: string;
 }
 
-export default function ProductionPage() {
+function ProductionPageContent() {
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<ProductionOrderRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
@@ -73,6 +75,32 @@ export default function ProductionPage() {
 
   useEffect(() => {
     apiGet<ProductionCenter[]>("/production-centers").then(setProductionCenters).catch(() => {});
+  }, []);
+
+  // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — đọc
+  // status/from/to từ query lúc mount, áp vào state lọc đã có sẵn của trang.
+  // "Chờ SX"/"Đang SX" ở Dashboard là tức thời (không giới hạn theo ngày tạo)
+  // nên xoá bộ lọc ngày mặc định "Hôm nay" khi vào từ 2 link đó; "Đã huỷ" ở
+  // Dashboard theo đúng khoảng ngày đã chọn nên nhận kèm from/to nếu có.
+  useEffect(() => {
+    const statusParam = searchParams.get("status");
+    if (!statusParam) return;
+    const matchedTab = (
+      Object.entries(TAB_STATUS_PARAM) as [ProductionOrderTab, string | null][]
+    ).find(([, v]) => v === statusParam)?.[0];
+    if (!matchedTab) return;
+    setTab(matchedTab);
+
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    if (fromParam || toParam) {
+      setDateFrom(fromParam ?? "");
+      setDateTo(toParam ?? "");
+    } else if (matchedTab === "pending" || matchedTab === "in_production") {
+      setDateFrom("");
+      setDateTo("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -174,5 +202,13 @@ export default function ProductionPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ProductionPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProductionPageContent />
+    </Suspense>
   );
 }

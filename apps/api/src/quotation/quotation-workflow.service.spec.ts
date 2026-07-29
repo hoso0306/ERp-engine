@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
 import { PermissionService } from '../permission/permission.service';
+import { SettingService } from '../setting/setting.service';
 
 function makeItem(overrides: Record<string, unknown> = {}) {
   return {
@@ -123,6 +124,10 @@ describe('QuotationWorkflowService.approve()', () => {
           useValue: new BomEngineService(bomPrisma as unknown as PrismaService),
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -560,6 +565,10 @@ describe('QuotationWorkflowService — actor name snapshot', () => {
           useValue: { loadConfigForVersion: jest.fn() },
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -681,6 +690,10 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
           useValue: { loadConfigForVersion: jest.fn() },
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -828,6 +841,10 @@ describe('QuotationWorkflowService.update() — đổi khách hàng', () => {
           useValue: { loadConfigForVersion: jest.fn() },
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -1017,6 +1034,10 @@ describe('QuotationWorkflowService — snapshot valueLabel cho tham số ENUM', 
           useValue: { loadConfigForVersion: jest.fn() },
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -1156,6 +1177,10 @@ describe('QuotationWorkflowService.discount()', () => {
           useValue: { loadConfigForVersion: jest.fn() },
         },
         { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -1247,6 +1272,10 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
         { provide: PricingEngineService, useValue: { calculate: jest.fn() } },
         { provide: BomEngineService, useValue: bomEngine },
         { provide: PermissionService, useValue: permissionService },
+        {
+          provide: SettingService,
+          useValue: { getNumberValue: jest.fn().mockResolvedValue(7) },
+        },
       ],
     }).compile();
 
@@ -1376,5 +1405,88 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
 
     expect((result.data[0] as { totalCost: number }).totalCost).toBe(250_000);
     expect((result.data[0] as { profit: number }).profit).toBe(350_000);
+  });
+});
+
+// Dashboard Alerts (026-cai-tien-dashboard.md mục 3a).
+describe('QuotationWorkflowService.getPendingResponseQuotations()', () => {
+  let service: QuotationWorkflowService;
+  let prisma: {
+    quotationTimeline: { findMany: jest.Mock };
+    quotation: { findMany: jest.Mock };
+  };
+  let settingService: { getNumberValue: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      quotationTimeline: { findMany: jest.fn().mockResolvedValue([]) },
+      quotation: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    settingService = { getNumberValue: jest.fn().mockResolvedValue(7) };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QuotationWorkflowService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PricingEngineService, useValue: { calculate: jest.fn() } },
+        { provide: BomEngineService, useValue: { loadConfigForVersion: jest.fn() } },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+        { provide: SettingService, useValue: settingService },
+      ],
+    }).compile();
+
+    service = module.get<QuotationWorkflowService>(QuotationWorkflowService);
+  });
+
+  it('reads pendingDays from Settings.Dashboard.quotationPendingDays when not provided', async () => {
+    await service.getPendingResponseQuotations();
+
+    expect(settingService.getNumberValue).toHaveBeenCalledWith(
+      'Dashboard',
+      'quotationPendingDays',
+    );
+  });
+
+  it('returns [] early without querying Quotation when no SENT timeline is old enough', async () => {
+    prisma.quotationTimeline.findMany.mockResolvedValue([]);
+
+    const result = await service.getPendingResponseQuotations(7);
+
+    expect(settingService.getNumberValue).not.toHaveBeenCalled();
+    expect(prisma.quotation.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it('maps sentAt from QuotationTimeline onto still-SENT quotations only', async () => {
+    const sentAt = new Date('2026-07-01T00:00:00Z');
+    prisma.quotationTimeline.findMany.mockResolvedValue([
+      { quotationId: 'q-1', createdAt: sentAt },
+    ]);
+    prisma.quotation.findMany.mockResolvedValue([
+      {
+        id: 'q-1',
+        code: 'BG000001',
+        customerId: 'cust-1',
+        customer: { name: 'Nguyễn Văn An', phone: '0901000001' },
+      },
+    ]);
+
+    const result = await service.getPendingResponseQuotations(7);
+
+    expect(prisma.quotation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'SENT' }),
+      }),
+    );
+    expect(result).toEqual([
+      {
+        id: 'q-1',
+        code: 'BG000001',
+        customerId: 'cust-1',
+        customerName: 'Nguyễn Văn An',
+        customerPhone: '0901000001',
+        sentAt,
+      },
+    ]);
   });
 });

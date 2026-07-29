@@ -351,3 +351,126 @@ describe('SalesOrderService — actor name snapshot', () => {
     });
   });
 });
+
+// Dải "Hôm nay" (Dashboard, 026-cai-tien-dashboard.md mục 5).
+describe('SalesOrderService.getTodaySummary()', () => {
+  let service: SalesOrderService;
+  let prisma: {
+    salesOrder: { count: jest.Mock };
+    salesOrderTimeline: { findMany: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      salesOrder: { count: jest.fn().mockResolvedValue(0) },
+      salesOrderTimeline: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SalesOrderService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettingService, useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<SalesOrderService>(SalesOrderService);
+  });
+
+  it('counts non-CANCELLED orders created in range, and distinct SHIPPED timelines in range', async () => {
+    const range = {
+      from: new Date('2026-07-28T00:00:00'),
+      to: new Date('2026-07-28T23:59:59.999'),
+    };
+    prisma.salesOrder.count.mockResolvedValue(3);
+    prisma.salesOrderTimeline.findMany.mockResolvedValue([
+      { salesOrderId: 'so-1' },
+      { salesOrderId: 'so-2' },
+    ]);
+
+    const result = await service.getTodaySummary(range);
+
+    expect(prisma.salesOrder.count).toHaveBeenCalledWith({
+      where: {
+        createdAt: { gte: range.from, lte: range.to },
+        status: { not: 'CANCELLED' },
+      },
+    });
+    expect(prisma.salesOrderTimeline.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          action: 'SHIPPED',
+          createdAt: { gte: range.from, lte: range.to },
+        },
+        distinct: ['salesOrderId'],
+      }),
+    );
+    expect(result).toEqual({ newOrders: 3, shippedOrders: 2 });
+  });
+});
+
+// Khối Kinh doanh (Dashboard, 027-thiet-ke-lai-dashboard-bo-loc-rieng.md mục 2)
+// — giờ có bộ lọc riêng, áp cả vào 3 tile tiền lẫn 3 tile đếm.
+describe('SalesOrderService.getDashboardSummary()', () => {
+  let service: SalesOrderService;
+  let prisma: {
+    salesOrder: { aggregate: jest.Mock; groupBy: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      salesOrder: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { totalAmount: 0, plannedCost: 0, plannedProfit: 0 },
+        }),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SalesOrderService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettingService, useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<SalesOrderService>(SalesOrderService);
+  });
+
+  it('không truyền range -> all-time, không thêm createdAt vào where', async () => {
+    await service.getDashboardSummary();
+
+    expect(prisma.salesOrder.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { not: 'CANCELLED' } },
+      }),
+    );
+    expect(prisma.salesOrder.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: undefined }),
+    );
+  });
+
+  it('truyền range -> lọc createdAt trên cả aggregate (tile tiền) lẫn groupBy (tile đếm)', async () => {
+    const range = {
+      from: new Date('2026-07-28T00:00:00'),
+      to: new Date('2026-07-28T23:59:59.999'),
+    };
+
+    await service.getDashboardSummary(range);
+
+    expect(prisma.salesOrder.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: { not: 'CANCELLED' },
+          createdAt: { gte: range.from, lte: range.to },
+        },
+      }),
+    );
+    expect(prisma.salesOrder.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { createdAt: { gte: range.from, lte: range.to } },
+      }),
+    );
+  });
+});

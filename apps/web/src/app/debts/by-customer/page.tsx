@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,8 @@ type CustomerSort = "remaining_desc" | "name_asc";
 // Rà soát tab Công nợ (chốt 26/07/2026) — route riêng cho view gộp theo
 // khách hàng, song song /debts (theo đơn hàng). API GET /receivables/by-customer
 // group SUM(remainingAmount) theo customerId (xem debt.service.ts).
-export default function DebtsByCustomerPage() {
+function DebtsByCustomerPageContent() {
+  const searchParams = useSearchParams();
   const { hasPermission } = useAuth();
   const [rows, setRows] = useState<CustomerDebtRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
@@ -79,6 +81,15 @@ export default function DebtsByCustomerPage() {
   useEffect(() => {
     setPage(1);
   }, [search, tab, sortBy]);
+
+  // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — tile
+  // "Quá hạn"/"Vượt hạn mức" đưa thẳng sang đúng tab tương ứng.
+  useEffect(() => {
+    const filterParam = searchParams.get("filter");
+    if (filterParam === "overdue") setTab("overdue");
+    if (filterParam === "creditExceeded") setTab("credit_exceeded");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -150,5 +161,13 @@ export default function DebtsByCustomerPage() {
         onSaved={fetchRows}
       />
     </div>
+  );
+}
+
+export default function DebtsByCustomerPage() {
+  return (
+    <Suspense fallback={null}>
+      <DebtsByCustomerPageContent />
+    </Suspense>
   );
 }

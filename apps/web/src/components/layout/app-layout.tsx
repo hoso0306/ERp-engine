@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
+import { SidebarAutoCollapse } from "./sidebar-auto-collapse";
 import { Header } from "./header";
 import { useAuth } from "@/context/auth-context";
 import { Loading } from "@/components/shared";
@@ -38,6 +39,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <BreadcrumbProvider>
       <SidebarProvider defaultOpen={false}>
+        <SidebarAutoCollapse />
         <AppSidebar />
         <SidebarInset>
           <Header />

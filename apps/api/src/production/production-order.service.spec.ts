@@ -7,6 +7,7 @@ import {
 import { ProductionOrderService } from './production-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
+import { SettingService } from '../setting/setting.service';
 
 function makeProductionOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -49,6 +50,7 @@ describe('ProductionOrderService', () => {
     $transaction: jest.Mock;
   };
   let salesOrderService: { syncProductionProgress: jest.Mock };
+  let settingService: { getNumberValue: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -76,12 +78,14 @@ describe('ProductionOrderService', () => {
       }),
     };
     salesOrderService = { syncProductionProgress: jest.fn() };
+    settingService = { getNumberValue: jest.fn().mockResolvedValue(2) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductionOrderService,
         { provide: PrismaService, useValue: prisma },
         { provide: SalesOrderService, useValue: salesOrderService },
+        { provide: SettingService, useValue: settingService },
       ],
     }).compile();
 
@@ -353,6 +357,31 @@ describe('ProductionOrderService', () => {
         }),
       );
       expect(prisma.productionOrder.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // Dashboard Alerts (026-cai-tien-dashboard.md mục 3b).
+  describe('getOverdueProductionOrders()', () => {
+    it('reads SLA days from Settings.Dashboard.productionOrderSlaDays when not provided', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([]);
+
+      await service.getOverdueProductionOrders();
+
+      expect(settingService.getNumberValue).toHaveBeenCalledWith(
+        'Dashboard',
+        'productionOrderSlaDays',
+      );
+    });
+
+    it('filters PENDING/IN_PRODUCTION orders created before the SLA threshold', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([]);
+
+      await service.getOverdueProductionOrders(2);
+
+      expect(settingService.getNumberValue).not.toHaveBeenCalled();
+      const call = prisma.productionOrder.findMany.mock.calls[0][0];
+      expect(call.where.status).toEqual({ in: ['PENDING', 'IN_PRODUCTION'] });
+      expect(call.where.createdAt.lte).toBeInstanceOf(Date);
     });
   });
 });

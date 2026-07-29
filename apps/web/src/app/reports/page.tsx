@@ -13,6 +13,10 @@ import {
   UserRound,
   Users,
   RotateCcw,
+  DatabaseBackup,
+  Receipt,
+  Banknote,
+  Contact,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
@@ -61,6 +65,17 @@ const REPORT_GROUPS: ReportGroup[] = [
     label: "Vận hành",
     reports: [
       { title: "Hàng hoàn", description: "Số phiếu, giá trị hoàn, top lý do", href: "/reports/returns", icon: RotateCcw },
+    ],
+  },
+  {
+    // Ngoài catalog 14 báo cáo phân tích (report.md) — export danh sách thô,
+    // đầy đủ (kể cả đơn huỷ), phục vụ backup dữ liệu định kỳ.
+    label: "Xuất dữ liệu backup",
+    reports: [
+      { title: "Khách hàng", description: "Toàn bộ khách hàng tạo trong kỳ", href: "/reports/customers-list", icon: Contact },
+      { title: "Đơn hàng", description: "Toàn bộ đơn hàng trong kỳ, kể cả đơn đã huỷ", href: "/reports/orders-list", icon: DatabaseBackup },
+      { title: "Công nợ", description: "Toàn bộ phiếu công nợ trong kỳ", href: "/reports/receivables-list", icon: Receipt },
+      { title: "Thanh toán", description: "Toàn bộ lịch sử thu tiền trong kỳ", href: "/reports/payments-list", icon: Banknote },
     ],
   },
 ];

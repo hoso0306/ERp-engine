@@ -344,7 +344,11 @@ deliver
 cancel
 
 override
+
+view-cost
 ```
+
+**`view-cost` (026-cai-tien-dashboard.md):** xem KPI tài chính (doanh thu/giá vốn/lợi nhuận kế hoạch) của khối Kinh doanh trên Dashboard. Cùng convention với `quotation.view-cost`: tách riêng khỏi `view`, độc lập hoàn toàn (không phụ thuộc `view`), chỉ OWNER/ADMIN có (qua `allKeys()`) — SALES có `sales-order.view` nhưng KHÔNG có `sales-order.view-cost`. Đây là **ngoại lệ có chủ đích** với nguyên tắc "Dashboard không có permission riêng cho từng KPI" ở mục "Dashboard Permission" bên dưới — quyền này thuộc về Sales Order module (không phải Dashboard), động lực tạo ra là phục vụ nhu cầu ẩn/hiện KPI tài chính trên Dashboard.
 
 ---
 
@@ -510,6 +514,16 @@ Production Overview  → hỏi quyền  production.view
 ```
 
 Không có quyền `xxx.view` tương ứng → ẩn đúng phần KPI đó, không ẩn toàn bộ Dashboard. Không tạo thêm permission `dashboard.sales`/`dashboard.debt`/`dashboard.warehouse` nào — tránh nhân đôi permission cho cùng một khái niệm.
+
+**Ngoại lệ đã duyệt — Sales Overview (026-cai-tien-dashboard.md):** khối Kinh doanh trên Dashboard (doanh thu/giá vốn/lợi nhuận kế hoạch, đếm trạng thái đơn, bảng đơn hàng gần đây) ẩn theo `sales-order.view-cost` — không phải `sales-order.view` — vì đây là dữ liệu tài chính nhạy cảm, không phải thao tác vận hành thông thường (xem mục "Sales Order" ở trên). Các phần còn lại liên quan Sales Order trên Dashboard vẫn theo `sales-order.view`:
+
+```text
+Dải "Hôm nay" — số Đơn mới / Đơn đã giao xe   → hỏi quyền  sales-order.view
+Dải "Hôm nay" — Tiền đã thu hôm nay            → hỏi quyền  debt.view
+Cảnh báo — Đơn trễ giao                        → hỏi quyền  sales-order.view
+Cảnh báo — Báo giá gửi khách lâu chưa phản hồi → hỏi quyền  quotation.view
+Cảnh báo — Phiếu SX trễ SLA                    → hỏi quyền  production.view
+```
 
 ---
 

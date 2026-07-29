@@ -118,14 +118,18 @@ Dashboard luôn là điểm cuối.
 
 Nguồn dữ liệu: `SalesOrderService`.
 
-Hiển thị:
+Hiển thị (toàn bộ thời gian, không lọc theo bộ lọc đầu trang — chỉ bảng "Đơn hàng gần đây" lọc theo `createdAt`):
 
 - Tổng doanh thu kế hoạch (`SalesOrder.totalAmount`)
 - Tổng giá vốn kế hoạch (`SalesOrder.plannedCost`)
 - Tổng lợi nhuận kế hoạch (`SalesOrder.plannedProfit`)
-- Số đơn đang sản xuất / đã giao / hoàn thành (`COUNT(SalesOrder) GROUP BY status` — Aggregate đơn giản, được phép)
+- "Đơn đang SX" / "Đơn đã hoàn thành SX" / "Đã giao" (`COUNT(SalesOrder) GROUP BY status` — Aggregate đơn giản, được phép)
 
 Không tính lại từ `SalesOrderItem`.
+
+**Nhãn "Đơn đang SX"/"Đơn đã hoàn thành SX" (026-cai-tien-dashboard.md mục 1):** cố ý gọi khác với "Đang sản xuất"/"Đã hoàn thành" ở khối Production Overview bên dưới — hai số đếm 2 khái niệm khác nhau (đơn hàng vs phiếu sản xuất, 1 đơn có thể có nhiều phiếu), đặt sát nhau trên cùng trang nên cần nhãn phân biệt rõ để tránh Owner hiểu nhầm là cùng một số liệu.
+
+**Permission — `sales-order.view-cost` (không phải `sales-order.view`):** toàn bộ khối này ẩn nếu thiếu quyền `sales-order.view-cost` — dữ liệu tài chính nhạy cảm, xem mục "Permission" bên dưới.
 
 ---
 
@@ -186,13 +190,30 @@ Hiển thị:
 
 Hiển thị:
 
-- Đơn hàng quá hạn
+- Đơn hàng quá hạn (đơn trễ ngày giao dự kiến — `SalesOrderService.getDelayedOrders()`)
 - Khách vượt hạn mức
 - Công nợ quá hạn
 - ~~Sắp hết vật tư / Hết vật tư~~ — tạm gỡ cùng module Kho (xem `warehouse.md`)
-- Đơn sản xuất chậm
+- Báo giá gửi khách lâu chưa phản hồi (026-cai-tien-dashboard.md mục 3a) — `QuotationWorkflowService.getPendingResponseQuotations()`
+- Phiếu sản xuất trễ SLA (026-cai-tien-dashboard.md mục 3b) — `ProductionOrderService.getOverdueProductionOrders()`
 
 Alerts không tạo Workflow. Chỉ cảnh báo — cùng nguồn dữ liệu như các mục trên, gọi qua Service của module sở hữu.
+
+**Mốc "báo giá đã gửi" / "hạn sản xuất":** `Quotation` không có cột "ngày gửi" riêng — đọc qua `QuotationTimeline` action `QUOTATION_SENT`. `ProductionOrder` không có cột "hạn hoàn thành" — hạn là **Derived Data tính runtime** = `createdAt` + N ngày (Nguyên tắc 13, không lưu field mới). Cả 2 ngưỡng ngày (N) đọc từ `Settings.Dashboard.quotationPendingDays`/`productionOrderSlaDays` — xem `setting.md`.
+
+---
+
+## 6. Hôm nay (Today Digest)
+
+Dải tổng hợp nhanh ở đầu trang (026-cai-tien-dashboard.md mục 5) — **luôn cố định đúng ngày hôm nay theo giờ server, KHÔNG theo bộ lọc đầu trang Dashboard** (khác khối Sản xuất/Hàng hoàn).
+
+Hiển thị:
+
+- Đơn mới (`COUNT(SalesOrder)` theo `createdAt` hôm nay, loại `CANCELLED`)
+- Đơn đã giao xe (đếm distinct `SalesOrder` có `SalesOrderTimeline` action `SHIPPED` trong hôm nay)
+- Tiền đã thu hôm nay (tái dùng `DebtService.getCashInReport()` — đã có sẵn cho Report A2, không viết lại logic đọc `Payment`)
+
+Nguồn dữ liệu: `SalesOrderService` (đơn mới, đơn đã giao xe) + `DebtService` (tiền đã thu). Mỗi số ẩn theo đúng quyền `view` của module sở hữu — xem mục "Permission".
 
 ---
 
@@ -280,11 +301,13 @@ V2: có thể bổ sung Redis Cache, Materialized View, Scheduled Refresh.
 
 # Permission
 
-**V1: Dashboard chưa triển khai phân quyền.**
+Module Auth/Permission đã hoàn thành — Dashboard **đã triển khai phân quyền theo KPI**, chi tiết đầy đủ ở `permission.md` mục "Dashboard Permission" (nguồn duy nhất, không lặp lại ở đây). Tóm tắt nguyên tắc:
 
-Toàn bộ Permission (Owner xem toàn bộ, Manager xem theo phạm vi, Nhân viên không truy cập...) sẽ được thực hiện khi Module Authentication & Authorization (`Cài đặt` → `Phân quyền`, đã có trong roadmap `03-danh-sach-module.md` mục 11) hoàn thành.
+- `dashboard.view` — quyền truy cập trang Dashboard nói chung.
+- Từng khối KPI ẩn theo đúng quyền `view` của module sở hữu dữ liệu (`production.view`, `debt.view`, `return.view`, `sales-order.view`, `quotation.view`) — không có permission `dashboard.xxx` riêng.
+- **Ngoại lệ có chủ đích:** khối Sales Overview (mục 1) ẩn theo `sales-order.view-cost` — không phải `sales-order.view` — vì là dữ liệu tài chính nhạy cảm (026-cai-tien-dashboard.md).
 
-**Dashboard chỉ định nghĩa dữ liệu, không định nghĩa quyền truy cập.** Lý do: hiện dự án chưa có Auth module (`User` model chưa có field `role`, chưa có Login/JWT/Guard nào) — nếu Dashboard tự định nghĩa Permission bây giờ, Dashboard sẽ phụ thuộc vào một module chưa tồn tại.
+Không thiếu quyền tương ứng → ẩn đúng phần đó, không ẩn toàn bộ Dashboard.
 
 ---
 
@@ -314,7 +337,7 @@ Dashboard chỉ có Read API. Không có POST/PUT/PATCH/DELETE.
 - Ưu tiên đọc Summary Field có sẵn nếu đã tồn tại, không Aggregate lại từ đầu.
 - Dashboard luôn phản ánh dữ liệu hiện tại của hệ thống (V1 không cache).
 - Cảnh báo chỉ mang tính hỗ trợ ra quyết định, không tự động thay đổi trạng thái của bất kỳ Module nào.
-- V1 chưa triển khai Permission — để dành khi có Module Auth.
+- Đã triển khai Permission theo từng KPI — xem mục "Permission" và `permission.md`.
 
 ---
 
@@ -344,12 +367,15 @@ Warehouse      Payment
 
 ## Phụ thuộc
 
-- SalesOrderService, ProductionOrderService, WarehouseService, DebtService (chỉ gọi qua method đọc đã export — Module Ownership).
+- SalesOrderService, ProductionOrderService, WarehouseService, DebtService, QuotationWorkflowService (chỉ gọi qua method đọc đã export — Module Ownership).
 
 ## Module bị ảnh hưởng
 
 - Product module: cần thêm field `Material.minimumStock` (phục vụ "Sắp hết hàng"/"Hết hàng").
 - Debt module: cần bổ sung filter/method "Sắp đến hạn" (dueDate trong N ngày tới) vào Read API — hiện chưa có.
+- Quotation module: `getPendingResponseQuotations()` (026-cai-tien-dashboard.md).
+- Production module: `getOverdueProductionOrders()` (026-cai-tien-dashboard.md).
+- Sales Order module: permission mới `sales-order.view-cost` (026-cai-tien-dashboard.md) — xem `permission.md`.
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã thống nhất ở đây.
 

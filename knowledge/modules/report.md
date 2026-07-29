@@ -101,7 +101,7 @@ Report là **Presentation Layer** — cùng tầng và cùng luật với Dashbo
 
 **Khoảng ngày:** bộ lọc `from`–`to` là **inclusive theo ngày** trong timezone công ty (`from 00:00:00` đến `to 23:59:59`). Mặc định khi mở màn hình: đọc `Settings.Dashboard.defaultDashboardPeriod` — không hard-code.
 
-## Quy tắc loại trừ (áp dụng cho MỌI báo cáo)
+## Quy tắc loại trừ (áp dụng cho 14 báo cáo phân tích ở dưới)
 
 ```text
 SalesOrder.status != CANCELLED
@@ -110,6 +110,8 @@ SalesOrder.status != CANCELLED
 - Doanh thu / giá vốn / lợi nhuận / đơn hàng / cơ cấu sản phẩm / doanh thu nhân viên / doanh thu khách hàng: loại đơn `CANCELLED`.
 - Công nợ: chỉ tính Receivable thuộc SalesOrder chưa huỷ (đúng Dashboard Rule đã có ở `debt.md`).
 - Payment không cần lọc — đơn đã thu tiền không huỷ được (rule ở `debt.md`), nên mọi Payment đều thuộc đơn còn hiệu lực.
+
+**Ngoại lệ (chốt 28/07/2026):** nhóm "Xuất dữ liệu backup" (xem mục riêng bên dưới, sau Nhóm D) — 3 export thô phục vụ backup, KHÔNG loại `CANCELLED`. Đây không phải báo cáo phân tích nên không thuộc phạm vi câu "MỌI báo cáo" ở trên.
 
 ---
 
@@ -188,6 +190,37 @@ SalesOrder.status != CANCELLED
 
 ---
 
+# Xuất dữ liệu backup (chốt 28/07/2026)
+
+**Ngoài catalog 14 báo cáo phân tích ở trên.** Mục đích khác hẳn: không phải phân tích/ra quyết định, mà là xuất **toàn bộ dữ liệu thô** để người dùng tự lưu file `.xlsx` làm bản sao dự phòng thủ công, bổ sung cho `scripts/backup/backup.sh` (pg_dump — chỉ backup được DB, không tạo file rời cho từng nghiệp vụ). Chỉ dùng chung route `/reports/:name/export` và `ExcelService`/`PdfService` sẵn có của module này — không có endpoint hiển thị (`GET /reports/:name`) tương ứng, không có biểu đồ, không so sánh kỳ trước.
+
+**Khác 14 báo cáo phân tích ở đúng 1 điểm:** KHÔNG áp dụng Quy tắc loại trừ `CANCELLED` — liệt kê đầy đủ mọi bản ghi trong kỳ, kể cả thuộc đơn đã huỷ. Lý do: đây là bản sao dữ liệu, thiếu đơn huỷ nghĩa là backup không đầy đủ. Mọi nguyên tắc khác của Report (mốc ngày `from`/`to` bắt buộc, không tính lại Business Logic, Module Ownership) vẫn áp dụng nguyên vẹn.
+
+**Riêng E4 (Khách hàng, thêm 28/07/2026):** vẫn loại `Customer.deletedAt != null` — khác các export còn lại trong nhóm này, nhưng đúng hành vi đã có sẵn ở `GET /customers/export` (`customer.controller.ts`) mà E4 tái dùng cùng logic loại trừ, tránh 2 nơi định nghĩa "khách hợp lệ" khác nhau.
+
+## E1. Đơn hàng
+
+- **Nguồn:** `SalesOrderService.getAllOrdersRaw()`, lọc `SalesOrder.createdAt` trong kỳ — không lọc `status`.
+- **Nội dung:** 1 dòng/đơn hàng — mã đơn, mã báo giá, khách hàng, SĐT, trạng thái, trạng thái thanh toán, các khoản tiền (`totalAmount`/`totalVatAmount`/`discountAmount`/`shippingFee`/`grandTotal`/`plannedCost`/`plannedProfit`), nhân viên phụ trách, ngày giao dự kiến/thực tế, ngày tạo.
+
+## E2. Công nợ
+
+- **Nguồn:** `DebtService.getAllReceivablesRaw()`, lọc `Receivable.createdAt` trong kỳ — không lọc theo trạng thái đơn.
+- **Nội dung:** 1 dòng/phiếu công nợ — mã đơn hàng, khách hàng, SĐT, tổng tiền, đã thu, còn lại (cả 2 mức trước/sau VAT), hạn thanh toán, đã đóng không xuất hoá đơn hay chưa, ngày tạo.
+
+## E3. Thanh toán
+
+- **Nguồn:** `DebtService.getAllPaymentsRaw()`, lọc `Payment.paymentDate` trong kỳ.
+- **Nội dung:** 1 dòng/phiếu thu — mã phiếu, ngày thu, số tiền, hình thức thanh toán, loại (Thường/Đảo chiều), số tham chiếu, người tạo, ghi chú, ngày tạo.
+
+## E4. Khách hàng
+
+- **Nguồn:** `CustomerService.getAllCustomersRaw()`, lọc `Customer.createdAt` trong kỳ, loại `deletedAt != null` (cùng hành vi `GET /customers/export`).
+- **Nội dung:** 1 dòng/khách hàng — mã KH, tên, SĐT, email, tên công ty, mã số thuế, địa chỉ, nhóm KH, tuyến giao hàng, ưu tiên, trạng thái, hạn mức công nợ, thời hạn công nợ, ngày tạo.
+- **Không thay thế** `GET /customers/export` (`customer.controller.ts`) — nút đó vẫn giữ nguyên trên trang `/customers`, dùng cho mục đích khác (xuất theo bộ lọc đang xem trên màn hình, phục vụ sửa rồi import lại), khác mục đích backup toàn bộ không filter của E4.
+
+---
+
 # Thay đổi schema cần TRƯỚC khi triển khai Report
 
 > **Cập nhật 18/07/2026 (khảo sát trước khi code — `008-module-bao-cao.md`):** mục 1 và 2 dưới đây **đã được làm từ trước** (không rõ ở lần nào), giữ lại mô tả để biết lý do thiết kế. Index `Payment(paymentDate)` ở mục 3 rà soát lại lúc triển khai Task 00 (`014-bao-cao.md`) — hoá ra cũng **đã có sẵn** từ migration `20260706044014_architecture_review_snapshots_return_status_indexes`, không cần migration mới.
@@ -251,6 +284,8 @@ GET /reports/returns                 # D2 (D1 Báo cáo kho tạm gỡ, xem Nhó
 
 Query params chung: `from`, `to` (yyyy-mm-dd, inclusive, timezone công ty). Không có POST/PUT/PATCH/DELETE.
 
+**Nhóm "Xuất dữ liệu backup" (E1-E4) không có endpoint hiển thị riêng** — chỉ tồn tại dưới dạng tên report cho `GET /reports/{name}/export` bên dưới (`orders-list`, `receivables-list`, `payments-list`, `customers-list`), vẫn nhận `from`/`to` qua query nhưng dùng để lọc theo ngày tạo/ngày thu.
+
 ## Excel & PDF Export
 
 Mỗi endpoint có bản export tương ứng, chọn định dạng qua query `format`:
@@ -258,6 +293,12 @@ Mỗi endpoint có bản export tương ứng, chọn định dạng qua query `
 ```http
 GET /reports/{name}/export?format=xlsx   # mặc định nếu không truyền
 GET /reports/{name}/export?format=pdf
+
+# Riêng nhóm E — không có GET /reports/{name} tương ứng, chỉ có export:
+GET /reports/orders-list/export         # E1
+GET /reports/receivables-list/export    # E2
+GET /reports/payments-list/export       # E3
+GET /reports/customers-list/export      # E4
 ```
 
 - **Excel:** sinh qua `ExcelService` (đã có sẵn — `apps/api/src/shared/excel/excel.service.ts`, đang dùng cho Customer/Product import-export) — Report không gọi thư viện Excel trực tiếp.
@@ -294,7 +335,7 @@ report.view
 # Business Rule
 
 - Mọi chỉ số phải lấy đúng nguồn + mốc ngày theo bảng "Nguyên tắc mốc ngày & Planned vs Actual" — Dashboard dùng chung định nghĩa này.
-- Mọi báo cáo loại `SalesOrder.status = CANCELLED` (trừ Payment — không thể tồn tại trên đơn huỷ).
+- 14 báo cáo phân tích (Nhóm A-D) loại `SalesOrder.status = CANCELLED` (trừ Payment — không thể tồn tại trên đơn huỷ). Nhóm "Xuất dữ liệu backup" (E1-E3) là ngoại lệ có chủ đích — KHÔNG loại `CANCELLED`, xem mục riêng.
 - Chỉ số Planned và Actual không được cộng lẫn trong cùng một con số.
 - "Lợi nhuận" luôn hiển thị nhãn "kế hoạch" ở V1.
 - Giá trị hàng hoàn hiển thị riêng, không trừ vào doanh thu.

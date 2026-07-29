@@ -652,7 +652,7 @@ export default function QuotationPrintPage() {
 
         {discountAmount > 0 && discountReason && (
           <div style={{ textAlign: "right", fontSize: 10.5, color: "var(--grey)", marginTop: 4 }}>
-            <em>Lý do giảm thêm: {discountReason}</em>
+            <em>Giảm thêm {fmt(discountAmount)} ₫ — Lý do: {discountReason}</em>
           </div>
         )}
         {shippingFee > 0 && (

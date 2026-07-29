@@ -19,7 +19,13 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   // vì chỉ OWNER/ADMIN được thấy — SALES có `view` (xem báo giá) nhưng KHÔNG
   // có `view-cost` (lọc trừ tường minh ở role SALES bên dưới, xem seed Role).
   quotation: ['view', 'create', 'update', 'approve', 'cancel', 'override', 'print', 'view-cost'],
-  'sales-order': ['view', 'ship', 'deliver', 'cancel', 'override'],
+  // 'view-cost' (026-cai-tien-dashboard.md) — xem KPI tài chính (doanh
+  // thu/giá vốn/lợi nhuận kế hoạch) của khối Kinh doanh trên Dashboard, dữ
+  // liệu tài chính nhạy cảm. Cùng convention với `quotation.view-cost`: tách
+  // riêng khỏi `view`, độc lập hoàn toàn (không phụ thuộc `view`), chỉ
+  // OWNER/ADMIN được thấy qua allKeys() — SALES có `view` nhưng KHÔNG có
+  // `view-cost` (không thêm vào danh sách permissionKeys của role SALES).
+  'sales-order': ['view', 'ship', 'deliver', 'cancel', 'override', 'view-cost'],
   production: ['view', 'start', 'complete'],
   warehouse: ['view', 'receipt'],
   debt: ['view', 'create-payment'],
@@ -271,6 +277,8 @@ async function main() {
     { module: 'Dashboard', key: 'topMaterials', value: '10', defaultValue: '10', valueType: 'NUMBER', description: 'Số lượng vật tư hiển thị ở Top tiêu thụ' },
     { module: 'Dashboard', key: 'defaultDashboardPeriod', value: '30', defaultValue: '30', valueType: 'NUMBER', description: 'Khoảng thời gian mặc định (số ngày) khi mở Dashboard' },
     { module: 'Dashboard', key: 'upcomingDueDays', value: '7', defaultValue: '7', valueType: 'NUMBER', description: 'Số ngày sắp đến hạn công nợ — dùng chung cho Dashboard và DebtService' },
+    { module: 'Dashboard', key: 'quotationPendingDays', value: '7', defaultValue: '7', valueType: 'NUMBER', description: 'Số ngày báo giá đã gửi khách mà chưa có phản hồi thì cảnh báo trên Dashboard' },
+    { module: 'Dashboard', key: 'productionOrderSlaDays', value: '2', defaultValue: '2', valueType: 'NUMBER', description: 'Số ngày SLA sản xuất — phiếu SX quá hạn này kể từ lúc sinh phiếu mà chưa hoàn thành thì cảnh báo trên Dashboard' },
 
     // Notification Settings (V1 chỉ bật/tắt, chưa gửi thật)
     { module: 'Notification', key: 'notifyOverdueDebt', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo công nợ quá hạn' },
