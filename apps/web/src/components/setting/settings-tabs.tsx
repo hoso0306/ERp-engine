@@ -22,7 +22,12 @@ export function SettingsTabs({ active }: { active: SettingsTabValue }) {
       <Tabs value={active}>
         <TabsList>
           {SETTINGS_TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} render={<Link href={t.href} />}>
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              nativeButton={false}
+              render={<Link href={t.href} />}
+            >
               {t.label}
             </TabsTrigger>
           ))}

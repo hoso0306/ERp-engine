@@ -300,7 +300,7 @@ export function QuotationItemDialog({
                         <SelectTrigger id={`param-${p.name}`}>
                           <SelectValue placeholder="Chọn..." />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="w-max max-w-[min(90vw,32rem)] min-w-(--anchor-width)">
                           {p.options.map((o) => (
                             <SelectItem key={o.value} value={o.value}>
                               {o.label ?? o.value}

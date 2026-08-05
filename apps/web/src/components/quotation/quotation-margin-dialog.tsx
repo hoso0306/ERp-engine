@@ -83,7 +83,7 @@ export function QuotationMarginDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent className="sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Lãi/lỗ báo giá {quotationCode}</DialogTitle>
         </DialogHeader>
@@ -93,7 +93,7 @@ export function QuotationMarginDialog({
         ) : summary.items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">Chưa có sản phẩm nào.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[92vh] overflow-y-auto pr-1">
             {summary.hasIncompleteData && (
               <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
                 <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
