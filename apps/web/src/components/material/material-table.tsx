@@ -29,8 +29,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ConfirmDialog } from "@/components/shared";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPatch, ApiError } from "@/lib/api";
 
@@ -75,6 +76,11 @@ interface MaterialTableProps {
 }
 
 interface Unit {
+  id: string;
+  name: string;
+}
+
+interface ProductionCenterOption {
   id: string;
   name: string;
 }
@@ -239,11 +245,102 @@ function RetailEnableDialog({
   );
 }
 
+// Popover chọn nhanh Xưởng ngay tại bảng danh sách — cùng logic thay toàn bộ
+// danh sách (productionCenterIds) như form Sửa vật tư, chỉ rút gọn UI để
+// không phải mở trang chi tiết/sửa cho thao tác đổi xưởng đơn giản.
+function ProductionCenterQuickEdit({
+  material,
+  allCenters,
+  onSaved,
+}: {
+  material: Material;
+  allCenters: ProductionCenterOption[];
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      setSelectedIds((material.productionCenters ?? []).map((pc) => pc.productionCenter.id));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [open, material.productionCenters]);
+
+  function toggle(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function onSave() {
+    setSaving(true);
+    try {
+      await apiPatch(`/materials/${material.id}`, { productionCenterIds: selectedIds });
+      toast.success("Đã cập nhật xưởng.");
+      setOpen(false);
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không thể cập nhật xưởng.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted"
+            aria-label="Đổi xưởng"
+          >
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        }
+      />
+      <PopoverContent className="w-64 space-y-3">
+        <div className="text-xs font-medium tracking-wide text-muted-foreground">XƯỞNG SẢN XUẤT</div>
+        <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+          {allCenters.length === 0 && (
+            <span className="text-sm text-muted-foreground">Chưa có xưởng nào.</span>
+          )}
+          {allCenters.map((c) => (
+            <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(c.id)}
+                onChange={() => toggle(c.id)}
+                className="h-4 w-4 accent-primary"
+              />
+              {c.name}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+            Huỷ
+          </Button>
+          <Button size="sm" onClick={onSave} disabled={saving}>
+            {saving ? "Đang lưu..." : "Lưu"}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function MaterialTable({ materials, meta, onPageChange, onRefresh }: MaterialTableProps) {
   const router = useRouter();
   const [enableTarget, setEnableTarget] = useState<Material | null>(null);
   const [disableTarget, setDisableTarget] = useState<Material | null>(null);
   const [disabling, setDisabling] = useState(false);
+  const [allCenters, setAllCenters] = useState<ProductionCenterOption[]>([]);
+
+  useEffect(() => {
+    apiGet<ProductionCenterOption[]>("/production-centers").then(setAllCenters).catch(() => {});
+  }, []);
 
   function onToggle(m: Material) {
     if (m.isRetailable) {
@@ -294,7 +391,9 @@ export function MaterialTable({ materials, meta, onPageChange, onRefresh }: Mate
                 onClick={() => router.push(`/materials/${m.id}`)}
               >
                 <TableCell className="font-mono text-xs">{m.code}</TableCell>
-                <TableCell className="font-medium">{m.name}</TableCell>
+                <TableCell className="max-w-64 truncate font-medium" title={m.name}>
+                  {m.name}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{m.unit?.name ?? "—"}</TableCell>
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
                   {m.prices && m.prices.length > 0 ? formatMoney(Number(m.prices[0].price)) : "—"}
@@ -314,8 +413,8 @@ export function MaterialTable({ materials, meta, onPageChange, onRefresh }: Mate
                     onCheckedChange={() => onToggle(m)}
                   />
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-wrap items-center gap-1">
                     {(m.productionCenters ?? []).length > 0
                       ? (m.productionCenters ?? []).map((pc) => (
                           <Badge key={pc.productionCenter.id} variant="secondary" className="text-[10px]">
@@ -323,6 +422,7 @@ export function MaterialTable({ materials, meta, onPageChange, onRefresh }: Mate
                           </Badge>
                         ))
                       : <span className="text-muted-foreground text-sm">—</span>}
+                    <ProductionCenterQuickEdit material={m} allCenters={allCenters} onSaved={onRefresh} />
                   </div>
                 </TableCell>
                 <TableCell className="text-center">
