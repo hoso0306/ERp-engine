@@ -9,7 +9,7 @@ import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
 import { BomEngineService } from '../bom-engine/bom-engine.service';
-import { ExcelService } from '../shared/excel/excel.service';
+import { ExcelService, ExcelColumn } from '../shared/excel/excel.service';
 import { validate as validateExpressionSyntax } from '../shared/expression';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import {
@@ -52,6 +52,12 @@ import {
   UpdateDerivedParameterDto,
 } from './dto/derived-parameter.dto';
 import { PriceMatrixRowDto } from './dto/update-price-matrix.dto';
+
+export interface MaterialImportChange {
+  label: string;
+  oldValue: string;
+  newValue: string;
+}
 
 @Injectable()
 export class ProductService {
@@ -263,11 +269,9 @@ export class ProductService {
   // Material
   // ──────────────────────────────────────
 
-  async findAllMaterials(query: MaterialQueryDto) {
-    const page = Math.max(1, parseInt(query.page || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '20', 10)));
-    const skip = (page - 1) * limit;
-
+  private buildMaterialWhere(
+    query: MaterialQueryDto,
+  ): Prisma.MaterialWhereInput {
     const where: Prisma.MaterialWhereInput = {};
     if (query.search) {
       where.OR = [
@@ -288,7 +292,11 @@ export class ProductService {
     if (query.isRetailable !== undefined) {
       where.isRetailable = query.isRetailable === 'true';
     }
+    return where;
+  }
 
+  private async findFilteredMaterials(query: MaterialQueryDto) {
+    const where = this.buildMaterialWhere(query);
     // Sort A-Z không phân biệt hoa/thường phải làm ở tầng JS (DB collation mặc
     // định phân biệt hoa/thường — xem sortByNameAsc) nên lấy hết rồi mới cắt
     // trang, thay vì skip/take ở DB theo thứ tự có thể sai.
@@ -312,7 +320,15 @@ export class ProductService {
         },
       },
     });
-    const sorted = this.sortByNameAsc(all);
+    return this.sortByNameAsc(all);
+  }
+
+  async findAllMaterials(query: MaterialQueryDto) {
+    const page = Math.max(1, parseInt(query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '20', 10)));
+    const skip = (page - 1) * limit;
+
+    const sorted = await this.findFilteredMaterials(query);
     const total = sorted.length;
     const data = sorted.slice(skip, skip + limit);
 
@@ -320,6 +336,325 @@ export class ProductService {
       data,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  // Xuất Excel danh sách Vật tư — cùng bộ lọc + cùng cột đang hiển thị ở bảng
+  // trên trang (material-table.tsx), không phân trang (xuất hết kết quả lọc).
+  // Nhãn Trạng thái dùng chung cho cột export + đối chiếu import — đổi ở
+  // đây thì cả 2 chiều đều nhất quán.
+  private readonly MATERIAL_STATUS_LABELS = {
+    true: 'Đang dùng',
+    false: 'Ngừng dùng',
+  } as const;
+
+  async buildMaterialExport(query: MaterialQueryDto): Promise<{
+    columns: ExcelColumn[];
+    rows: Record<string, unknown>[];
+  }> {
+    const sorted = await this.findFilteredMaterials(query);
+    const units = await this.prisma.unit.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const columns: ExcelColumn[] = [
+      { header: 'Mã VT', key: 'code', width: 14 },
+      { header: 'Tên vật tư', key: 'name', width: 40 },
+      {
+        header: 'Đơn vị',
+        key: 'unit',
+        width: 10,
+        validationList: units.map((u) => u.name),
+      },
+      { header: 'Giá nhập', key: 'costPrice', width: 16 },
+      { header: 'Giá bán lẻ', key: 'retailPrice', width: 16 },
+      { header: 'Cho phép bán lẻ', key: 'isRetailable', width: 16 },
+      { header: 'Xưởng', key: 'productionCenters', width: 30 },
+      {
+        header: 'Trạng thái',
+        key: 'status',
+        width: 14,
+        validationList: Object.values(this.MATERIAL_STATUS_LABELS),
+      },
+    ];
+
+    const rows = sorted.map((m) => ({
+      code: m.code,
+      name: m.name,
+      unit: m.unit?.name ?? '',
+      costPrice: m.prices?.[0] ? Number(m.prices[0].price) : null,
+      retailPrice: m.retailPrice !== null ? Number(m.retailPrice) : null,
+      isRetailable: m.isRetailable ? 'Có' : 'Không',
+      productionCenters: (m.productionCenters ?? [])
+        .map((pc) => pc.productionCenter.name)
+        .join(', '),
+      status: this.MATERIAL_STATUS_LABELS[m.isActive ? 'true' : 'false'],
+    }));
+
+    return { columns, rows };
+  }
+
+  // Đóng giá mặc định cũ (effectiveTo=now, isDefault=false) rồi mở giá mặc
+  // định mới — cùng cách các script deploy dữ liệu trong dự án vẫn làm, gói
+  // lại thành 1 chỗ để tái dùng cho bulk import (khỏi lặp lại thao tác 2
+  // bước ở nhiều nơi).
+  private async setMaterialDefaultPrice(materialId: string, price: number) {
+    const now = new Date();
+    await this.prisma.materialPrice.updateMany({
+      where: { materialId, isDefault: true },
+      data: { effectiveTo: now, isDefault: false },
+    });
+    await this.prisma.materialPrice.create({
+      data: { materialId, price, effectiveFrom: now, isDefault: true },
+    });
+  }
+
+  // Đọc file Excel đã sửa (cùng layout cột với buildMaterialExport), khớp
+  // theo Mã VT, chỉ trả về những dòng THỰC SỰ có thay đổi so với dữ liệu
+  // hiện tại — cột Xưởng bỏ qua hoàn toàn (multi-select, không phù hợp
+  // dropdown 1 giá trị/ô của Excel, xem quyết định 06/08/2026).
+  async previewMaterialImport(buffer: Buffer) {
+    const sheet = await this.excel.readFile(buffer);
+    const units = await this.prisma.unit.findMany({
+      select: { id: true, name: true },
+    });
+
+    const errors: { row: number; message: string }[] = [];
+    const rows: {
+      materialId: string;
+      code: string;
+      name: string;
+      changes: MaterialImportChange[];
+      update: {
+        name?: string;
+        unitId?: string;
+        costPrice?: number;
+        retailPrice?: number | null;
+        isRetailable?: boolean;
+        isActive?: boolean;
+      };
+    }[] = [];
+    const seenCodes = new Set<string>();
+
+    // Cell 1=Mã VT, 2=Tên, 3=Đơn vị, 4=Giá nhập, 5=Giá bán lẻ,
+    // 6=Cho phép bán lẻ, 7=Xưởng (bỏ qua), 8=Trạng thái — đúng thứ tự cột
+    // trong buildMaterialExport().
+    const rowsData: { rowNumber: number; cells: string[] }[] = [];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const cell = (col: number) => String(row.getCell(col).value ?? '').trim();
+      const cells = [1, 2, 3, 4, 5, 6, 7, 8].map(cell);
+      if (cells.every((c) => !c)) return;
+      rowsData.push({ rowNumber, cells });
+    });
+
+    for (const { rowNumber, cells } of rowsData) {
+      const [
+        code,
+        name,
+        unitName,
+        costText,
+        retailText,
+        retailableText,
+        ,
+        statusText,
+      ] = cells;
+
+      if (!code) {
+        errors.push({ row: rowNumber, message: 'Thiếu Mã VT.' });
+        continue;
+      }
+      if (seenCodes.has(code)) {
+        errors.push({
+          row: rowNumber,
+          message: `Mã VT "${code}" bị trùng với dòng khác trong file.`,
+        });
+        continue;
+      }
+      seenCodes.add(code);
+
+      const material = await this.prisma.material.findUnique({
+        where: { code },
+        include: {
+          unit: { select: { id: true, name: true } },
+          prices: {
+            where: { isDefault: true },
+            orderBy: { effectiveFrom: 'desc' },
+            take: 1,
+            select: { price: true },
+          },
+        },
+      });
+      if (!material) {
+        errors.push({
+          row: rowNumber,
+          message: `Không tìm thấy vật tư có mã "${code}".`,
+        });
+        continue;
+      }
+
+      const unit = units.find(
+        (u) => u.name.toLowerCase() === unitName.toLowerCase(),
+      );
+      if (!unit) {
+        errors.push({
+          row: rowNumber,
+          message: `Đơn vị "${unitName}" không hợp lệ (phải chọn trong danh sách dropdown).`,
+        });
+        continue;
+      }
+
+      const cost = Number(costText);
+      if (!costText || isNaN(cost) || cost <= 0) {
+        errors.push({
+          row: rowNumber,
+          message: `Giá nhập "${costText}" không hợp lệ — phải là số lớn hơn 0.`,
+        });
+        continue;
+      }
+
+      let retail: number | null = null;
+      if (retailText) {
+        retail = Number(retailText);
+        if (isNaN(retail) || retail <= 0) {
+          errors.push({
+            row: rowNumber,
+            message: `Giá bán lẻ "${retailText}" không hợp lệ — để trống hoặc nhập số lớn hơn 0.`,
+          });
+          continue;
+        }
+      }
+
+      const retailableNorm = retailableText.toLowerCase();
+      if (!['có', 'không', ''].includes(retailableNorm)) {
+        errors.push({
+          row: rowNumber,
+          message: `"Cho phép bán lẻ" phải là "Có" hoặc "Không".`,
+        });
+        continue;
+      }
+      const isRetailable = retailableNorm === 'có';
+      if (isRetailable && retail === null) {
+        errors.push({
+          row: rowNumber,
+          message: 'Cho phép bán lẻ nhưng chưa nhập Giá bán lẻ.',
+        });
+        continue;
+      }
+
+      const statusEntry = Object.entries(this.MATERIAL_STATUS_LABELS).find(
+        ([, label]) => label.toLowerCase() === statusText.toLowerCase(),
+      );
+      if (!statusEntry) {
+        errors.push({
+          row: rowNumber,
+          message: `Trạng thái "${statusText}" không hợp lệ (phải chọn trong danh sách dropdown).`,
+        });
+        continue;
+      }
+      const isActive = statusEntry[0] === 'true';
+
+      const oldCost = material.prices?.[0]
+        ? Number(material.prices[0].price)
+        : null;
+      const oldRetail =
+        material.retailPrice !== null ? Number(material.retailPrice) : null;
+
+      const changes: MaterialImportChange[] = [];
+      const update: (typeof rows)[number]['update'] = {};
+
+      if (name && name !== material.name) {
+        changes.push({
+          label: 'Tên vật tư',
+          oldValue: material.name,
+          newValue: name,
+        });
+        update.name = name;
+      }
+      if (unit.id !== material.unitId) {
+        changes.push({
+          label: 'Đơn vị',
+          oldValue: material.unit?.name ?? '',
+          newValue: unit.name,
+        });
+        update.unitId = unit.id;
+      }
+      if (oldCost === null || cost !== oldCost) {
+        changes.push({
+          label: 'Giá nhập',
+          oldValue: oldCost !== null ? oldCost.toLocaleString('vi-VN') : '—',
+          newValue: cost.toLocaleString('vi-VN'),
+        });
+        update.costPrice = cost;
+      }
+      if (retail !== oldRetail) {
+        changes.push({
+          label: 'Giá bán lẻ',
+          oldValue:
+            oldRetail !== null ? oldRetail.toLocaleString('vi-VN') : '—',
+          newValue: retail !== null ? retail.toLocaleString('vi-VN') : '—',
+        });
+        update.retailPrice = retail;
+      }
+      if (isRetailable !== material.isRetailable) {
+        changes.push({
+          label: 'Cho phép bán lẻ',
+          oldValue: material.isRetailable ? 'Có' : 'Không',
+          newValue: isRetailable ? 'Có' : 'Không',
+        });
+        update.isRetailable = isRetailable;
+      }
+      if (isActive !== material.isActive) {
+        changes.push({
+          label: 'Trạng thái',
+          oldValue:
+            this.MATERIAL_STATUS_LABELS[material.isActive ? 'true' : 'false'],
+          newValue: this.MATERIAL_STATUS_LABELS[isActive ? 'true' : 'false'],
+        });
+        update.isActive = isActive;
+      }
+
+      if (changes.length === 0) continue;
+
+      rows.push({
+        materialId: material.id,
+        code: material.code,
+        name: material.name,
+        changes,
+        update,
+      });
+    }
+
+    return { rows, errors };
+  }
+
+  // Ghi thật các thay đổi đã đối chiếu ở previewMaterialImport() — chỉ nhận
+  // đúng shape do preview trả về (FE không tự tạo dữ liệu để apply).
+  async applyMaterialImport(
+    rows: {
+      materialId: string;
+      update: {
+        name?: string;
+        unitId?: string;
+        costPrice?: number;
+        retailPrice?: number | null;
+        isRetailable?: boolean;
+        isActive?: boolean;
+      };
+    }[],
+  ) {
+    let updated = 0;
+    for (const row of rows) {
+      const { costPrice, ...materialFields } = row.update;
+      if (Object.keys(materialFields).length > 0) {
+        await this.updateMaterial(row.materialId, materialFields);
+      }
+      if (costPrice !== undefined) {
+        await this.setMaterialDefaultPrice(row.materialId, costPrice);
+      }
+      updated++;
+    }
+    return { updated };
   }
 
   async findOneMaterial(id: string) {

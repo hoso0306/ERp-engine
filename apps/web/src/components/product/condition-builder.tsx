@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Plus, Trash2 } from "lucide-react";
 
 export interface ConditionParameter {
@@ -150,21 +151,13 @@ export function ConditionBuilder({
                 </Select>
 
                 {param?.type === "ENUM" ? (
-                  <Select
+                  <SearchableSelect
+                    className="flex-1"
+                    options={param.options}
                     value={clause.value}
-                    onValueChange={(v) => updateClause(idx, { value: v ?? "" })}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Giá trị..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {param.options.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label ?? o.value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(v) => updateClause(idx, { value: v })}
+                    placeholder="Giá trị..."
+                  />
                 ) : (
                   <Input
                     className="flex-1"

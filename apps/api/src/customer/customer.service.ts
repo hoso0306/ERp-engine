@@ -600,6 +600,32 @@ export class CustomerService {
     deliveryRouteId: 'Tuyến GH',
   };
 
+  // Tên cột chuẩn (không kèm dấu "*") — dùng để tra vị trí cột theo header
+  // dòng 1 thay vì vị trí cố định, để cả file Xuất Excel (có thêm cột
+  // "Mã KH" ở đầu) lẫn file Tải mẫu (không có cột đó) đều import đúng, không
+  // bị lệch cột (sửa bug lệch cột giữa 2 loại file, chốt 06/08/2026).
+  private readonly IMPORT_COLUMNS = {
+    name: 'Tên khách hàng',
+    phone: 'Số điện thoại',
+    email: 'Email',
+    province: 'Tỉnh/TP',
+    district: 'Quận/Huyện',
+    ward: 'Phường/Xã',
+    address: 'Địa chỉ',
+    groupName: 'Nhóm KH',
+    routeName: 'Tuyến GH',
+    priority: 'Ưu tiên',
+    status: 'Trạng thái',
+    debtLimit: 'Hạn mức CN',
+    debtTermDays: 'Thời hạn CN (ngày)',
+    note: 'Ghi chú',
+    companyName: 'Tên công ty',
+    taxCode: 'Mã số thuế',
+    defaultCarrierName: 'Nhà xe',
+    defaultCarrierPhone: 'SĐT nhà xe',
+    defaultCarrierNote: 'Ghi chú giao hàng',
+  } as const;
+
   // Parse + validate + so khớp DB — dùng chung cho Preview (chỉ đọc) và Import
   // thật (có ghi DB), đảm bảo preview thấy đúng những gì sẽ xảy ra (chốt
   // 24/07/2026). Mỗi dòng lỗi CHỈ bị bỏ qua riêng dòng đó, không chặn cả
@@ -615,6 +641,28 @@ export class CustomerService {
       routeName: string;
     }[] = [];
 
+    // Header dòng 1 → vị trí cột. Cột bắt buộc trên file mẫu có hậu tố " *"
+    // (VD "Tên khách hàng *") nên bỏ hậu tố này khi so khớp.
+    const normalizeHeader = (v: unknown) =>
+      String(v ?? '')
+        .replace(/\s*\*\s*$/, '')
+        .trim();
+    const colIndex = new Map<string, number>();
+    sheet.getRow(1).eachCell((cell, col) => {
+      colIndex.set(normalizeHeader(cell.value), col);
+    });
+    const colOf = (label: string) => colIndex.get(label);
+    const C = this.IMPORT_COLUMNS;
+
+    if (!colOf(C.name) || !colOf(C.phone)) {
+      errors.push({
+        row: 0,
+        message:
+          'File không đúng cấu trúc (thiếu cột "Tên khách hàng" hoặc "Số điện thoại"). Vui lòng dùng file mẫu hoặc file Xuất Excel.',
+      });
+      return { errors, toCreate: [], toUpdate: [] };
+    }
+
     const allGroups = await this.prisma.customerGroup.findMany();
     const allRoutes = await this.prisma.deliveryRoute.findMany();
     const groupMap = new Map(allGroups.map((g) => [g.name, g.id]));
@@ -623,8 +671,13 @@ export class CustomerService {
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
 
-      const cell = (col: number) => String(row.getCell(col).value || '').trim();
-      const numCell = (col: number) => {
+      const cell = (label: string) => {
+        const col = colOf(label);
+        return col ? String(row.getCell(col).value || '').trim() : '';
+      };
+      const numCell = (label: string) => {
+        const col = colOf(label);
+        if (!col) return undefined;
         const v = row.getCell(col).value;
         return v !== null && v !== undefined && v !== ''
           ? Number(v)
@@ -633,8 +686,8 @@ export class CustomerService {
       // SĐT: Excel định dạng số tự cắt số 0 đầu (0901... → 901...). Chuẩn hoá:
       // bỏ khoảng trắng/ký tự phân tách, nếu còn 9-10 chữ số không bắt đầu
       // bằng 0 (bị Excel cắt) → thêm lại "0" (testlan1 mục Khách hàng).
-      const phoneCell = (col: number) => {
-        let s = cell(col).replace(/[\s.\-()]/g, '');
+      const phoneCell = (label: string) => {
+        let s = cell(label).replace(/[\s.\-()]/g, '');
         if (/^[1-9]\d{8,9}$/.test(s)) s = '0' + s;
         return s;
       };
@@ -648,23 +701,23 @@ export class CustomerService {
         return;
       }
 
-      const name = cell(1);
-      const phone = phoneCell(2);
-      const email = cell(3) || undefined;
-      const groupName = cell(8);
-      const routeName = cell(9);
-      const priority = cell(10).toUpperCase() || undefined;
-      const status = cell(11).toUpperCase() || undefined;
-      const debtLimit = numCell(12);
-      const debtTermDays = numCell(13);
-      const companyName = cell(15) || undefined;
+      const name = cell(C.name);
+      const phone = phoneCell(C.phone);
+      const email = cell(C.email) || undefined;
+      const groupName = cell(C.groupName);
+      const routeName = cell(C.routeName);
+      const priority = cell(C.priority).toUpperCase() || undefined;
+      const status = cell(C.status).toUpperCase() || undefined;
+      const debtLimit = numCell(C.debtLimit);
+      const debtTermDays = numCell(C.debtTermDays);
+      const companyName = cell(C.companyName) || undefined;
       // MST VN 10 số thường bắt đầu bằng 0 (mã tỉnh) — Excel cắt như SĐT.
       let taxCode: string | undefined =
-        cell(16).replace(/\s/g, '') || undefined;
+        cell(C.taxCode).replace(/\s/g, '') || undefined;
       if (taxCode && /^\d{9}$/.test(taxCode)) taxCode = '0' + taxCode;
-      const defaultCarrierName = cell(17) || undefined;
-      const defaultCarrierPhone = phoneCell(18) || undefined;
-      const defaultCarrierNote = cell(19) || undefined;
+      const defaultCarrierName = cell(C.defaultCarrierName) || undefined;
+      const defaultCarrierPhone = phoneCell(C.defaultCarrierPhone) || undefined;
+      const defaultCarrierNote = cell(C.defaultCarrierNote) || undefined;
 
       if (!name) {
         errors.push({ row: rowNumber, message: 'Tên khách hàng là bắt buộc.' });
@@ -726,17 +779,17 @@ export class CustomerService {
           name,
           phone,
           email,
-          province: cell(4) || undefined,
-          district: cell(5) || undefined,
-          ward: cell(6) || undefined,
-          address: cell(7) || undefined,
+          province: cell(C.province) || undefined,
+          district: cell(C.district) || undefined,
+          ward: cell(C.ward) || undefined,
+          address: cell(C.address) || undefined,
           customerGroupId: groupName ? groupMap.get(groupName) : undefined,
           deliveryRouteId: routeName ? routeMap.get(routeName) : undefined,
           priority: (priority as 'LOW' | 'MEDIUM' | 'HIGH') || undefined,
           status: (status as 'ACTIVE' | 'INACTIVE') || undefined,
           debtLimit,
           debtTermDays,
-          note: cell(14) || undefined,
+          note: cell(C.note) || undefined,
           companyName,
           taxCode,
           defaultCarrierName,

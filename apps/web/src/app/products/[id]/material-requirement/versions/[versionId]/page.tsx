@@ -9,13 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -482,23 +476,13 @@ export default function MaterialRequirementVersionPage() {
                     <span className="font-mono text-muted-foreground">({p.name})</span>
                   </Label>
                   {p.type === "ENUM" ? (
-                    <Select
+                    <SearchableSelect
+                      id={`preview-${p.name}`}
+                      options={p.options}
                       value={previewInputs[p.name] ?? ""}
-                      onValueChange={(v) =>
-                        setPreviewInputs((prev) => ({ ...prev, [p.name]: v ?? "" }))
-                      }
-                    >
-                      <SelectTrigger id={`preview-${p.name}`}>
-                        <SelectValue placeholder="Chọn giá trị" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {p.options.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label ?? opt.value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(v) => setPreviewInputs((prev) => ({ ...prev, [p.name]: v }))}
+                      placeholder="Chọn giá trị"
+                    />
                   ) : (
                     <Input
                       id={`preview-${p.name}`}

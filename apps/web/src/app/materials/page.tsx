@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -15,11 +15,28 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
 import { MaterialTable } from "@/components/material/material-table";
-import { apiGet } from "@/lib/api";
+import { ExcelImportDialog } from "@/components/product/excel-import-dialog";
+import { apiGet, apiPost, apiUrl } from "@/lib/api";
+import { downloadAuthenticatedFile } from "@/lib/download";
+import { toast } from "sonner";
 
 interface ProductionCenterOption {
   id: string;
   name: string;
+}
+
+interface MaterialImportChange {
+  label: string;
+  oldValue: string;
+  newValue: string;
+}
+
+interface MaterialImportRow {
+  materialId: string;
+  code: string;
+  name: string;
+  changes: MaterialImportChange[];
+  update: Record<string, unknown>;
 }
 
 export default function MaterialsPage() {
@@ -34,6 +51,8 @@ export default function MaterialsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     apiGet<ProductionCenterOption[]>("/production-centers").then(setCenters).catch(() => {});
@@ -70,16 +89,61 @@ export default function MaterialsPage() {
     setPage(1);
   }, [search, isActive, centerId, isRetailable]);
 
+  function currentFilterParams() {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (isActive !== "all") params.set("isActive", isActive);
+    if (centerId !== "all") params.set("productionCenterId", centerId);
+    if (isRetailable !== "all") params.set("isRetailable", isRetailable);
+    return params;
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadAuthenticatedFile(
+        apiUrl(`/materials/export?${currentFilterParams()}`),
+        "vat_tu.xlsx",
+      );
+    } catch {
+      toast.error("Không thể tải file export.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleApplyImport(rows: MaterialImportRow[]) {
+    await apiPost("/materials/import-apply", {
+      rows: rows.map(({ materialId, update }) => ({ materialId, update })),
+    });
+    toast.success(`Đã cập nhật ${rows.length} vật tư từ Excel.`);
+    fetchMaterials();
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Vật tư"
         description="Quản lý danh mục vật tư và giá"
         actions={
-          <Button render={<Link href="/materials/new" />}>
-            <Plus className="mr-2 h-4 w-4" />
-            Thêm vật tư
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" disabled={exporting} onClick={handleExport}>
+              {exporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+              )}
+              Xuất Excel
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Nhập từ Excel
+            </Button>
+            <Button render={<Link href="/materials/new" />}>
+              <Plus className="mr-2 h-4 w-4" />
+              Thêm vật tư
+            </Button>
+          </div>
         }
       />
 
@@ -147,6 +211,32 @@ export default function MaterialsPage() {
           onRefresh={fetchMaterials}
         />
       )}
+
+      <ExcelImportDialog<MaterialImportRow>
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Nhập Vật tư từ Excel"
+        description="Tải file Excel (chính là file Xuất Excel), sửa Đơn vị/Trạng thái/Giá rồi nhập lại — cột Xưởng không áp dụng qua Excel. Chỉ hiện các vật tư có thay đổi, chỉ áp dụng được khi file không còn dòng lỗi."
+        templateUrl={`/materials/export?${currentFilterParams()}`}
+        previewUrl="/materials/import-preview"
+        columns={[
+          { header: "Mã VT", render: (row) => row.code },
+          { header: "Tên vật tư", render: (row) => row.name },
+          {
+            header: "Thay đổi",
+            render: (row) => (
+              <div className="space-y-0.5">
+                {row.changes.map((c, i) => (
+                  <div key={i}>
+                    {c.label}: {c.oldValue} → {c.newValue}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+        ]}
+        onApply={handleApplyImport}
+      />
     </div>
   );
 }

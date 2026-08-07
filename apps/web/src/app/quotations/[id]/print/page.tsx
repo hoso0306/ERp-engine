@@ -178,6 +178,10 @@ function fmtDate(d: string) {
 // thước"), không cần quy đổi.
 const WIDTH_PARAM_NAME = "chieurong";
 const HEIGHT_PARAM_NAME = "chieucao";
+// Tham số nhập tay đại diện giá bán/giá vốn (VD "Hàng phân phối thêm",
+// "Chi phí Sửa chữa/Lắp đặt") — không phải thông số mô tả sản phẩm, không
+// hiện trên bản in (giá vốn đặc biệt không được lộ cho khách).
+const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 
 function paramNumber(params: ItemParam[], name: string): number | null {
   const raw = params.find((p) => p.name === name)?.value;
@@ -559,7 +563,10 @@ export default function QuotationPrintPage() {
                   const cao = paramNumber(item.parameters, HEIGHT_PARAM_NAME);
                   const m2 = rong !== null && cao !== null ? rong * cao * item.quantity : null;
                   const otherParams = item.parameters.filter(
-                    (p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME,
+                    (p) =>
+                      p.name !== WIDTH_PARAM_NAME &&
+                      p.name !== HEIGHT_PARAM_NAME &&
+                      !HIDDEN_PARAM_NAMES.includes(p.name),
                   );
                   const hasWarnings = !!item.warnings && item.warnings.length > 0;
 

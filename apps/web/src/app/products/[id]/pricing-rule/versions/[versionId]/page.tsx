@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -643,23 +644,12 @@ export default function PricingRuleVersionPage() {
                     {p.label}{p.unit ? ` (${p.unit})` : ""}
                   </Label>
                   {p.type === "ENUM" ? (
-                    <Select
+                    <SearchableSelect
+                      id={`pv-${p.name}`}
+                      options={p.options}
                       value={previewParams[p.name] ?? ""}
-                      onValueChange={(v) =>
-                        setPreviewParams((prev) => ({ ...prev, [p.name]: v ?? "" }))
-                      }
-                    >
-                      <SelectTrigger id={`pv-${p.name}`}>
-                        <SelectValue placeholder="Chọn..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {p.options.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label ?? o.value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(v) => setPreviewParams((prev) => ({ ...prev, [p.name]: v }))}
+                    />
                   ) : (
                     <Input
                       id={`pv-${p.name}`}

@@ -117,6 +117,10 @@ function groupKeyFor(productionCenterCode: string | null) {
 // như ví dụ minh hoạ trong product.md). Xem 009-in-phieu-san-xuat.md.
 const WIDTH_PARAM_NAME = "chieurong";
 const HEIGHT_PARAM_NAME = "chieucao";
+// Tham số nhập tay đại diện giá bán/giá vốn (VD "Hàng phân phối thêm",
+// "Chi phí Sửa chữa/Lắp đặt") — không phải thông số mô tả sản phẩm, và đặc
+// biệt giá vốn không được lộ cho Xưởng sản xuất, nên không hiện trên phiếu.
+const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 
 function paramValue(item: ProductionOrderItem, name: string): string {
   return item.parameters.find((p) => p.name === name)?.value ?? "—";
@@ -145,7 +149,12 @@ function formatDimension(raw: string): string {
 // thô cho dữ liệu lịch sử — đúng nguyên tắc Snapshot, CLAUDE.md mục 7).
 function otherParamsText(item: ProductionOrderItem): string {
   return item.parameters
-    .filter((p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME)
+    .filter(
+      (p) =>
+        p.name !== WIDTH_PARAM_NAME &&
+        p.name !== HEIGHT_PARAM_NAME &&
+        !HIDDEN_PARAM_NAMES.includes(p.name),
+    )
     .map((p) => {
       // Nhãn ENUM (vd "Mở 1 cánh") đã tự mô tả đầy đủ — không nối thêm unit
       // nữa, kẻo lặp từ (vd unit="cánh" → "Mở 1 cánh cánh"). Chỉ nối unit khi
@@ -475,15 +484,17 @@ function GenericOrderContent({
               <td style={{ padding: "5px 4px", fontSize: 10, border: "1px solid var(--border)", overflowWrap: "break-word" }}>
                 <div style={{ fontWeight: 600 }}>{item.productName}</div>
                 <div style={{ fontSize: 9, color: "var(--grey)" }}>{item.productCode}</div>
-                {item.parameters.length > 0 && (
+                {item.parameters.filter((p) => !HIDDEN_PARAM_NAMES.includes(p.name)).length > 0 && (
                   <div style={{ fontSize: 9, marginTop: 2 }}>
-                    {item.parameters.map((p) => (
-                      <span key={p.name} style={{ marginRight: 8 }}>
-                        <span style={{ color: "var(--grey)" }}>{p.label}: </span>
-                        {p.valueLabel ?? (p.name === WIDTH_PARAM_NAME || p.name === HEIGHT_PARAM_NAME ? formatDimension(p.value) : p.value)}
-                        {p.unit ? ` ${p.unit}` : ""}
-                      </span>
-                    ))}
+                    {item.parameters
+                      .filter((p) => !HIDDEN_PARAM_NAMES.includes(p.name))
+                      .map((p) => (
+                        <span key={p.name} style={{ marginRight: 8 }}>
+                          <span style={{ color: "var(--grey)" }}>{p.label}: </span>
+                          {p.valueLabel ?? (p.name === WIDTH_PARAM_NAME || p.name === HEIGHT_PARAM_NAME ? formatDimension(p.value) : p.value)}
+                          {p.unit ? ` ${p.unit}` : ""}
+                        </span>
+                      ))}
                   </div>
                 )}
                 {item.note && (
