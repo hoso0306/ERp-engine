@@ -5,5 +5,4 @@ export class CreatePaymentDto {
   paymentDate?: string;
   referenceNumber?: string;
   note?: string;
-  createdBy?: string;
 }

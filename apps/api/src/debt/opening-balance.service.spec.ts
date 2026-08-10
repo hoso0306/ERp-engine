@@ -24,9 +24,11 @@ describe('OpeningBalanceService', () => {
   beforeEach(async () => {
     prisma = {
       runningNumber: {
-        update: jest
-          .fn()
-          .mockResolvedValue({ prefix: 'CNK', lastNumber: 1, paddingLength: 5 }),
+        update: jest.fn().mockResolvedValue({
+          prefix: 'CNK',
+          lastNumber: 1,
+          paddingLength: 5,
+        }),
       },
       customer: { findUnique: jest.fn() },
       openingBalance: {
@@ -154,6 +156,7 @@ describe('OpeningBalanceService', () => {
       expect(prisma.openingBalance.findMany).toHaveBeenCalledWith({
         where: { customerId: 'cust-1' },
         orderBy: { createdAt: 'asc' },
+        include: expect.objectContaining({ allocations: expect.anything() }),
       });
     });
   });
@@ -161,9 +164,7 @@ describe('OpeningBalanceService', () => {
   describe('findOne()', () => {
     it('throws NotFoundException nếu không tồn tại', async () => {
       prisma.openingBalance.findUnique.mockResolvedValue(null);
-      await expect(service.findOne('ob-x')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOne('ob-x')).rejects.toThrow(NotFoundException);
     });
 
     it('trả về kèm timeline khi tồn tại', async () => {

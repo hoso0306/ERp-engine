@@ -39,16 +39,21 @@ export class ProductionOrderController {
     return this.productionOrderService.findOne(id);
   }
 
-  // ── In phiếu A5 (Task 009) — không đổi Status, chỉ ghi vết PRINTED ──
+  // ── In phiếu A5 (Task 009) — ghi vết PRINTED, tự Start phiếu đang PENDING
+  // ("In và bắt đầu SX", chốt 10/08/2026 — xem comment trong service) ──
 
   @Post('print')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('production.view')
   print(
     @Body() dto: PrintProductionOrdersDto,
-    @Req() req: { user?: { userId?: string } },
+    @Req() req: { user?: { userId?: string; roleId?: string } },
   ) {
-    return this.productionOrderService.print(dto.ids, req.user?.userId ?? null);
+    return this.productionOrderService.print(
+      dto.ids,
+      req.user?.userId ?? null,
+      req.user?.roleId ?? null,
+    );
   }
 
   // ── Workflow actions (Task 04) ──

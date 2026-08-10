@@ -8,6 +8,7 @@ import { ProductionOrderService } from './production-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesOrderService } from '../sales-order/sales-order.service';
 import { SettingService } from '../setting/setting.service';
+import { PermissionService } from '../permission/permission.service';
 
 function makeProductionOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -51,6 +52,7 @@ describe('ProductionOrderService', () => {
   };
   let salesOrderService: { syncProductionProgress: jest.Mock };
   let settingService: { getNumberValue: jest.Mock };
+  let permissionService: { hasPermission: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -79,6 +81,10 @@ describe('ProductionOrderService', () => {
     };
     salesOrderService = { syncProductionProgress: jest.fn() };
     settingService = { getNumberValue: jest.fn().mockResolvedValue(2) };
+    // print() (chốt 10/08/2026 — "In và bắt đầu SX") đòi quyền production.start
+    // ngoài production.view — mặc định cấp quyền trong test, override từng
+    // case khi cần kiểm tra nhánh không có quyền.
+    permissionService = { hasPermission: jest.fn().mockResolvedValue(true) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -86,6 +92,7 @@ describe('ProductionOrderService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SalesOrderService, useValue: salesOrderService },
         { provide: SettingService, useValue: settingService },
+        { provide: PermissionService, useValue: permissionService },
       ],
     }).compile();
 
@@ -117,7 +124,9 @@ describe('ProductionOrderService', () => {
     });
 
     it('productionCenterCode = null khi không tìm thấy ProductionCenter', async () => {
-      prisma.productionOrder.findUnique.mockResolvedValue(makeProductionOrder());
+      prisma.productionOrder.findUnique.mockResolvedValue(
+        makeProductionOrder(),
+      );
       prisma.productionCenter.findUnique.mockResolvedValue(null);
 
       const result = await service.findOne('po-1');
@@ -318,34 +327,55 @@ describe('ProductionOrderService', () => {
     });
   });
 
-  // In phiếu A5 (009-in-phieu-san-xuat.md) — không phải Action đổi Status,
-  // chỉ ghi vết PRINTED.
+  // In phiếu A5 (009-in-phieu-san-xuat.md) — ghi vết PRINTED. "In và bắt đầu
+  // SX" (chốt 10/08/2026): cũng tự Start (đổi status + ghi Timeline STARTED)
+  // các phiếu đang PENDING, trong cùng transaction; đòi thêm quyền
+  // production.start ngoài production.view.
   describe('print()', () => {
     it('rejects khi ids rỗng', async () => {
       await expect(service.print([])).rejects.toThrow(BadRequestException);
     });
 
     it('rejects khi có id không tồn tại', async () => {
-      prisma.productionOrder.findMany.mockResolvedValue([{ id: 'po-1' }]);
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { id: 'po-1', status: 'PENDING' },
+      ]);
       await expect(service.print(['po-1', 'po-missing'])).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('ghi 1 dòng Timeline PRINTED cho mỗi phiếu, không đổi status', async () => {
+    it('rejects khi người in không có quyền production.start', async () => {
       prisma.productionOrder.findMany.mockResolvedValue([
-        { id: 'po-1' },
-        { id: 'po-2' },
+        { id: 'po-1', status: 'PENDING' },
+      ]);
+      permissionService.hasPermission.mockResolvedValue(false);
+
+      await expect(service.print(['po-1'], 'user-1', 'role-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(permissionService.hasPermission).toHaveBeenCalledWith(
+        'role-1',
+        'production.start',
+      );
+      expect(prisma.productionOrderTimeline.create).not.toHaveBeenCalled();
+    });
+
+    it('ghi Timeline PRINTED + tự Start (đổi status, ghi Timeline STARTED) cho phiếu đang PENDING', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { id: 'po-1', status: 'PENDING' },
+        { id: 'po-2', status: 'PENDING' },
       ]);
       prisma.productionOrder.findUnique.mockImplementation(
         ({ where }: { where: { id: string } }) =>
           Promise.resolve(makeProductionOrder({ id: where.id })),
       );
 
-      const result = await service.print(['po-1', 'po-2'], 'user-1');
+      const result = await service.print(['po-1', 'po-2'], 'user-1', 'role-1');
 
       expect(result.map((po) => po.id)).toEqual(['po-1', 'po-2']);
-      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledTimes(2);
+      // 2 phiếu × (1 PRINTED + 1 STARTED) = 4.
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledTimes(4);
       expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -354,6 +384,44 @@ describe('ProductionOrderService', () => {
             actorType: 'USER',
             createdBy: 'user-1',
           }),
+        }),
+      );
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            productionOrderId: 'po-1',
+            action: 'STARTED',
+            actorType: 'USER',
+            createdBy: 'user-1',
+          }),
+        }),
+      );
+      expect(prisma.productionOrder.update).toHaveBeenCalledTimes(2);
+      expect(prisma.productionOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'po-1' },
+          data: expect.objectContaining({ status: 'IN_PRODUCTION' }),
+        }),
+      );
+    });
+
+    it('in lại phiếu không còn PENDING chỉ ghi PRINTED, không tự Start lại', async () => {
+      prisma.productionOrder.findMany.mockResolvedValue([
+        { id: 'po-1', status: 'IN_PRODUCTION' },
+      ]);
+      prisma.productionOrder.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(
+            makeProductionOrder({ id: where.id, status: 'IN_PRODUCTION' }),
+          ),
+      );
+
+      await service.print(['po-1'], 'user-1', 'role-1');
+
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledTimes(1);
+      expect(prisma.productionOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'PRINTED' }),
         }),
       );
       expect(prisma.productionOrder.update).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, Suspense, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense, type CSSProperties, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
@@ -74,10 +74,15 @@ interface ProductGroup {
   items: ProductionOrderItem[];
 }
 
-// Mẫu Xưởng (009-in-phieu-san-xuat.md) — quy tắc gộp dòng khác nhau theo
-// từng xưởng: Cầu Vồng chỉ gộp theo mã sản phẩm; Cửa Lưới phải khớp CẢ mã sản
-// phẩm LẪN toàn bộ thông số khác Rộng/Cao (loại cửa, số cánh, màu khung...)
-// mới được gộp — truyền `keyFn` khác nhau từ nơi gọi, xem `groupKeyFor()`.
+// Mẫu Xưởng (009-in-phieu-san-xuat.md) — chỉ gộp khi khớp CẢ mã sản phẩm LẪN
+// toàn bộ thông số khác Rộng/Cao (loại cửa, số cánh, màu khung, "Loại" cơ
+// cấu của Bạt Cuốn...) — xem `groupKeyFor()`. Ban đầu chỉ Cửa Lưới dùng quy
+// tắc chặt này, các xưởng khác chỉ gộp theo mã sản phẩm; phát hiện qua
+// SO000024 (6 dòng Bạt Cuốn cùng mã, khác "Loại" hoàn toàn, bị gộp lẫn 1 ô
+// mô tả — mô tả chỉ lấy từ item đầu nhóm, ẩn mất "Loại" của các dòng còn
+// lại) rằng quy tắc lỏng không an toàn cho bất kỳ xưởng nào có tham số ENUM
+// phân biệt biến thể ngoài Rộng/Cao (Cầu Vồng: marem/mangremcuon; Gia công:
+// maukhung/loaimanh...) — nên áp dụng thống nhất quy tắc chặt cho cả 4 xưởng.
 function groupItems(
   items: ProductionOrderItem[],
   keyFn: (item: ProductionOrderItem) => string,
@@ -103,13 +108,8 @@ function groupItems(
   return groups;
 }
 
-function groupKeyFor(productionCenterCode: string | null) {
-  if (productionCenterCode === CUA_LUOI_CENTER_CODE) {
-    // Chỉ gộp khi cùng mã sản phẩm VÀ cùng toàn bộ thông số khác Rộng/Cao.
-    return (item: ProductionOrderItem) => `${item.productCode}|${otherParamsText(item)}`;
-  }
-  // Cầu Vồng (và mặc định): chỉ cần cùng mã sản phẩm.
-  return (item: ProductionOrderItem) => item.productCode;
+function groupKey(item: ProductionOrderItem): string {
+  return `${item.productCode}|${otherParamsText(item)}`;
 }
 
 // Tên thật của 2 tham số kích thước trong dữ liệu (tra trực tiếp DB dev —
@@ -122,8 +122,98 @@ const HEIGHT_PARAM_NAME = "chieucao";
 // biệt giá vốn không được lộ cho Xưởng sản xuất, nên không hiện trên phiếu.
 const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 
+// Mái hiên di động (SP000115, Xưởng Bạt XW005) là sản phẩm DUY NHẤT trong
+// toàn hệ thống không có tham số "chieucao" (chỉ có "chieurong") — thay vào
+// đó khổ đua ("khodua") mới là thông số quyết định. Ô "Cao" của riêng dòng
+// sản phẩm này hiện giá trị khổ đua thay vì để trống "—". KHÔNG đổi tên cột
+// "Cao" thành "Khổ đua" vì 1 phiếu Xưởng Bạt có thể lẫn Mái hiên di động với
+// sản phẩm khác có Cao thật (phiếu được gộp theo xưởng, không theo sản phẩm
+// — xem quotation-workflow.service.ts groupBy productionCenterId).
+const MAI_HIEN_DI_DONG_PRODUCT_CODE = "SP000115";
+const MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME = "khodua";
+
+// [Bạt xếp] - Vải bạt (SP000110, Xưởng Bạt) cũng không có "chieucao" — dùng
+// "chieudai" (nhãn thật trong dữ liệu: "Chiều nước chảy") làm chiều thứ 2.
+// Khác Khổ đua (nhãn phân loại ENUM), đây vẫn là 1 kích thước dạng số nên
+// hiện như Rộng/Cao bình thường, kèm chú thích nhỏ "(chiều nước chảy)" bên
+// dưới để tránh nhầm là Cao thật.
+const VAI_BAT_PRODUCT_CODE = "SP000110";
+const VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME = "chieudai";
+// Phụ kiện lắp đặt xưởng cần nhưng KHÔNG có trong dữ liệu đặt hàng (chưa từng
+// là tham số sản phẩm lúc báo giá/sinh phiếu SX) — để trống, mỗi mục 1 dòng
+// riêng cho xưởng tự ghi tay sau khi in.
+const VAI_BAT_HANDWRITE_FIELDS = ["U treo", "Buly", "Bi treo", "Dây chia", "Dây kéo"];
+
+// Bạt Cuốn (SP000116, Xưởng Bạt): cơ cấu vận hành ("loai") chiếm bớt không
+// gian lắp đặt nên kích thước xưởng phải CẮT khác kích thước khách ĐẶT — số
+// liệu do người dùng cung cấp trực tiếp (không suy đoán), áp dụng không điều
+// kiện (khác dòng vật tư BOM có sẵn của SP000116 vốn chỉ cộng khi Ống = "Ống
+// nhôm cứng" — 2 việc độc lập, không liên quan nhau).
+const BAT_CUON_PRODUCT_CODE = "SP000116";
+// Trừ khỏi Rộng (đơn vị cm) theo từng giá trị "loai".
+const BAT_CUON_WIDTH_DEDUCT_CM_BY_LOAI: Record<string, number> = {
+  loxothuong: 3, // Lò xo thường
+  loxoham: 4, // Lò xo Hãm
+  daukeo: 3, // Đầu kéo (thường)
+  daukeotichhop: 4, // Đầu kéo tích hợp
+  tayquay: 10, // Tay quay
+  motor: 5, // Motor
+};
+// Riêng Mã bạt lưới nhập khẩu K01/K01 mới: trừ thêm 5cm khỏi Rộng, CỘNG DỒN
+// với khoản trừ theo "loai" ở trên (không thay thế); và Cao cộng 15cm thay vì
+// 10cm mặc định (không phân biệt "loai" trong cả 2 trường hợp).
+const BAT_CUON_MABAT_LUOI_CODES = ["k01", "k01moi"];
+const BAT_CUON_MABAT_LUOI_EXTRA_DEDUCT_CM = 5;
+const BAT_CUON_HEIGHT_ADD_CM_DEFAULT = 10;
+const BAT_CUON_HEIGHT_ADD_CM_MABAT_LUOI = 15;
+
 function paramValue(item: ProductionOrderItem, name: string): string {
   return item.parameters.find((p) => p.name === name)?.value ?? "—";
+}
+
+// chieurong/chieucao lưu đơn vị mét — deltaCm quy đổi ra mét trước khi cộng.
+// Giá trị không parse được số thì trả nguyên văn (không áp công thức).
+function batCuonAdjustDimension(raw: string, deltaCm: number): string {
+  const num = Number(raw.replace(",", "."));
+  if (Number.isNaN(num)) return raw;
+  return (num + deltaCm / 100).toString();
+}
+
+function isBatCuonMabatLuoi(item: ProductionOrderItem): boolean {
+  const mabat = item.parameters.find((p) => p.name === "mabat")?.value;
+  return mabat !== undefined && BAT_CUON_MABAT_LUOI_CODES.includes(mabat);
+}
+
+function renderWidthCell(item: ProductionOrderItem): ReactNode {
+  if (item.productCode === BAT_CUON_PRODUCT_CODE) {
+    const loai = item.parameters.find((p) => p.name === "loai")?.value;
+    let deductCm = loai ? (BAT_CUON_WIDTH_DEDUCT_CM_BY_LOAI[loai] ?? 0) : 0;
+    if (isBatCuonMabatLuoi(item)) {
+      deductCm += BAT_CUON_MABAT_LUOI_EXTRA_DEDUCT_CM;
+    }
+    return formatDimension(batCuonAdjustDimension(paramValue(item, WIDTH_PARAM_NAME), -deductCm));
+  }
+  return formatDimension(paramValue(item, WIDTH_PARAM_NAME));
+}
+
+function renderHeightCell(item: ProductionOrderItem): ReactNode {
+  if (item.productCode === MAI_HIEN_DI_DONG_PRODUCT_CODE) {
+    const p = item.parameters.find((param) => param.name === MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME);
+    return p?.valueLabel ?? p?.value ?? "—";
+  }
+  if (item.productCode === VAI_BAT_PRODUCT_CODE) {
+    return (
+      <>
+        {formatDimension(paramValue(item, VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME))}
+        <div style={{ fontSize: 8, fontWeight: 400, color: "#666" }}>(chiều nước chảy)</div>
+      </>
+    );
+  }
+  if (item.productCode === BAT_CUON_PRODUCT_CODE) {
+    const addCm = isBatCuonMabatLuoi(item) ? BAT_CUON_HEIGHT_ADD_CM_MABAT_LUOI : BAT_CUON_HEIGHT_ADD_CM_DEFAULT;
+    return formatDimension(batCuonAdjustDimension(paramValue(item, HEIGHT_PARAM_NAME), addCm));
+  }
+  return formatDimension(paramValue(item, HEIGHT_PARAM_NAME));
 }
 
 // Chuẩn hoá hiển thị Rộng/Cao — luôn hiện đủ 3 chữ số thập phân (vd "1,200",
@@ -153,6 +243,10 @@ function otherParamsText(item: ProductionOrderItem): string {
       (p) =>
         p.name !== WIDTH_PARAM_NAME &&
         p.name !== HEIGHT_PARAM_NAME &&
+        // Mái hiên di động / Vải bạt: khổ đua / chiều nước chảy đã hiện riêng
+        // ở ô "Cao" (renderHeightCell), không lặp lại trong dòng mô tả.
+        p.name !== MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME &&
+        p.name !== VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME &&
         !HIDDEN_PARAM_NAMES.includes(p.name),
     )
     .map((p) => {
@@ -250,9 +344,10 @@ function ProductionOrderPrintContent() {
   // loại mẫu như trước (A5 ngang cho mẫu xưởng, A5 dọc cho mẫu chung).
   const [paperSize, setPaperSize] = useState<"auto" | "A4">("auto");
 
-  // Xem trước KHÔNG ghi Timeline PRINTED — chỉ khi bấm "In / Tải PDF" mới gọi
-  // POST /production-orders/print để ghi vết (xem 009-in-phieu-san-xuat.md
-  // Việc 5). Tách riêng để dùng lại được sau khi sửa địa chỉ giao hàng.
+  // Xem trước KHÔNG ghi Timeline PRINTED (và không Start) — chỉ khi bấm "In
+  // và bắt đầu SX / Tải PDF" mới gọi POST /production-orders/print để ghi vết
+  // + tự Start các phiếu đang PENDING (chốt 10/08/2026). Tách riêng để dùng
+  // lại được sau khi sửa địa chỉ giao hàng.
   const loadOrders = useCallback(async () => {
     if (ids.length === 0) {
       setError("Không có phiếu sản xuất nào được chọn.");
@@ -361,6 +456,22 @@ function ProductionOrderPrintContent() {
           field-sizing: content;
           text-decoration: underline;
         }
+        /* 5 field phụ kiện Vải bạt (U treo/Buly/Bi treo/Dây chia/Dây kéo) —
+           gõ trực tiếp trên trang in, to đậm như dòng mô tả (13px/700) để
+           dễ đọc lúc sản xuất, gạch chấm báo hiệu có chỗ bấm vào nhập. */
+        .vaibat-field-input {
+          flex: 1;
+          min-width: 0;
+          border: none;
+          outline: none;
+          background: transparent;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          color: inherit;
+          padding: 0 2px;
+          border-bottom: 1px dotted #999;
+        }
       `}</style>
 
       <div className="no-print fixed top-4 right-4 flex gap-2 items-center z-50">
@@ -377,7 +488,7 @@ function ProductionOrderPrintContent() {
           disabled={printing}
           style={{ background: "#17375e", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", fontSize: 14, cursor: "pointer", fontWeight: 600 }}
         >
-          {printing ? "Đang xử lý..." : "In / Tải PDF"}
+          {printing ? "Đang xử lý..." : "In và bắt đầu SX / Tải PDF"}
         </button>
         <button
           onClick={() => window.close()}
@@ -532,12 +643,10 @@ function GenericOrderContent({
   );
 }
 
-// Mẫu in dùng chung cho Xưởng Cầu Vồng + Xưởng Cửa Lưới
-// (009-in-phieu-san-xuat.md) — cùng bố cục
+// Mẫu in dùng chung cho cả 4 xưởng (009-in-phieu-san-xuat.md) — cùng bố cục
 // (rowSpan gộp dòng, tiêu đề có phụ đề tên xưởng, A5 ngang, không ô ký tên),
-// nhưng ĐIỀU KIỆN gộp dòng khác nhau theo xưởng — xem `groupKeyFor()`: Cầu
-// Vồng chỉ cần cùng mã sản phẩm; Cửa Lưới phải cùng cả mã sản phẩm lẫn toàn bộ
-// thông số khác Rộng/Cao (loại cửa, số cánh, màu khung...).
+// cùng điều kiện gộp dòng — xem `groupKey()`: chỉ gộp khi cùng mã sản phẩm
+// LẪN toàn bộ thông số khác Rộng/Cao.
 // Thiết kế theo tư duy phiếu sản xuất giấy:
 // không phải 1 bảng HTML duy nhất — header/khối thông tin dựng bằng flex/div,
 // CHỈ bảng sản phẩm mới dùng <table> (đúng bản chất dữ liệu dạng bảng). Ưu
@@ -554,7 +663,7 @@ function WorkshopOrderContent({
   onSaved: () => void;
   branding: { companyName: string | null; logo: string | null } | null;
 }) {
-  const groups = groupItems(order.items, groupKeyFor(order.productionCenterCode));
+  const groups = groupItems(order.items, groupKey);
   const totalQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity), 0);
 
   // Sửa ghi chú CHỈ trên trang in — chỉnh cục bộ (state FE), không gọi API,
@@ -567,6 +676,12 @@ function WorkshopOrderContent({
   const [noteOverrides, setNoteOverrides] = useState<Record<string, string>>(() =>
     Object.fromEntries(groups.map((group) => [group.items[0].id, group.items[0].note ?? ""])),
   );
+
+  // 5 thông số phụ kiện Vải bạt (VAI_BAT_HANDWRITE_FIELDS) — gõ trực tiếp
+  // trên trang in trước khi bấm in, CHỈ cục bộ (state FE, giống noteOverrides
+  // ở trên), không có ở đâu khác trong dữ liệu vì chưa từng là tham số sản
+  // phẩm lúc báo giá. Key = "{id item đầu nhóm}:{nhãn field}".
+  const [vaiBatFieldOverrides, setVaiBatFieldOverrides] = useState<Record<string, string>>({});
 
   const lookupStyle: CSSProperties = { fontSize: 9, color: "#555", lineHeight: 1.6 };
   const boxLabelStyle: CSSProperties = {
@@ -720,22 +835,49 @@ function WorkshopOrderContent({
                         <div style={{ fontSize: 11, fontWeight: 500, color: "#444" }}>{group.productName}</div>
                         {description && (
                           <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              marginTop: 2,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
+                            style={
+                              order.productionCenterCode === BAT_CENTER_CODE
+                                ? // Xưởng Bạt: sản phẩm như Mái hiên di động có nhiều
+                                  // thông số phụ (khổ đua, mã bạt, vật liệu tay, cơ
+                                  // cấu, quảng cáo, ống) — ép 1 dòng sẽ bị cắt mất
+                                  // thông tin, nên cho xuống dòng tự nhiên.
+                                  { fontSize: 13, fontWeight: 700, marginTop: 2, overflowWrap: "break-word" }
+                                : {
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    marginTop: 2,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }
+                            }
                           >
                             {description}
                           </div>
                         )}
+                        {group.productCode === VAI_BAT_PRODUCT_CODE && (
+                          <div style={{ marginTop: 4 }}>
+                            {VAI_BAT_HANDWRITE_FIELDS.map((label) => {
+                              const key = `${group.items[0].id}:${label}`;
+                              return (
+                                <div key={label} style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 3 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>{label}:</span>
+                                  <input
+                                    className="vaibat-field-input"
+                                    value={vaiBatFieldOverrides[key] ?? ""}
+                                    onChange={(e) =>
+                                      setVaiBatFieldOverrides((prev) => ({ ...prev, [key]: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
                     )}
-                    <td style={tdBigStyle}>{formatDimension(paramValue(item, WIDTH_PARAM_NAME))}</td>
-                    <td style={tdBigStyle}>{formatDimension(paramValue(item, HEIGHT_PARAM_NAME))}</td>
+                    <td style={tdBigStyle}>{renderWidthCell(item)}</td>
+                    <td style={tdBigStyle}>{renderHeightCell(item)}</td>
                     <td style={tdBigStyle}>{Number(item.quantity)}</td>
                     {itemIdx === 0 && (
                       <td

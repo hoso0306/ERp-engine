@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, ChevronLeft, CreditCard, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, CreditCard, ExternalLink, Loader2 } from "lucide-react";
 import { RiskBadge, computeDaysOverdue, computeRiskLevel } from "./risk-badge";
 import { AllocatePaymentDialog } from "./allocate-payment-dialog";
 import { apiGet } from "@/lib/api";
@@ -84,6 +84,7 @@ export function ReceivableByCustomerTable({
   const router = useRouter();
   const { hasPermission } = useAuth();
   const canPay = hasPermission("debt.create-payment");
+  const canViewCustomer = hasPermission("customer.view");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [ordersByCustomer, setOrdersByCustomer] = useState<Record<string, OpenOrderRow[]>>({});
   const [openingBalancesByCustomer, setOpeningBalancesByCustomer] = useState<
@@ -164,6 +165,7 @@ export function ReceivableByCustomerTable({
               <TableHead className="text-right">Tổng còn phải thu</TableHead>
               <TableHead>Nợ lâu nhất</TableHead>
               <TableHead>Hạn mức</TableHead>
+              {canViewCustomer && <TableHead>Xem chi tiết</TableHead>}
               {canPay && <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
@@ -201,6 +203,18 @@ export function ReceivableByCustomerTable({
                       <span className="text-sm text-muted-foreground">—</span>
                     )}
                   </TableCell>
+                  {canViewCustomer && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/customers/${r.customerId}?tab=debt`)}
+                      >
+                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                        Xem chi tiết
+                      </Button>
+                    </TableCell>
+                  )}
                   {canPay && (
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Button
@@ -217,7 +231,10 @@ export function ReceivableByCustomerTable({
 
                 {expanded === r.customerId && (
                   <TableRow>
-                    <TableCell colSpan={canPay ? 7 : 6} className="bg-muted/30 p-0">
+                    <TableCell
+                      colSpan={6 + (canViewCustomer ? 1 : 0) + (canPay ? 1 : 0)}
+                      className="bg-muted/30 p-0"
+                    >
                       <div className="px-4 py-3">
                         {loadingCustomerId === r.customerId ? (
                           <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">

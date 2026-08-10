@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Trash2, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { CustomerProductDiscountList } from "@/components/customer/customer-product-discount-list";
+import { CustomerOrdersTab } from "@/components/customer/customer-orders-tab";
+import { CustomerDebtTab } from "@/components/customer/customer-debt-tab";
 import { AllocatePaymentDialog } from "@/components/debt/allocate-payment-dialog";
 import { OpeningBalanceSection } from "@/components/debt/opening-balance-section";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { apiGet, apiDelete, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -70,9 +73,10 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-export default function CustomerDetailPage() {
+function CustomerDetailPageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { hasPermission } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
@@ -81,6 +85,12 @@ export default function CustomerDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [allocateOpen, setAllocateOpen] = useState(false);
+  // Cho phép mở thẳng tab Công nợ từ nơi khác (vd nút "Xem chi tiết" ở bảng
+  // Công nợ theo khách hàng — GET /customers/:id?tab=debt), giống pattern
+  // filter=... đã dùng ở /debts/by-customer.
+  const [tab, setTab] = useState<"info" | "orders" | "debt">(
+    searchParams.get("tab") === "debt" ? "debt" : "info",
+  );
 
   const fetchDiscounts = useCallback(() => {
     apiGet<ProductDiscount[]>(`/customers/${params.id}/product-discounts`)
@@ -167,63 +177,85 @@ export default function CustomerDetailPage() {
         </Badge>
       </div>
 
-      <div className="rounded-lg border p-6">
-        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin cơ bản</h3>
-        <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          <Field label="Số điện thoại" value={customer.phone} />
-          <Field label="Email" value={customer.email} />
-          <Field label="Tên công ty" value={customer.companyName} />
-          <Field label="Mã số thuế" value={customer.taxCode} />
-          <Field label="Địa chỉ" value={fullAddress} />
-        </dl>
-      </div>
+      <Tabs value={tab} onValueChange={(v) => setTab((v as typeof tab) ?? "info")}>
+        <TabsList>
+          <TabsTrigger value="info">Thông tin</TabsTrigger>
+          {hasPermission("sales-order.view") && <TabsTrigger value="orders">Đơn hàng</TabsTrigger>}
+          {hasPermission("debt.view") && <TabsTrigger value="debt">Công nợ</TabsTrigger>}
+        </TabsList>
 
-      <div className="rounded-lg border p-6">
-        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin kinh doanh</h3>
-        <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          <Field label="Nhóm khách hàng" value={customer.customerGroup?.name} />
-          <Field label="Tuyến giao hàng" value={customer.deliveryRoute?.name} />
-          <Field label="Người phụ trách" value={customer.sale?.name} />
-          <Field label="Hạn mức công nợ" value={`${Number(customer.debtLimit).toLocaleString("vi-VN")} đ`} />
-          <Field label="Thời hạn công nợ" value={`${customer.debtTermDays} ngày`} />
-        </dl>
-      </div>
+        <TabsContent value="info" className="space-y-6 pt-4">
+          <div className="rounded-lg border p-6">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin cơ bản</h3>
+            <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <Field label="Số điện thoại" value={customer.phone} />
+              <Field label="Email" value={customer.email} />
+              <Field label="Tên công ty" value={customer.companyName} />
+              <Field label="Mã số thuế" value={customer.taxCode} />
+              <Field label="Địa chỉ" value={fullAddress} />
+            </dl>
+          </div>
 
-      {(customer.defaultCarrierName || customer.defaultCarrierPhone || customer.defaultCarrierNote) && (
-        <div className="rounded-lg border p-6">
-          <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin giao hàng</h3>
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            <Field label="Nhà xe" value={customer.defaultCarrierName} />
-            <Field label="SĐT nhà xe" value={customer.defaultCarrierPhone} />
-            <Field label="Ghi chú giao hàng" value={customer.defaultCarrierNote} />
-          </dl>
-        </div>
-      )}
+          <div className="rounded-lg border p-6">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin kinh doanh</h3>
+            <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <Field label="Nhóm khách hàng" value={customer.customerGroup?.name} />
+              <Field label="Tuyến giao hàng" value={customer.deliveryRoute?.name} />
+              <Field label="Người phụ trách" value={customer.sale?.name} />
+              <Field label="Hạn mức công nợ" value={`${Number(customer.debtLimit).toLocaleString("vi-VN")} đ`} />
+              <Field label="Thời hạn công nợ" value={`${customer.debtTermDays} ngày`} />
+            </dl>
+          </div>
 
-      <CustomerProductDiscountList
-        customerId={customer.id}
-        discounts={discounts}
-        onChanged={fetchDiscounts}
-      />
+          {(customer.defaultCarrierName || customer.defaultCarrierPhone || customer.defaultCarrierNote) && (
+            <div className="rounded-lg border p-6">
+              <h3 className="mb-4 text-sm font-medium text-muted-foreground">Thông tin giao hàng</h3>
+              <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <Field label="Nhà xe" value={customer.defaultCarrierName} />
+                <Field label="SĐT nhà xe" value={customer.defaultCarrierPhone} />
+                <Field label="Ghi chú giao hàng" value={customer.defaultCarrierNote} />
+              </dl>
+            </div>
+          )}
 
-      {hasPermission("debt.view") && (
-        <OpeningBalanceSection
-          customerId={customer.id}
-          balances={openingBalances}
-          onChanged={fetchOpeningBalances}
-        />
-      )}
+          <CustomerProductDiscountList
+            customerId={customer.id}
+            discounts={discounts}
+            onChanged={fetchDiscounts}
+          />
 
-      {customer.note && (
-        <div className="rounded-lg border p-6">
-          <h3 className="mb-2 text-sm font-medium text-muted-foreground">Ghi chú</h3>
-          <p className="text-sm">{customer.note}</p>
-        </div>
-      )}
+          {hasPermission("debt.view") && (
+            <OpeningBalanceSection
+              customerId={customer.id}
+              balances={openingBalances}
+              onChanged={fetchOpeningBalances}
+            />
+          )}
 
-      <div className="text-xs text-muted-foreground">
-        Tạo lúc: {new Date(customer.createdAt).toLocaleString("vi-VN")} · Cập nhật: {new Date(customer.updatedAt).toLocaleString("vi-VN")}
-      </div>
+          {customer.note && (
+            <div className="rounded-lg border p-6">
+              <h3 className="mb-2 text-sm font-medium text-muted-foreground">Ghi chú</h3>
+              <p className="text-sm">{customer.note}</p>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground">
+            Tạo lúc: {new Date(customer.createdAt).toLocaleString("vi-VN")} · Cập nhật: {new Date(customer.updatedAt).toLocaleString("vi-VN")}
+          </div>
+        </TabsContent>
+
+        {hasPermission("sales-order.view") && (
+          <TabsContent value="orders" className="pt-4">
+            <CustomerOrdersTab customerId={customer.id} />
+          </TabsContent>
+        )}
+
+        {hasPermission("debt.view") && (
+          <TabsContent value="debt" className="pt-4">
+            <CustomerDebtTab customerId={customer.id} />
+          </TabsContent>
+        )}
+      </Tabs>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -242,5 +274,13 @@ export default function CustomerDetailPage() {
         onSaved={() => {}}
       />
     </div>
+  );
+}
+
+export default function CustomerDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomerDetailPageContent />
+    </Suspense>
   );
 }

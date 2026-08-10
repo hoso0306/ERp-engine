@@ -85,11 +85,28 @@ export class OpeningBalanceService {
     );
   }
 
+  // Tab "Tiến trình thanh toán" trong trang khách hàng (rà soát tab Công nợ,
+  // 11/08/2026) cần hiện "Ngày thanh toán"/"Phiếu thu tương ứng" cho Công nợ
+  // đầu kỳ giống Receivable — trả kèm payments (đọc qua PaymentAllocation,
+  // đã tham gia chung Allocation Engine). Không đổi shape cũ (chỉ thêm field
+  // mới) nên không ảnh hưởng OpeningBalanceSection ở tab Thông tin.
   async findAllByCustomer(customerId: string) {
-    return this.prisma.openingBalance.findMany({
+    const rows = await this.prisma.openingBalance.findMany({
       where: { customerId },
       orderBy: { createdAt: 'asc' },
+      include: {
+        allocations: {
+          select: {
+            payment: { select: { code: true, paymentDate: true, type: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
+    return rows.map(({ allocations, ...b }) => ({
+      ...b,
+      payments: allocations.map((a) => a.payment),
+    }));
   }
 
   async findOne(id: string) {

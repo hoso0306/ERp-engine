@@ -67,7 +67,7 @@ export class CustomerService {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { name: 'asc' },
         include: {
           customerGroup: { select: { id: true, name: true } },
           deliveryRoute: { select: { id: true, name: true } },

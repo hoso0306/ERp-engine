@@ -42,6 +42,15 @@ export class ReceivableController {
     return this.debtService.getOpenReceivablesForCustomer(customerId);
   }
 
+  // Preview cấn trừ FIFO trước khi xác nhận POST /payments/allocate (rà soát
+  // tab Công nợ, 11/08/2026) — gộp cả Công nợ đầu kỳ, khác open-by-customer ở
+  // trên (chỉ Receivable). Đăng ký trước ':id' cùng lý do các route literal khác.
+  @Get('fifo-preview/:customerId')
+  @RequirePermission('debt.view')
+  getFifoPreview(@Param('customerId') customerId: string) {
+    return this.debtService.getFifoPreviewForCustomer(customerId);
+  }
+
   // Đơn đã "Đóng công nợ (không xuất hóa đơn)", đủ điều kiện tạo VAT Settlement
   // (024-cong-no-vat-settlement.md) — giữ trong ReceivableController cho đúng
   // module ownership, cùng tiền lệ open-by-customer ở trên (không đụng

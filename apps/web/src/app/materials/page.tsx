@@ -31,13 +31,28 @@ interface MaterialImportChange {
   newValue: string;
 }
 
-interface MaterialImportRow {
-  materialId: string;
-  code: string;
-  name: string;
-  changes: MaterialImportChange[];
-  update: Record<string, unknown>;
+interface MaterialImportCreateField {
+  label: string;
+  value: string;
 }
+
+// Để trống Mã VT trên file import = tạo vật tư mới (10/08/2026) — khớp
+// MaterialImportRow phía BE (product.service.ts).
+type MaterialImportRow =
+  | {
+      kind: "update";
+      materialId: string;
+      code: string;
+      name: string;
+      changes: MaterialImportChange[];
+      update: Record<string, unknown>;
+    }
+  | {
+      kind: "create";
+      name: string;
+      fields: MaterialImportCreateField[];
+      create: Record<string, unknown>;
+    };
 
 export default function MaterialsPage() {
   const [materials, setMaterials] = useState<any[]>([]);
@@ -113,10 +128,20 @@ export default function MaterialsPage() {
   }
 
   async function handleApplyImport(rows: MaterialImportRow[]) {
-    await apiPost("/materials/import-apply", {
-      rows: rows.map(({ materialId, update }) => ({ materialId, update })),
-    });
-    toast.success(`Đã cập nhật ${rows.length} vật tư từ Excel.`);
+    const { created, updated } = await apiPost<{ created: number; updated: number }>(
+      "/materials/import-apply",
+      {
+        rows: rows.map((row) =>
+          row.kind === "create"
+            ? { kind: "create" as const, create: row.create }
+            : { kind: "update" as const, materialId: row.materialId, update: row.update },
+        ),
+      },
+    );
+    const parts: string[] = [];
+    if (created > 0) parts.push(`tạo mới ${created}`);
+    if (updated > 0) parts.push(`cập nhật ${updated}`);
+    toast.success(`Đã ${parts.join(", ")} vật tư từ Excel.`);
     fetchMaterials();
   }
 
@@ -216,23 +241,41 @@ export default function MaterialsPage() {
         open={importOpen}
         onOpenChange={setImportOpen}
         title="Nhập Vật tư từ Excel"
-        description="Tải file Excel (chính là file Xuất Excel), sửa Đơn vị/Trạng thái/Giá rồi nhập lại — cột Xưởng không áp dụng qua Excel. Chỉ hiện các vật tư có thay đổi, chỉ áp dụng được khi file không còn dòng lỗi."
+        description="Tải file Excel (chính là file Xuất Excel), sửa Đơn vị/Trạng thái/Giá rồi nhập lại để cập nhật, hoặc thêm dòng mới để trống Mã VT (điền Tên vật tư, Đơn vị, Giá nhập, Trạng thái) để tạo vật tư mới — cột Xưởng không áp dụng qua Excel, gán sau khi cần. Chỉ hiện các dòng có thay đổi/tạo mới, chỉ áp dụng được khi file không còn dòng lỗi."
         templateUrl={`/materials/export?${currentFilterParams()}`}
         previewUrl="/materials/import-preview"
         columns={[
-          { header: "Mã VT", render: (row) => row.code },
+          {
+            header: "Mã VT",
+            render: (row) =>
+              row.kind === "create" ? (
+                <span className="font-medium text-green-700 dark:text-green-500">Mới</span>
+              ) : (
+                row.code
+              ),
+          },
           { header: "Tên vật tư", render: (row) => row.name },
           {
             header: "Thay đổi",
-            render: (row) => (
-              <div className="space-y-0.5">
-                {row.changes.map((c, i) => (
-                  <div key={i}>
-                    {c.label}: {c.oldValue} → {c.newValue}
-                  </div>
-                ))}
-              </div>
-            ),
+            render: (row) =>
+              row.kind === "create" ? (
+                <div className="space-y-0.5">
+                  <div className="font-medium text-green-700 dark:text-green-500">Tạo mới</div>
+                  {row.fields.map((f, i) => (
+                    <div key={i}>
+                      {f.label}: {f.value}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {row.changes.map((c, i) => (
+                    <div key={i}>
+                      {c.label}: {c.oldValue} → {c.newValue}
+                    </div>
+                  ))}
+                </div>
+              ),
           },
         ]}
         onApply={handleApplyImport}

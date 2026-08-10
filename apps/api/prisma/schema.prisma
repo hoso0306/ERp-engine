@@ -181,6 +181,11 @@ enum OpeningBalanceTimelineActorType {
 enum OpeningBalanceTimelineAction {
   OPENING_BALANCE_CREATED
   OPENING_BALANCE_REDUCED
+  // Giảm số dư qua Payment/PaymentAllocation (Allocation Engine, rà soát tab
+  // Công nợ 11/08/2026) — khác OPENING_BALANCE_REDUCED (action reduce() thủ
+  // công, bắt buộc lý do). payload: { paymentCode, amount } — amount âm khi
+  // ghi cho Reverse Payment (cùng convention SalesOrderTimeline.PAYMENT_STATUS_CHANGED).
+  OPENING_BALANCE_PAID
 }
 
 enum ProductionOrderTimelineAction {
@@ -1514,29 +1519,43 @@ model Receivable {
 // trả cho nhiều đơn của cùng khách hàng, mặc định FIFO — xem debt.md).
 // Append-only, giống Payment — không sửa/xoá.
 model PaymentAllocation {
-  id           String @id @default(cuid())
-  paymentId    String @map("payment_id")
-  receivableId String @map("receivable_id")
+  id        String @id @default(cuid())
+  paymentId String @map("payment_id")
+
+  // Cấn cho ĐÚNG 1 trong 2 đối tượng — Receivable (đơn hàng) hoặc
+  // OpeningBalance (Công nợ đầu kỳ, rà soát tab Công nợ 11/08/2026: "coi Công
+  // nợ đầu kỳ như 1 đơn cần thanh toán, cấn trừ FIFO như bình thường").
+  // Validate ở Application trong cùng transaction tạo Payment, cùng convention
+  // Payment.vatSettlementId (024-cong-no-vat-settlement.md Quyết định #6) —
+  // không CHECK constraint DB, không rủi ro concurrency vì quyết định ngay
+  // lúc tạo.
+  receivableId String? @map("receivable_id")
   // Redundant reference — Receivable–SalesOrder là 1-1 (Receivable.salesOrderId
-  // @unique), tránh join khi cần lọc/hiển thị/ghi Timeline theo đơn.
-  salesOrderId String @map("sales_order_id")
+  // @unique), tránh join khi cần lọc/hiển thị/ghi Timeline theo đơn. Chỉ có
+  // giá trị khi receivableId có giá trị.
+  salesOrderId String? @map("sales_order_id")
+
+  openingBalanceId String? @map("opening_balance_id")
 
   // Phân bổ theo BeforeVatFirstPolicy (mặc định): trừ hết phần trước-VAT của
-  // Receivable trước, dư mới trừ vào VAT. allocatedTotal = allocatedSubtotal +
-  // allocatedVat. Policy tách khỏi Engine (xem AllocationPolicy trong service),
-  // đổi chính sách sau này không cần đổi field ở đây.
+  // Receivable/OpeningBalance trước, dư mới trừ vào VAT. allocatedTotal =
+  // allocatedSubtotal + allocatedVat. Policy tách khỏi Engine (xem
+  // AllocationPolicy trong service), đổi chính sách sau này không cần đổi
+  // field ở đây.
   allocatedSubtotal Decimal @map("allocated_subtotal") @db.Decimal(15, 0)
   allocatedVat      Decimal @map("allocated_vat") @db.Decimal(15, 0)
   allocatedTotal    Decimal @map("allocated_total") @db.Decimal(15, 0)
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  payment    Payment    @relation(fields: [paymentId], references: [id])
-  receivable Receivable @relation(fields: [receivableId], references: [id])
+  payment        Payment         @relation(fields: [paymentId], references: [id])
+  receivable     Receivable?     @relation(fields: [receivableId], references: [id])
+  openingBalance OpeningBalance? @relation(fields: [openingBalanceId], references: [id])
 
   @@index([paymentId])
   @@index([receivableId])
   @@index([salesOrderId])
+  @@index([openingBalanceId])
   @@map("payment_allocations")
 }
 
@@ -1712,9 +1731,14 @@ model VatSettlementItemLineParameter {
 // nợ TRƯỚC KHI dùng phần mềm, nhập tay bởi kế toán lúc migrate dữ liệu. Không
 // có SalesOrder gốc (số liệu tổng hợp, không phải giao dịch bán hàng thật) nên
 // KHÔNG dùng Receivable (Receivable luôn 1-1 với SalesOrder, salesOrderId
-// @unique). Không có paidAmount/Payment/PaymentAllocation/FIFO/VAT-split
-// engine — cố tình đơn giản, giảm số dư chỉ qua action reduce() duy nhất
-// (không phải Payment).
+// @unique). Không có paidAmount riêng — giảm trực tiếp remainingAmount.
+//
+// Rà soát tab Công nợ (11/08/2026): coi Công nợ đầu kỳ như 1 khoản cần thanh
+// toán, tham gia CHUNG Allocation Engine với Receivable (`POST /payments/allocate`,
+// luôn ưu tiên cấn trừ TRƯỚC Receivable vì là nợ cũ nhất) — đảo lại quyết định
+// "cố tình đơn giản, không FIFO" ban đầu. Action `reduce()` (Manual Override,
+// bắt buộc lý do) vẫn giữ song song cho trường hợp giảm nợ không qua thu tiền
+// thật (vd xoá nợ khó đòi).
 // ──────────────────────────────────────
 
 model OpeningBalance {
@@ -1748,6 +1772,7 @@ model OpeningBalance {
 
   timeline        OpeningBalanceTimeline[]
   settlementItems VatSettlementItem[]
+  allocations     PaymentAllocation[]
 
   @@index([customerId])
   @@map("opening_balances")

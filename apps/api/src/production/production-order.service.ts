@@ -16,6 +16,7 @@ import { SalesOrderService } from '../sales-order/sales-order.service';
 import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { SettingService } from '../setting/setting.service';
+import { PermissionService } from '../permission/permission.service';
 
 const PRODUCTION_ORDER_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -53,6 +54,7 @@ export class ProductionOrderService {
     private readonly prisma: PrismaService,
     private readonly salesOrderService: SalesOrderService,
     private readonly settingService: SettingService,
+    private readonly permissionService: PermissionService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -102,7 +104,9 @@ export class ProductionOrderService {
               // Cột "Đã in" ở tab Sản xuất (fix 19/07/2026) — Derived Data hợp
               // lệ theo Section 13 (tính trực tiếp từ Timeline, chi phí thấp),
               // không lưu field riêng. Đã in ⇔ có ít nhất 1 dòng Timeline PRINTED.
-              timeline: { where: { action: ProductionOrderTimelineAction.PRINTED } },
+              timeline: {
+                where: { action: ProductionOrderTimelineAction.PRINTED },
+              },
             },
           },
           salesOrder: {
@@ -318,12 +322,21 @@ export class ProductionOrderService {
   }
 
   // ─────────────────────────────────────────────────────
-  // In phiếu A5 (009-in-phieu-san-xuat.md) — không phải Action đổi Status,
-  // chỉ ghi vết đã in (PRINTED) + trả dữ liệu đầy đủ để FE render. Dùng
-  // chung cho in 1 phiếu (ids.length === 1) lẫn in hàng loạt.
+  // In phiếu A5 (009-in-phieu-san-xuat.md) — ghi vết đã in (PRINTED) + trả dữ
+  // liệu đầy đủ để FE render. Dùng chung cho in 1 phiếu (ids.length === 1)
+  // lẫn in hàng loạt.
+  //
+  // "In và bắt đầu SX" (chốt 10/08/2026): in cũng tự động Start các phiếu
+  // đang PENDING trong cùng transaction (không phải action đổi Status độc
+  // lập nữa — Action "In" giờ bao luôn "Bắt đầu SX"). Phiếu không còn PENDING
+  // (in lại phiếu đã chạy/hoàn thành) chỉ ghi PRINTED, không đụng status.
+  // Vì Start là hành động có kiểm soát quyền riêng (`production.start`), in
+  // giờ đòi thêm quyền đó ngoài `production.view` — nếu không có, chặn in
+  // luôn (không cho in "một nửa" rồi âm thầm không Start). Endpoint
+  // `:id/start` (nút "Bắt đầu sản xuất" thủ công) giữ nguyên, không đổi.
   // ─────────────────────────────────────────────────────
 
-  async print(ids: string[], userId?: string | null) {
+  async print(ids: string[], userId?: string | null, roleId?: string | null) {
     if (!ids || ids.length === 0) {
       throw new BadRequestException(
         'Cần chọn ít nhất một phiếu sản xuất để in.',
@@ -332,7 +345,7 @@ export class ProductionOrderService {
 
     const existing = await this.prisma.productionOrder.findMany({
       where: { id: { in: ids } },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (existing.length !== ids.length) {
       throw new NotFoundException(
@@ -340,13 +353,24 @@ export class ProductionOrderService {
       );
     }
 
-    const createdByName = await resolveActorName(this.prisma, userId);
+    const canStart =
+      !!roleId &&
+      (await this.permissionService.hasPermission(roleId, 'production.start'));
+    if (!canStart) {
+      throw new ForbiddenException(
+        'Không có quyền "production.start" — In phiếu sẽ tự động bắt đầu sản xuất nên cần thêm quyền này.',
+      );
+    }
 
-    await this.prisma.$transaction(
-      ids.map((id) =>
+    const createdByName = await resolveActorName(this.prisma, userId);
+    const startedAt = new Date();
+
+    const ops: Prisma.PrismaPromise<unknown>[] = [];
+    for (const order of existing) {
+      ops.push(
         this.prisma.productionOrderTimeline.create({
           data: {
-            productionOrderId: id,
+            productionOrderId: order.id,
             action: ProductionOrderTimelineAction.PRINTED,
             actorType: ProductionOrderTimelineActorType.USER,
             payload: {},
@@ -354,8 +378,34 @@ export class ProductionOrderService {
             createdByName,
           },
         }),
-      ),
-    );
+      );
+
+      // Chỉ tự Start phiếu đang Chờ sản xuất — in lại phiếu đã chạy/hoàn
+      // thành/huỷ thì chỉ ghi vết in, không đụng status (giống hệt điều kiện
+      // trong start()).
+      if (order.status === ProductionOrderStatus.PENDING) {
+        ops.push(
+          this.prisma.productionOrder.update({
+            where: { id: order.id },
+            data: { status: ProductionOrderStatus.IN_PRODUCTION, startedAt },
+          }),
+        );
+        ops.push(
+          this.prisma.productionOrderTimeline.create({
+            data: {
+              productionOrderId: order.id,
+              action: ProductionOrderTimelineAction.STARTED,
+              actorType: ProductionOrderTimelineActorType.USER,
+              payload: {},
+              createdBy: userId ?? null,
+              createdByName,
+            },
+          }),
+        );
+      }
+    }
+
+    await this.prisma.$transaction(ops);
 
     // Giữ đúng thứ tự ids đã chọn để FE render trang A5 theo đúng thứ tự.
     return Promise.all(ids.map((id) => this.findOne(id)));
@@ -501,7 +551,10 @@ export class ProductionOrderService {
     return this.prisma.productionOrder.findMany({
       where: {
         status: {
-          in: [ProductionOrderStatus.PENDING, ProductionOrderStatus.IN_PRODUCTION],
+          in: [
+            ProductionOrderStatus.PENDING,
+            ProductionOrderStatus.IN_PRODUCTION,
+          ],
         },
         createdAt: { lte: threshold },
       },

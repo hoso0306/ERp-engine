@@ -26,6 +26,18 @@ interface ProductionCenterOption {
   name: string;
 }
 
+// <input type="number"> chỉ nhận dấu chấm thập phân, chặn/bỏ qua dấu phẩy
+// tuỳ trình duyệt — người Việt hay gõ dấu phẩy (vd "1,5"). Dùng type="text" +
+// tự chuẩn hoá dấu phẩy thành dấu chấm cho 2 ô Giá bán lẻ/Hệ số quy đổi.
+function normalizeDecimalInput(raw: string): string {
+  let v = raw.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const firstDot = v.indexOf(".");
+  if (firstDot !== -1) {
+    v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, "");
+  }
+  return v;
+}
+
 export function MaterialForm() {
   const router = useRouter();
   const [units, setUnits] = useState<Unit[]>([]);
@@ -37,6 +49,38 @@ export function MaterialForm() {
   // Bán lẻ vật tư trong Báo giá (chốt 28/07/2026, sprint-04/025).
   const [isRetailable, setIsRetailable] = useState(false);
   const [retailUnitId, setRetailUnitId] = useState("");
+  const [retailPrice, setRetailPrice] = useState("");
+  const [retailConversionFactor, setRetailConversionFactor] = useState("");
+  // Giá theo đơn vị gốc, "đóng băng" tại thời điểm đổi sang đơn vị bán lẻ khác
+  // đơn vị gốc — dùng làm gốc quy đổi mỗi khi hệ số/đơn vị bán lẻ đổi tiếp,
+  // để tránh nhân dồn (compounding) qua nhiều lần đổi hệ số liên tiếp.
+  const [basePrice, setBasePrice] = useState("");
+
+  // Gợi ý giá bán lẻ (chốt 2026-08-10): giá gốc × hệ số quy đổi, tự tính lại
+  // mỗi khi đổi đơn vị bán lẻ hoặc sửa hệ số — vẫn cho sửa tay sau đó.
+  function suggestRetailPrice(base: string, factor: string) {
+    const b = Number(base);
+    const f = Number(factor);
+    if (!base || !factor || Number.isNaN(b) || Number.isNaN(f) || f <= 0) return;
+    setRetailPrice(String(Math.round(b * f)));
+  }
+
+  function onRetailUnitChange(newUnitId: string) {
+    if (newUnitId !== unitId && retailUnitId === unitId) {
+      setBasePrice(retailPrice);
+      suggestRetailPrice(retailPrice, retailConversionFactor);
+    } else if (newUnitId === unitId) {
+      setBasePrice(retailPrice);
+    }
+    setRetailUnitId(newUnitId);
+  }
+
+  function onRetailConversionFactorChange(value: string) {
+    setRetailConversionFactor(value);
+    if (retailUnitId && retailUnitId !== unitId) {
+      suggestRetailPrice(basePrice, value);
+    }
+  }
 
   useEffect(() => {
     apiGet<Unit[]>("/units").then(setUnits).catch(() => {});
@@ -62,8 +106,7 @@ export function MaterialForm() {
     const note = form.get("note");
     if (note && String(note).trim()) body.note = String(note).trim();
 
-    const retailPrice = form.get("retailPrice");
-    if (retailPrice && String(retailPrice).trim()) body.retailPrice = Number(retailPrice);
+    if (retailPrice.trim()) body.retailPrice = Number(retailPrice);
 
     const minimumStock = form.get("minimumStock");
     if (minimumStock && String(minimumStock).trim()) body.minimumStock = Number(minimumStock);
@@ -74,8 +117,7 @@ export function MaterialForm() {
     if (isRetailable) {
       if (retailUnitId && retailUnitId !== unitId) {
         body.retailUnitId = retailUnitId;
-        const retailConversionFactor = form.get("retailConversionFactor");
-        if (retailConversionFactor && String(retailConversionFactor).trim()) {
+        if (retailConversionFactor.trim()) {
           body.retailConversionFactor = Number(retailConversionFactor);
         }
       }
@@ -131,10 +173,15 @@ export function MaterialForm() {
             <Input
               id="retailPrice"
               name="retailPrice"
-              type="number"
-              min="0"
-              step="1000"
+              type="text"
+              inputMode="decimal"
               required={isRetailable}
+              value={retailPrice}
+              onChange={(e) => {
+                const v = normalizeDecimalInput(e.target.value);
+                setRetailPrice(v);
+                if (!retailUnitId || retailUnitId === unitId) setBasePrice(v);
+              }}
             />
             <p className="text-xs text-muted-foreground">
               Dùng khi bán lẻ vật tư. Giá vốn sản xuất vẫn tính theo giá nhập.
@@ -168,7 +215,7 @@ export function MaterialForm() {
                 <Label>
                   Đơn vị bán lẻ <span className="text-muted-foreground">(mặc định = đơn vị gốc)</span>
                 </Label>
-                <Select value={retailUnitId || unitId} onValueChange={(v) => setRetailUnitId(v ?? "")}>
+                <Select value={retailUnitId || unitId} onValueChange={(v) => onRetailUnitChange(v ?? "")}>
                   <SelectTrigger className="w-56">
                     <SelectValue placeholder="Chọn đơn vị" />
                   </SelectTrigger>
@@ -187,13 +234,15 @@ export function MaterialForm() {
                   <Input
                     id="retailConversionFactor"
                     name="retailConversionFactor"
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     required
+                    value={retailConversionFactor}
+                    onChange={(e) => onRetailConversionFactorChange(normalizeDecimalInput(e.target.value))}
                   />
                   <p className="text-xs text-muted-foreground">
-                    1 đơn vị bán lẻ = bao nhiêu đơn vị gốc (vd nhôm: 1 mét = 0,35 kg).
+                    1 đơn vị bán lẻ = bao nhiêu đơn vị gốc (vd nhôm: 1 mét = 0,35 kg). Giá bán lẻ sẽ
+                    tự tính lại = giá theo đơn vị gốc × hệ số này, vẫn sửa tay được sau đó.
                   </p>
                 </div>
               )}

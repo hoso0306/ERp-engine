@@ -142,11 +142,14 @@ export function MaterialTypeahead({ value, onChange, onlyRetailable = false }: M
         <div className="text-sm">
           <span className="font-medium">{value.name}</span>
           <span className="text-muted-foreground"> — {value.code}</span>
-          {value.unit && (
-            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              {value.unit.name}
-            </span>
-          )}
+          {(() => {
+            const unitName = onlyRetailable ? (value.retailUnit?.name ?? value.unit?.name) : value.unit?.name;
+            return unitName ? (
+              <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                {unitName}
+              </span>
+            ) : null;
+          })()}
         </div>
         <button
           type="button"
@@ -204,11 +207,14 @@ export function MaterialTypeahead({ value, onChange, onlyRetailable = false }: M
                   <span className="font-medium">{m.name}</span>
                   <span className="text-muted-foreground"> — {m.code}</span>
                 </span>
-                {m.unit && (
-                  <span className="ml-2 shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                    {m.unit.name}
-                  </span>
-                )}
+                {(() => {
+                  const unitName = onlyRetailable ? (m.retailUnit?.name ?? m.unit?.name) : m.unit?.name;
+                  return unitName ? (
+                    <span className="ml-2 shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                      {unitName}
+                    </span>
+                  ) : null;
+                })()}
               </button>
             ))}
           {!loading && loadingMore && (

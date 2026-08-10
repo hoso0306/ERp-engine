@@ -14,20 +14,31 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { CustomerTypeahead, type CustomerOption } from "@/components/quotation/customer-typeahead";
 
-interface OpenReceivable {
+type FifoTarget = "RECEIVABLE" | "OPENING_BALANCE";
+
+// Rà soát tab Công nợ (11/08/2026) — Công nợ đầu kỳ cấn trừ chung Allocation
+// Engine với Receivable (GET /receivables/fifo-preview/:customerId trả gộp
+// cả 2, luôn ưu tiên Công nợ đầu kỳ trước). `target` phân biệt để biết gửi
+// `receivableId` hay `openingBalanceId` khi submit.
+interface FifoPreviewItem {
+  target: FifoTarget;
   id: string;
+  code: string;
   remainingAmount: number;
-  salesOrder: { code: string };
+  remainingAmountBeforeVat: number;
 }
 
 interface AllocationRow {
-  receivableId: string;
+  target: FifoTarget;
+  id: string;
   code: string;
   remainingAmount: number;
+  remainingAmountBeforeVat: number;
   allocated: number;
 }
 
@@ -58,7 +69,7 @@ export function AllocatePaymentDialog({
   const [pickedCustomer, setPickedCustomer] = useState<CustomerOption | null>(null);
   const customer = fixedCustomer ?? pickedCustomer;
 
-  const [openReceivables, setOpenReceivables] = useState<OpenReceivable[]>([]);
+  const [fifoTargets, setFifoTargets] = useState<FifoPreviewItem[]>([]);
   const [loadingReceivables, setLoadingReceivables] = useState(false);
   const [amount, setAmount] = useState("");
   // null = chưa sửa tay, dùng FIFO mặc định (defaultRows); có giá trị = kế
@@ -75,37 +86,45 @@ export function AllocatePaymentDialog({
     // pattern debts/page.tsx đang dùng cho fetchReceivables).
     const timer = setTimeout(() => {
       setLoadingReceivables(true);
-      apiGet<OpenReceivable[]>(`/receivables/open-by-customer/${customer.id}`)
-        .then(setOpenReceivables)
-        .catch(() => setOpenReceivables([]))
+      apiGet<FifoPreviewItem[]>(`/receivables/fifo-preview/${customer.id}`)
+        .then(setFifoTargets)
+        .catch(() => setFifoTargets([]))
         .finally(() => setLoadingReceivables(false));
     }, 0);
     return () => clearTimeout(timer);
   }, [open, customer]);
 
   const totalOpen = useMemo(
-    () => openReceivables.reduce((s, r) => s + Number(r.remainingAmount), 0),
-    [openReceivables],
+    () => fifoTargets.reduce((s, r) => s + Number(r.remainingAmount), 0),
+    [fifoTargets],
+  );
+  const totalOpenBeforeVat = useMemo(
+    () => fifoTargets.reduce((s, r) => s + Number(r.remainingAmountBeforeVat), 0),
+    [fifoTargets],
   );
 
   // Preview FIFO — tính trực tiếp trong render (useMemo), không qua effect+state.
+  // fifoTargets đã đúng thứ tự ưu tiên (Công nợ đầu kỳ trước, rồi Receivable
+  // createdAt asc — xem DebtService.getFifoPreviewForCustomer()).
   const defaultRows = useMemo(() => {
     const amt = parseFloat(amount) || 0;
     let remaining = amt;
     const next: AllocationRow[] = [];
-    for (const r of openReceivables) {
+    for (const r of fifoTargets) {
       if (remaining <= 0) break;
       const take = Math.min(remaining, Number(r.remainingAmount));
       next.push({
-        receivableId: r.id,
-        code: r.salesOrder.code,
+        target: r.target,
+        id: r.id,
+        code: r.code,
         remainingAmount: Number(r.remainingAmount),
+        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
         allocated: take,
       });
       remaining -= take;
     }
     return next;
-  }, [amount, openReceivables]);
+  }, [amount, fifoTargets]);
 
   const rows = manualRows ?? defaultRows;
   const totalAllocated = rows.reduce((s, r) => s + r.allocated, 0);
@@ -113,7 +132,7 @@ export function AllocatePaymentDialog({
 
   function reset() {
     setPickedCustomer(null);
-    setOpenReceivables([]);
+    setFifoTargets([]);
     setAmount("");
     setManualRows(null);
     setPaymentMethod("CASH");
@@ -121,11 +140,9 @@ export function AllocatePaymentDialog({
     setNote("");
   }
 
-  function updateRowAmount(receivableId: string, value: string) {
+  function updateRowAmount(id: string, value: string) {
     const v = parseFloat(value) || 0;
-    setManualRows(
-      rows.map((r) => (r.receivableId === receivableId ? { ...r, allocated: v } : r)),
-    );
+    setManualRows(rows.map((r) => (r.id === id ? { ...r, allocated: v } : r)));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -155,7 +172,11 @@ export function AllocatePaymentDialog({
         note: note.trim() || undefined,
         allocations: rows
           .filter((r) => r.allocated > 0)
-          .map((r) => ({ receivableId: r.receivableId, amount: r.allocated })),
+          .map((r) => ({
+            receivableId: r.target === "RECEIVABLE" ? r.id : undefined,
+            openingBalanceId: r.target === "OPENING_BALANCE" ? r.id : undefined,
+            amount: r.allocated,
+          })),
       });
       toast.success("Đã ghi nhận thanh toán.");
       reset();
@@ -184,7 +205,7 @@ export function AllocatePaymentDialog({
                 value={customer}
                 onChange={(c) => {
                   setPickedCustomer(c);
-                  setOpenReceivables([]);
+                  setFifoTargets([]);
                   setManualRows(null);
                 }}
               />
@@ -195,6 +216,8 @@ export function AllocatePaymentDialog({
             <p className="text-sm text-muted-foreground">
               Tổng công nợ hiện tại:{" "}
               <span className="font-mono font-semibold text-foreground">{formatMoney(totalOpen)}</span>
+              <br />
+              <span className="text-xs">trước VAT: {formatMoney(totalOpenBeforeVat)}</span>
             </p>
           )}
 
@@ -236,10 +259,18 @@ export function AllocatePaymentDialog({
                   </TableHeader>
                   <TableBody>
                     {rows.map((r) => (
-                      <TableRow key={r.receivableId}>
-                        <TableCell className="font-mono text-xs">{r.code}</TableCell>
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs">
+                          {r.code}
+                          {r.target === "OPENING_BALANCE" && (
+                            <Badge variant="secondary" className="ml-2 text-[10px] font-sans">
+                              Công nợ đầu kỳ
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
                           {formatMoney(r.remainingAmount)}
+                          <div className="text-xs font-normal">trước VAT: {formatMoney(r.remainingAmountBeforeVat)}</div>
                         </TableCell>
                         <TableCell>
                           <Input
@@ -247,7 +278,7 @@ export function AllocatePaymentDialog({
                             min="0"
                             step="any"
                             value={r.allocated}
-                            onChange={(e) => updateRowAmount(r.receivableId, e.target.value)}
+                            onChange={(e) => updateRowAmount(r.id, e.target.value)}
                             className="text-right"
                           />
                         </TableCell>

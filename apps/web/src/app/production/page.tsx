@@ -180,7 +180,7 @@ function ProductionPageContent() {
           <a href={`/production/print?ids=${Array.from(selectedIds).join(",")}`} target="_blank" rel="noreferrer">
             <Button size="sm">
               <FileDown className="mr-2 h-4 w-4" />
-              In đã chọn ({selectedIds.size})
+              In và bắt đầu SX ({selectedIds.size})
             </Button>
           </a>
         </div>

@@ -151,7 +151,10 @@ export function MaterialItemDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="material-item-quantity">
-                Số lượng * {pickedMaterial?.unit?.name ? `(${pickedMaterial.unit.name})` : ""}
+                Số lượng * {(() => {
+                  const unitName = pickedMaterial?.retailUnit?.name ?? pickedMaterial?.unit?.name;
+                  return unitName ? `(${unitName})` : "";
+                })()}
               </Label>
               <Input
                 id="material-item-quantity"

@@ -59,6 +59,43 @@ export interface MaterialImportChange {
   newValue: string;
 }
 
+export interface MaterialImportCreateField {
+  label: string;
+  value: string;
+}
+
+// Để trống Mã VT trên file import = tạo vật tư mới (10/08/2026) — mã luôn tự
+// sinh qua RunningNumber nên không thể biết trước để điền vào cột Mã VT.
+export type MaterialImportRow =
+  | {
+      kind: 'update';
+      materialId: string;
+      code: string;
+      name: string;
+      changes: MaterialImportChange[];
+      update: {
+        name?: string;
+        unitId?: string;
+        costPrice?: number;
+        retailPrice?: number | null;
+        isRetailable?: boolean;
+        isActive?: boolean;
+      };
+    }
+  | {
+      kind: 'create';
+      name: string;
+      fields: MaterialImportCreateField[];
+      create: {
+        name: string;
+        unitId: string;
+        costPrice: number;
+        retailPrice: number | null;
+        isRetailable: boolean;
+        isActive: boolean;
+      };
+    };
+
 @Injectable()
 export class ProductService {
   constructor(
@@ -156,8 +193,11 @@ export class ProductService {
     return this.sortByNameAsc(units);
   }
 
-  async findOneUnit(id: string) {
-    const unit = await this.prisma.unit.findUnique({ where: { id } });
+  async findOneUnit(
+    id: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const unit = await client.unit.findUnique({ where: { id } });
     if (!unit) throw new NotFoundException('Đơn vị không tồn tại.');
     return unit;
   }
@@ -398,21 +438,65 @@ export class ProductService {
   // định mới — cùng cách các script deploy dữ liệu trong dự án vẫn làm, gói
   // lại thành 1 chỗ để tái dùng cho bulk import (khỏi lặp lại thao tác 2
   // bước ở nhiều nơi).
-  private async setMaterialDefaultPrice(materialId: string, price: number) {
+  private async setMaterialDefaultPrice(
+    materialId: string,
+    price: number,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const now = new Date();
-    await this.prisma.materialPrice.updateMany({
+    await client.materialPrice.updateMany({
       where: { materialId, isDefault: true },
       data: { effectiveTo: now, isDefault: false },
     });
-    await this.prisma.materialPrice.create({
+    await client.materialPrice.create({
       data: { materialId, price, effectiveFrom: now, isDefault: true },
+    });
+  }
+
+  // Tạo vật tư từ 1 dòng import Excel đã validate xong ở previewMaterialImport()
+  // — không cần validate DTO lại (khác createMaterial(), dùng cho form UI với
+  // input người dùng gõ tay chưa qua kiểm tra). Mã tự sinh qua generateCode()
+  // giống hệt createMaterial(), CỐ Ý không bọc trong `client`/transaction —
+  // RunningNumber tăng số ngay cả khi transaction ngoài rollback sau đó (chấp
+  // nhận có khoảng trống số NL, không gây trùng mã — xem generateCode()).
+  private async createMaterialFromImportRow(
+    data: {
+      name: string;
+      unitId: string;
+      isRetailable: boolean;
+      retailPrice: number | null;
+      isActive: boolean;
+    },
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    await this.assertUniqueMaterialName(data.name, undefined, client);
+    const code = await this.generateCode('MATERIAL');
+    return client.material.create({
+      data: {
+        code,
+        name: data.name,
+        unitId: data.unitId,
+        isRetailable: data.isRetailable,
+        retailPrice: data.retailPrice,
+        isActive: data.isActive,
+        // Mặc định 10% (chốt 28/07/2026, giống createMaterial()) — người dùng
+        // tự sửa sau nếu khác; cột này không có trong template Excel.
+        retailVatRate: 10,
+      },
     });
   }
 
   // Đọc file Excel đã sửa (cùng layout cột với buildMaterialExport), khớp
   // theo Mã VT, chỉ trả về những dòng THỰC SỰ có thay đổi so với dữ liệu
   // hiện tại — cột Xưởng bỏ qua hoàn toàn (multi-select, không phù hợp
-  // dropdown 1 giá trị/ô của Excel, xem quyết định 06/08/2026).
+  // dropdown 1 giá trị/ô của Excel, xem quyết định 06/08/2026). Để trống
+  // Mã VT = dòng TẠO MỚI (10/08/2026) — Tên vật tư + Đơn vị + Giá nhập +
+  // Trạng thái bắt buộc (cùng validate với dòng sửa), Giá bán lẻ/Cho phép
+  // bán lẻ tuỳ chọn; Xưởng vẫn bỏ qua nên vật tư tạo mới không gán Xưởng nào,
+  // gán sau qua sửa tay nếu cần. Chống trùng tên (11/08/2026): dòng tạo mới
+  // hoặc dòng sửa có đổi tên đều bị báo lỗi nếu tên trùng vật tư đã có trong
+  // hệ thống, hoặc trùng với 1 dòng khác ngay trong file — xem
+  // assertUniqueMaterialName()/seenNames ở dưới.
   async previewMaterialImport(buffer: Buffer) {
     const sheet = await this.excel.readFile(buffer);
     const units = await this.prisma.unit.findMany({
@@ -420,21 +504,96 @@ export class ProductService {
     });
 
     const errors: { row: number; message: string }[] = [];
-    const rows: {
-      materialId: string;
-      code: string;
-      name: string;
-      changes: MaterialImportChange[];
-      update: {
-        name?: string;
-        unitId?: string;
-        costPrice?: number;
-        retailPrice?: number | null;
-        isRetailable?: boolean;
-        isActive?: boolean;
-      };
-    }[] = [];
+    const rows: MaterialImportRow[] = [];
     const seenCodes = new Set<string>();
+    // Chống trùng tên (chốt 11/08/2026): map tên đã chuẩn hoá (trim +
+    // lowercase) → số dòng đầu tiên dùng tên đó TRONG FILE này — áp dụng cho
+    // cả dòng tạo mới lẫn dòng sửa có đổi tên, để bắt được trường hợp 2 dòng
+    // trong cùng file nhắm tới cùng 1 tên (chưa từng có trong DB nên không
+    // bắt được nếu chỉ check DB).
+    const seenNames = new Map<string, number>();
+    const normalizeName = (s: string) => s.trim().toLowerCase();
+
+    // Validate/resolve 5 cột dùng chung cho cả dòng sửa lẫn dòng tạo mới
+    // (Đơn vị, Giá nhập, Giá bán lẻ, Cho phép bán lẻ, Trạng thái) — trả về
+    // null (đã tự đẩy lỗi vào `errors`) nếu có cột không hợp lệ.
+    const resolveCommonFields = (
+      rowNumber: number,
+      unitName: string,
+      costText: string,
+      retailText: string,
+      retailableText: string,
+      statusText: string,
+    ): {
+      unit: { id: string; name: string };
+      cost: number;
+      retail: number | null;
+      isRetailable: boolean;
+      isActive: boolean;
+    } | null => {
+      const unit = units.find(
+        (u) => u.name.toLowerCase() === unitName.toLowerCase(),
+      );
+      if (!unit) {
+        errors.push({
+          row: rowNumber,
+          message: `Đơn vị "${unitName}" không hợp lệ (phải chọn trong danh sách dropdown).`,
+        });
+        return null;
+      }
+
+      const cost = Number(costText);
+      if (!costText || isNaN(cost) || cost <= 0) {
+        errors.push({
+          row: rowNumber,
+          message: `Giá nhập "${costText}" không hợp lệ — phải là số lớn hơn 0.`,
+        });
+        return null;
+      }
+
+      let retail: number | null = null;
+      if (retailText) {
+        retail = Number(retailText);
+        if (isNaN(retail) || retail <= 0) {
+          errors.push({
+            row: rowNumber,
+            message: `Giá bán lẻ "${retailText}" không hợp lệ — để trống hoặc nhập số lớn hơn 0.`,
+          });
+          return null;
+        }
+      }
+
+      const retailableNorm = retailableText.toLowerCase();
+      if (!['có', 'không', ''].includes(retailableNorm)) {
+        errors.push({
+          row: rowNumber,
+          message: `"Cho phép bán lẻ" phải là "Có" hoặc "Không".`,
+        });
+        return null;
+      }
+      const isRetailable = retailableNorm === 'có';
+      if (isRetailable && retail === null) {
+        errors.push({
+          row: rowNumber,
+          message: 'Cho phép bán lẻ nhưng chưa nhập Giá bán lẻ.',
+        });
+        return null;
+      }
+
+      const statusEntry = Object.entries(this.MATERIAL_STATUS_LABELS).find(
+        ([, label]) => label.toLowerCase() === statusText.toLowerCase(),
+      );
+      if (!statusEntry) {
+        errors.push({
+          row: rowNumber,
+          message: `Trạng thái "${statusText}" không hợp lệ (phải chọn trong danh sách dropdown).`,
+        });
+        return null;
+      }
+      const isActive = statusEntry[0] === 'true';
+
+      return { unit, cost, retail, isRetailable, isActive };
+    };
 
     // Cell 1=Mã VT, 2=Tên, 3=Đơn vị, 4=Giá nhập, 5=Giá bán lẻ,
     // 6=Cho phép bán lẻ, 7=Xưởng (bỏ qua), 8=Trạng thái — đúng thứ tự cột
@@ -461,9 +620,79 @@ export class ProductService {
       ] = cells;
 
       if (!code) {
-        errors.push({ row: rowNumber, message: 'Thiếu Mã VT.' });
+        // Tạo mới — mã sẽ tự sinh lúc Áp dụng (generateCode('MATERIAL')).
+        if (!name) {
+          errors.push({
+            row: rowNumber,
+            message:
+              'Thiếu Tên vật tư (bắt buộc khi để trống Mã VT để tạo mới).',
+          });
+          continue;
+        }
+        const resolved = resolveCommonFields(
+          rowNumber,
+          unitName,
+          costText,
+          retailText,
+          retailableText,
+          statusText,
+        );
+        if (!resolved) continue;
+        const { unit, cost, retail, isRetailable, isActive } = resolved;
+
+        const normalized = normalizeName(name);
+        if (seenNames.has(normalized)) {
+          errors.push({
+            row: rowNumber,
+            message: `Tên vật tư "${name}" bị trùng với dòng ${seenNames.get(normalized)} trong file.`,
+          });
+          continue;
+        }
+        const nameConflict = await this.findMaterialByNameConflict(
+          name,
+          undefined,
+        );
+        if (nameConflict) {
+          errors.push({
+            row: rowNumber,
+            message: `Tên vật tư "${name}" đã trùng với vật tư ${nameConflict.code} đang có trong hệ thống.`,
+          });
+          continue;
+        }
+        seenNames.set(normalized, rowNumber);
+
+        rows.push({
+          kind: 'create',
+          name,
+          fields: [
+            { label: 'Tên vật tư', value: name },
+            { label: 'Đơn vị', value: unit.name },
+            { label: 'Giá nhập', value: cost.toLocaleString('vi-VN') },
+            {
+              label: 'Giá bán lẻ',
+              value: retail !== null ? retail.toLocaleString('vi-VN') : '—',
+            },
+            {
+              label: 'Cho phép bán lẻ',
+              value: isRetailable ? 'Có' : 'Không',
+            },
+            {
+              label: 'Trạng thái',
+              value: this.MATERIAL_STATUS_LABELS[isActive ? 'true' : 'false'],
+            },
+          ],
+          create: {
+            name,
+            unitId: unit.id,
+            costPrice: cost,
+            retailPrice: retail,
+            isRetailable,
+            isActive,
+          },
+        });
         continue;
       }
+
       if (seenCodes.has(code)) {
         errors.push({
           row: rowNumber,
@@ -493,66 +722,16 @@ export class ProductService {
         continue;
       }
 
-      const unit = units.find(
-        (u) => u.name.toLowerCase() === unitName.toLowerCase(),
+      const resolved = resolveCommonFields(
+        rowNumber,
+        unitName,
+        costText,
+        retailText,
+        retailableText,
+        statusText,
       );
-      if (!unit) {
-        errors.push({
-          row: rowNumber,
-          message: `Đơn vị "${unitName}" không hợp lệ (phải chọn trong danh sách dropdown).`,
-        });
-        continue;
-      }
-
-      const cost = Number(costText);
-      if (!costText || isNaN(cost) || cost <= 0) {
-        errors.push({
-          row: rowNumber,
-          message: `Giá nhập "${costText}" không hợp lệ — phải là số lớn hơn 0.`,
-        });
-        continue;
-      }
-
-      let retail: number | null = null;
-      if (retailText) {
-        retail = Number(retailText);
-        if (isNaN(retail) || retail <= 0) {
-          errors.push({
-            row: rowNumber,
-            message: `Giá bán lẻ "${retailText}" không hợp lệ — để trống hoặc nhập số lớn hơn 0.`,
-          });
-          continue;
-        }
-      }
-
-      const retailableNorm = retailableText.toLowerCase();
-      if (!['có', 'không', ''].includes(retailableNorm)) {
-        errors.push({
-          row: rowNumber,
-          message: `"Cho phép bán lẻ" phải là "Có" hoặc "Không".`,
-        });
-        continue;
-      }
-      const isRetailable = retailableNorm === 'có';
-      if (isRetailable && retail === null) {
-        errors.push({
-          row: rowNumber,
-          message: 'Cho phép bán lẻ nhưng chưa nhập Giá bán lẻ.',
-        });
-        continue;
-      }
-
-      const statusEntry = Object.entries(this.MATERIAL_STATUS_LABELS).find(
-        ([, label]) => label.toLowerCase() === statusText.toLowerCase(),
-      );
-      if (!statusEntry) {
-        errors.push({
-          row: rowNumber,
-          message: `Trạng thái "${statusText}" không hợp lệ (phải chọn trong danh sách dropdown).`,
-        });
-        continue;
-      }
-      const isActive = statusEntry[0] === 'true';
+      if (!resolved) continue;
+      const { unit, cost, retail, isRetailable, isActive } = resolved;
 
       const oldCost = material.prices?.[0]
         ? Number(material.prices[0].price)
@@ -561,7 +740,8 @@ export class ProductService {
         material.retailPrice !== null ? Number(material.retailPrice) : null;
 
       const changes: MaterialImportChange[] = [];
-      const update: (typeof rows)[number]['update'] = {};
+      const update: Extract<MaterialImportRow, { kind: 'update' }>['update'] =
+        {};
 
       if (name && name !== material.name) {
         changes.push({
@@ -614,9 +794,33 @@ export class ProductService {
         update.isActive = isActive;
       }
 
+      if (update.name) {
+        const normalized = normalizeName(update.name);
+        if (seenNames.has(normalized)) {
+          errors.push({
+            row: rowNumber,
+            message: `Tên vật tư "${update.name}" bị trùng với dòng ${seenNames.get(normalized)} trong file.`,
+          });
+          continue;
+        }
+        const nameConflict = await this.findMaterialByNameConflict(
+          update.name,
+          material.id,
+        );
+        if (nameConflict) {
+          errors.push({
+            row: rowNumber,
+            message: `Tên vật tư "${update.name}" đã trùng với vật tư ${nameConflict.code} đang có trong hệ thống.`,
+          });
+          continue;
+        }
+        seenNames.set(normalized, rowNumber);
+      }
+
       if (changes.length === 0) continue;
 
       rows.push({
+        kind: 'update',
         materialId: material.id,
         code: material.code,
         name: material.name,
@@ -628,37 +832,60 @@ export class ProductService {
     return { rows, errors };
   }
 
-  // Ghi thật các thay đổi đã đối chiếu ở previewMaterialImport() — chỉ nhận
-  // đúng shape do preview trả về (FE không tự tạo dữ liệu để apply).
-  async applyMaterialImport(
-    rows: {
-      materialId: string;
-      update: {
-        name?: string;
-        unitId?: string;
-        costPrice?: number;
-        retailPrice?: number | null;
-        isRetailable?: boolean;
-        isActive?: boolean;
-      };
-    }[],
-  ) {
-    let updated = 0;
-    for (const row of rows) {
-      const { costPrice, ...materialFields } = row.update;
-      if (Object.keys(materialFields).length > 0) {
-        await this.updateMaterial(row.materialId, materialFields);
-      }
-      if (costPrice !== undefined) {
-        await this.setMaterialDefaultPrice(row.materialId, costPrice);
-      }
-      updated++;
-    }
-    return { updated };
+  // Ghi thật các thay đổi/tạo mới đã đối chiếu ở previewMaterialImport() —
+  // chỉ nhận đúng shape do preview trả về (FE không tự tạo dữ liệu để apply).
+  // Bọc toàn bộ trong 1 transaction (chốt 11/08/2026 — cùng lúc mở khả năng
+  // tạo mới) — nếu bất kỳ dòng nào lỗi giữa chừng, rollback hết, không để lại
+  // vật tư tạo dở/nửa vời. `timeout` nới rộng hơn mặc định Prisma (5s) vì
+  // file import có thể có hàng chục/hàng trăm dòng, mỗi dòng vài query tuần
+  // tự (RunningNumber tạo mã tự sinh KHÔNG rollback theo — xem
+  // createMaterialFromImportRow()).
+  async applyMaterialImport(rows: MaterialImportRow[]) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        let created = 0;
+        let updated = 0;
+        for (const row of rows) {
+          if (row.kind === 'create') {
+            const material = await this.createMaterialFromImportRow(
+              {
+                name: row.create.name,
+                unitId: row.create.unitId,
+                isRetailable: row.create.isRetailable,
+                retailPrice: row.create.retailPrice,
+                isActive: row.create.isActive,
+              },
+              tx,
+            );
+            await this.setMaterialDefaultPrice(
+              material.id,
+              row.create.costPrice,
+              tx,
+            );
+            created++;
+            continue;
+          }
+
+          const { costPrice, ...materialFields } = row.update;
+          if (Object.keys(materialFields).length > 0) {
+            await this.updateMaterial(row.materialId, materialFields, tx);
+          }
+          if (costPrice !== undefined) {
+            await this.setMaterialDefaultPrice(row.materialId, costPrice, tx);
+          }
+          updated++;
+        }
+        return { created, updated };
+      },
+      { timeout: 30000 },
+    );
   }
 
-  async findOneMaterial(id: string) {
-    const material = await this.prisma.material.findUnique({
+  async findOneMaterial(
+    id: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const material = await client.material.findUnique({
       where: { id },
       include: {
         unit: { select: { id: true, name: true } },
@@ -712,10 +939,47 @@ export class ProductService {
     }
   }
 
+  // Chống trùng tên vật tư (chốt 11/08/2026 — áp dụng cho nút "Thêm vật tư",
+  // sửa vật tư, và cả 2 nhánh Import Excel). So khớp trim() + không phân
+  // biệt hoa/thường, KHÔNG bỏ dấu tiếng Việt (chỉ chặn trùng thật, không làm
+  // fuzzy match). So với TOÀN BỘ vật tư hiện có kể cả đang Ngừng sử dụng —
+  // vật tư đó vẫn tồn tại trong hệ thống nên vẫn tính là trùng.
+  private async findMaterialByNameConflict(
+    name: string,
+    excludeId: string | undefined,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    return client.material.findFirst({
+      where: {
+        name: { equals: name.trim(), mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { code: true },
+    });
+  }
+
+  private async assertUniqueMaterialName(
+    name: string,
+    excludeId: string | undefined,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const conflict = await this.findMaterialByNameConflict(
+      name,
+      excludeId,
+      client,
+    );
+    if (conflict) {
+      throw new ConflictException(
+        `Tên vật tư "${name.trim()}" đã trùng với vật tư ${conflict.code} đang có trong hệ thống.`,
+      );
+    }
+  }
+
   async createMaterial(dto: CreateMaterialDto) {
     if (!dto.name?.trim())
       throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
     if (!dto.unitId) throw new BadRequestException('Đơn vị là bắt buộc.');
+    await this.assertUniqueMaterialName(dto.name, undefined);
     await this.findOneUnit(dto.unitId);
     if (dto.retailUnitId) await this.findOneUnit(dto.retailUnitId);
 
@@ -763,17 +1027,24 @@ export class ProductService {
     });
   }
 
-  async updateMaterial(id: string, dto: UpdateMaterialDto) {
-    const existingMaterial = await this.findOneMaterial(id);
+  async updateMaterial(
+    id: string,
+    dto: UpdateMaterialDto,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const existingMaterial = await this.findOneMaterial(id, client);
     if (dto.name !== undefined && !dto.name.trim()) {
       throw new BadRequestException('Tên nguyên liệu là bắt buộc.');
     }
-    if (dto.unitId) await this.findOneUnit(dto.unitId);
-    if (dto.retailUnitId) await this.findOneUnit(dto.retailUnitId);
+    if (dto.name !== undefined) {
+      await this.assertUniqueMaterialName(dto.name, id, client);
+    }
+    if (dto.unitId) await this.findOneUnit(dto.unitId, client);
+    if (dto.retailUnitId) await this.findOneUnit(dto.retailUnitId, client);
     if (dto.code !== undefined) {
       if (!dto.code.trim())
         throw new BadRequestException('Mã nguyên liệu là bắt buộc.');
-      const existing = await this.prisma.material.findFirst({
+      const existing = await client.material.findFirst({
         where: { code: dto.code.trim(), id: { not: id } },
       });
       if (existing) throw new ConflictException('Mã nguyên liệu đã tồn tại.');
@@ -839,7 +1110,7 @@ export class ProductService {
       };
     }
 
-    return this.prisma.material.update({
+    return client.material.update({
       where: { id },
       data,
       include: {

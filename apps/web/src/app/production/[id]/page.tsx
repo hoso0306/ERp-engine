@@ -166,7 +166,7 @@ export default function ProductionOrderDetailPage() {
                 className="border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/50"
               >
                 <FileDown className="mr-2 h-4 w-4" />
-                In phiếu
+                In và bắt đầu SX
               </Button>
             </a>
             {canStart && (

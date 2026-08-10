@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { apiGet } from "@/lib/api";
 
 interface DebtDashboard {
@@ -43,6 +44,7 @@ function StatTile({ label, value, sub, tone = "default" }: StatTileProps) {
 export function DebtDashboardPanel() {
   const [data, setData] = useState<DebtDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [topDebtorsOpen, setTopDebtorsOpen] = useState(false);
 
   useEffect(() => {
     apiGet<DebtDashboard>("/receivables/dashboard")
@@ -83,19 +85,32 @@ export function DebtDashboardPanel() {
 
       {data.topDebtors.length > 0 && (
         <div className="rounded-lg border p-4">
-          <p className="text-sm font-medium mb-3">Top khách nợ nhiều nhất</p>
-          <ol className="space-y-2">
-            {data.topDebtors.map((d, idx) => (
-              <li key={d.customerId} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="text-muted-foreground w-5 text-right">{idx + 1}.</span>
-                  <span className="font-medium">{d.customerName}</span>
-                  <span className="text-xs text-muted-foreground">{d.customerPhone}</span>
-                </span>
-                <span className="font-mono text-destructive">{formatMoney(d.totalRemaining)}</span>
-              </li>
-            ))}
-          </ol>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between text-sm font-medium"
+            onClick={() => setTopDebtorsOpen((v) => !v)}
+          >
+            <span>Top khách nợ nhiều nhất ({data.topDebtors.length})</span>
+            {topDebtorsOpen ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+          {topDebtorsOpen && (
+            <ol className="space-y-2 mt-3">
+              {data.topDebtors.map((d, idx) => (
+                <li key={d.customerId} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground w-5 text-right">{idx + 1}.</span>
+                    <span className="font-medium">{d.customerName}</span>
+                    <span className="text-xs text-muted-foreground">{d.customerPhone}</span>
+                  </span>
+                  <span className="font-mono text-destructive">{formatMoney(d.totalRemaining)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
     </div>

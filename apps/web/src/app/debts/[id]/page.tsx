@@ -240,6 +240,7 @@ export default function ReceivableDetailPage() {
         onOpenChange={setPaymentDialogOpen}
         salesOrderId={receivable.salesOrder.id}
         remainingAmount={Number(receivable.remainingAmount)}
+        remainingAmountBeforeVat={Number(receivable.remainingAmountBeforeVat)}
         onSaved={fetchReceivable}
       />
 

@@ -183,6 +183,19 @@ const HEIGHT_PARAM_NAME = "chieucao";
 // hiện trên bản in (giá vốn đặc biệt không được lộ cho khách).
 const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 
+// Sản phẩm có công thức giá không đơn thuần "unitPrice * area" (có hệ số/điều
+// kiện giảm giá riêng trong Pricing Rule) khiến "Đơn giá" tra bảng ma trận
+// không khớp giá thật khách trả (chốt 11/08/2026). Chỉ áp dụng đúng các mã đã
+// xác nhận — KHÔNG áp dụng chung cho mọi sản phẩm ma trận để tránh nhiễu số
+// do làm tròn ở các sản phẩm đang hiển thị đúng (~85 sản phẩm khác), và
+// KHÔNG gồm SP000138/139/140 (người dùng chọn giữ nguyên cách hiển thị cũ,
+// dùng Validation Rule ghi chú % thay vì đổi hiển thị — xem product SP000138
+// note "Giá thay thế bằng 70% giá gốc").
+const EFFECTIVE_UNIT_PRICE_PRODUCT_CODES = new Set([
+  "SP000116", // Bạt Cuốn — công thức trừ thêm khi area > 10m²
+  "SP000146", // Mành Tăm — nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
+]);
+
 function paramNumber(params: ItemParam[], name: string): number | null {
   const raw = params.find((p) => p.name === name)?.value;
   const n = raw !== undefined ? parseFloat(raw) : NaN;
@@ -562,6 +575,22 @@ export default function QuotationPrintPage() {
                   const rong = paramNumber(item.parameters, WIDTH_PARAM_NAME);
                   const cao = paramNumber(item.parameters, HEIGHT_PARAM_NAME);
                   const m2 = rong !== null && cao !== null ? rong * cao * item.quantity : null;
+                  // Giá/m² hiệu lực (đã gồm mọi hệ số/giảm giá trong công thức
+                  // + chiết khấu khách hàng %, nếu có) cho các sản phẩm trong
+                  // danh sách trên — dùng systemPrice × (1 − CK%), KHÔNG cộng
+                  // `surchargeAfterDiscount`: đây là phụ phí LẮP ĐẶT (vd theo
+                  // Loại cơ cấu/Ống của SP116), một khoản CỘNG THẲNG không
+                  // tính theo m², nếu gộp cả vào rồi chia lại diện tích sẽ ra
+                  // giá/m² sai (bug phát hiện 11/08/2026 — ban đầu dùng thẳng
+                  // `subtotal`, đã bao gồm surcharge). Rơi về hiển thị
+                  // unitPrice thô như cũ nếu không dựng được diện tích.
+                  const effectiveUnitPrice =
+                    item.productCode &&
+                    EFFECTIVE_UNIT_PRICE_PRODUCT_CODES.has(item.productCode) &&
+                    m2 !== null &&
+                    m2 > 0
+                      ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
+                      : null;
                   const otherParams = item.parameters.filter(
                     (p) =>
                       p.name !== WIDTH_PARAM_NAME &&
@@ -602,14 +631,31 @@ export default function QuotationPrintPage() {
                       </td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>{m2 !== null ? fmt2(m2) : "—"}</td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <div>{item.unitPrice !== null ? `${fmt(item.unitPrice)}/m²` : fmt(item.systemPrice)}</div>
-                        {(item.discountPercent > 0 || item.surchargeAfterDiscount > 0) && (
-                          <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
-                            {item.discountPercent > 0 && `CK ${item.discountPercent}%`}
-                            {item.discountPercent > 0 && item.surchargeAfterDiscount > 0 && " · "}
-                            {item.surchargeAfterDiscount > 0 && `+${fmt(item.surchargeAfterDiscount)}`}
-                          </div>
-                        )}
+                        <div>
+                          {effectiveUnitPrice !== null
+                            ? `${fmt(effectiveUnitPrice)}/m²`
+                            : item.unitPrice !== null
+                              ? `${fmt(item.unitPrice)}/m²`
+                              : fmt(item.systemPrice)}
+                        </div>
+                        {/* Khi đã hiện giá hiệu lực (gồm sẵn chiết khấu), ẩn CK%
+                            — để khỏi khiến người xem tưởng phải trừ thêm lần
+                            nữa. Phụ phí lắp đặt (surchargeAfterDiscount) luôn
+                            hiện riêng vì effectiveUnitPrice không gồm khoản
+                            này (không tính theo m², xem comment tính toán). */}
+                        {(() => {
+                          const showCK = effectiveUnitPrice === null && item.discountPercent > 0;
+                          const showSurcharge = item.surchargeAfterDiscount > 0;
+                          return (
+                            (showCK || showSurcharge) && (
+                              <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
+                                {showCK && `CK ${item.discountPercent}%`}
+                                {showCK && showSurcharge && " · "}
+                                {showSurcharge && `+${fmt(item.surchargeAfterDiscount)}`}
+                              </div>
+                            )
+                          );
+                        })()}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)}</td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>{item.vatRate > 0 ? `${item.vatRate}%` : "—"}</td>

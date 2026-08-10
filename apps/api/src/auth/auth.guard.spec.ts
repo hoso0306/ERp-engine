@@ -1,5 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { AuthGuard, AuthenticatedRequest } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -11,6 +12,8 @@ function makeContext(headers: Record<string, string>, setHeader = jest.fn()) {
       getRequest: () => request,
       getResponse: () => ({ setHeader }),
     }),
+    getHandler: () => ({}),
+    getClass: () => ({}),
   } as unknown as ExecutionContext;
 }
 
@@ -18,16 +21,27 @@ describe('AuthGuard', () => {
   let guard: AuthGuard;
   let jwtService: { verifyAsync: jest.Mock };
   let authService: { issueToken: jest.Mock };
+  let reflector: { getAllAndOverride: jest.Mock };
 
   beforeEach(() => {
     jwtService = { verifyAsync: jest.fn() };
     authService = {
       issueToken: jest.fn().mockResolvedValue('refreshed.token'),
     };
+    reflector = { getAllAndOverride: jest.fn().mockReturnValue(false) };
     guard = new AuthGuard(
       jwtService as unknown as JwtService,
       authService as unknown as AuthService,
+      reflector as unknown as Reflector,
     );
+  });
+
+  it('bỏ qua xác thực khi route/controller đánh dấu @Public()', async () => {
+    reflector.getAllAndOverride.mockReturnValue(true);
+    const context = makeContext({});
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
   });
 
   it('rejects when there is no Authorization header', async () => {
@@ -65,6 +79,8 @@ describe('AuthGuard', () => {
         getRequest: () => request,
         getResponse: () => ({ setHeader: jest.fn() }),
       }),
+      getHandler: () => ({}),
+      getClass: () => ({}),
     } as unknown as ExecutionContext;
 
     const result = await guard.canActivate(context);
