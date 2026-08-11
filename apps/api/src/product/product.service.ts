@@ -1242,7 +1242,7 @@ export class ProductService {
           versions: {
             where: { status: 'ACTIVE' },
             take: 1,
-            select: { id: true },
+            select: { id: true, vatRate: true },
           },
         },
       },
@@ -1284,6 +1284,10 @@ export class ProductService {
       ({ pricingRule, materialRequirement, ...product }) => ({
         ...product,
         hasActivePricingRule: (pricingRule?.versions.length ?? 0) > 0,
+        vatRate:
+          pricingRule?.versions[0] !== undefined
+            ? Number(pricingRule.versions[0].vatRate)
+            : null,
         hasActiveMaterialRequirement:
           (materialRequirement?.versions.length ?? 0) > 0,
       }),

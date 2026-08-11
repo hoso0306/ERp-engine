@@ -22,6 +22,7 @@ interface Product {
   unit: { id: string; name: string } | null;
   productionCenter: { id: string; code: string; name: string } | null;
   hasActivePricingRule?: boolean;
+  vatRate?: number | null;
   hasActiveMaterialRequirement?: boolean;
 }
 
@@ -60,6 +61,7 @@ export function ProductTable({ products, meta, onPageChange }: ProductTableProps
               <TableHead>Xưởng sản xuất</TableHead>
               <TableHead className="text-center">Giá bán</TableHead>
               <TableHead className="text-center">Giá vốn</TableHead>
+              <TableHead className="text-center">VAT</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
@@ -92,6 +94,9 @@ export function ProductTable({ products, meta, onPageChange }: ProductTableProps
                     {p.hasActiveMaterialRequirement && (
                       <CheckCircle2 className="mx-auto h-4 w-4 text-green-600" />
                     )}
+                  </TableCell>
+                  <TableCell className="text-center text-muted-foreground">
+                    {p.vatRate !== null && p.vatRate !== undefined ? `${p.vatRate}%` : "—"}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={status.variant}>{status.label}</Badge>
