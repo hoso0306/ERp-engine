@@ -35,4 +35,10 @@ export class CalculatePriceResultDto {
    * finalPrice sau khi tính systemPrice × (1 − discountPercent%).
    */
   surchargeAfterDiscount: number;
+  /**
+   * "area" GỐC (biến phái sinh, trước MIN_AREA/BILLABLE_STEP) — null nếu sản
+   * phẩm không định nghĩa biến "area". Dùng để snapshot hiển thị (vd cột M2
+   * bản in) cho sản phẩm không có cặp chieurong/chieucao.
+   */
+  rawArea: number | null;
 }

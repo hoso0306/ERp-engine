@@ -178,6 +178,21 @@ function fmtDate(d: string) {
 // thước"), không cần quy đổi.
 const WIDTH_PARAM_NAME = "chieurong";
 const HEIGHT_PARAM_NAME = "chieucao";
+// Biến phái sinh "area" snapshot sẵn (BG000031, chốt 11/08/2026) — fallback
+// tính M2 cho sản phẩm không có cặp chieurong/chieucao (Mái hiên, Bạt xếp...).
+// Sản phẩm có đủ Rộng/Cao vẫn ưu tiên tính rong*cao như cũ, không đổi hành vi.
+const AREA_PARAM_NAME = "area";
+
+// Cột Cao cho 2 sản phẩm không có "chieucao" — giống hệt cách phiếu sản xuất
+// hiển thị (production/print/page.tsx renderHeightCell, chốt 11/08/2026):
+// Mái hiên di động dùng "khổ đua" (ENUM, hiện valueLabel), Bạt xếp dùng
+// "chieudai" (tên thật: "Chiều nước chảy", vẫn là số đo nên format như Cao
+// bình thường + chú thích nhỏ để không nhầm là chiều cao thật). Cột M2 KHÔNG
+// đổi — vẫn dùng snapshot "area" (khổ đua là mã phân loại, không phải số đo).
+const MAI_HIEN_DI_DONG_PRODUCT_CODE = "SP000115";
+const MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME = "khodua";
+const VAI_BAT_PRODUCT_CODE = "SP000110";
+const VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME = "chieudai";
 // Tham số nhập tay đại diện giá bán/giá vốn (VD "Hàng phân phối thêm",
 // "Chi phí Sửa chữa/Lắp đặt") — không phải thông số mô tả sản phẩm, không
 // hiện trên bản in (giá vốn đặc biệt không được lộ cho khách).
@@ -202,6 +217,28 @@ function paramNumber(params: ItemParam[], name: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Ô Cao cho Mái hiên di động / Bạt xếp — giống production/print/page.tsx
+// renderHeightCell. CHỈ đổi cách HIỂN THỊ, không ảnh hưởng m2 (vẫn tính từ
+// AREA_PARAM_NAME như cũ) vì "Khổ đua" là mã phân loại, không phải số đo.
+function renderHeightCellFallback(item: { productCode: string | null; parameters: ItemParam[] }) {
+  if (item.productCode === MAI_HIEN_DI_DONG_PRODUCT_CODE) {
+    const p = item.parameters.find((param) => param.name === MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME);
+    return p?.valueLabel ?? p?.value ?? "—";
+  }
+  if (item.productCode === VAI_BAT_PRODUCT_CODE) {
+    const n = paramNumber(item.parameters, VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME);
+    return n !== null ? (
+      <>
+        {fmt3(n)}
+        <div style={{ fontSize: 8, fontWeight: 400, color: "#666" }}>(chiều nước chảy)</div>
+      </>
+    ) : (
+      "—"
+    );
+  }
+  return "—";
+}
+
 // Gộp dòng bảng theo cùng mã sản phẩm + cùng toàn bộ thông số KHÁC Rộng/Cao
 // (giống rule mẫu Xưởng Cửa Lưới, production/print/page.tsx groupKeyFor) —
 // Rộng/Cao vẫn hiển thị riêng từng dòng trong nhóm.
@@ -210,7 +247,14 @@ function groupItemsForDisplay<T extends { productCode: string; parameters: ItemP
   const indexByKey = new Map<string, number>();
   for (const item of items) {
     const otherParamsKey = item.parameters
-      .filter((p) => p.name !== WIDTH_PARAM_NAME && p.name !== HEIGHT_PARAM_NAME)
+      .filter(
+        (p) =>
+          p.name !== WIDTH_PARAM_NAME &&
+          p.name !== HEIGHT_PARAM_NAME &&
+          p.name !== AREA_PARAM_NAME &&
+          p.name !== MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME &&
+          p.name !== VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME,
+      )
       .map((p) => `${p.name}:${p.value}`)
       .sort()
       .join("|");
@@ -370,7 +414,9 @@ export default function QuotationPrintPage() {
   const totalM2 = items.reduce((s, i) => {
     const rong = paramNumber(i.parameters, WIDTH_PARAM_NAME);
     const cao = paramNumber(i.parameters, HEIGHT_PARAM_NAME);
-    return s + (rong !== null && cao !== null ? rong * cao * i.quantity : 0);
+    const area = paramNumber(i.parameters, AREA_PARAM_NAME);
+    const m2 = rong !== null && cao !== null ? rong * cao : area;
+    return s + (m2 !== null ? m2 * i.quantity : 0);
   }, 0);
   const discountAmount = isOrder ? Number(order!.discountAmount) : Number(quotation.discountAmount ?? 0);
   const discountReason = isOrder ? order!.discountReason : quotation.discountReason;
@@ -574,7 +620,13 @@ export default function QuotationPrintPage() {
                   stt += 1;
                   const rong = paramNumber(item.parameters, WIDTH_PARAM_NAME);
                   const cao = paramNumber(item.parameters, HEIGHT_PARAM_NAME);
-                  const m2 = rong !== null && cao !== null ? rong * cao * item.quantity : null;
+                  const area = paramNumber(item.parameters, AREA_PARAM_NAME);
+                  const m2 =
+                    rong !== null && cao !== null
+                      ? rong * cao * item.quantity
+                      : area !== null
+                        ? area * item.quantity
+                        : null;
                   // Giá/m² hiệu lực (đã gồm mọi hệ số/giảm giá trong công thức
                   // + chiết khấu khách hàng %, nếu có) cho các sản phẩm trong
                   // danh sách trên — dùng systemPrice × (1 − CK%), KHÔNG cộng
@@ -595,6 +647,11 @@ export default function QuotationPrintPage() {
                     (p) =>
                       p.name !== WIDTH_PARAM_NAME &&
                       p.name !== HEIGHT_PARAM_NAME &&
+                      p.name !== AREA_PARAM_NAME &&
+                      // Mái hiên di động / Vải bạt: khổ đua / chiều nước chảy đã
+                      // hiện riêng ở ô Cao (renderHeightCell), không lặp lại.
+                      p.name !== MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME &&
+                      p.name !== VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME &&
                       !HIDDEN_PARAM_NAMES.includes(p.name),
                   );
                   const hasWarnings = !!item.warnings && item.warnings.length > 0;
@@ -624,7 +681,9 @@ export default function QuotationPrintPage() {
                         </td>
                       )}
                       <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{rong !== null ? fmt3(rong) : "—"}</td>
-                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>{cao !== null ? fmt3(cao) : "—"}</td>
+                      <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>
+                        {cao !== null ? fmt3(cao) : renderHeightCellFallback(item)}
+                      </td>
                       <td style={{ ...tdStyle, textAlign: "center", fontWeight: 700 }}>
                         {item.quantity}
                         {item.unit && <span style={{ fontWeight: 400 }}> {item.unit}</span>}

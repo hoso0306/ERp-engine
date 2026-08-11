@@ -585,6 +585,10 @@ export class QuotationWorkflowService {
 
     const paramMap = new Map(product.parameters.map((p) => [p.name, p]));
     const displayOrder = dto.displayOrder ?? quotation.items.length;
+    const areaParamCreate = this.buildAreaParameterCreate(
+      priceResult.rawArea,
+      dto.parameters.length,
+    );
 
     return this.prisma.quotationItem.create({
       data: {
@@ -609,17 +613,20 @@ export class QuotationWorkflowService {
         warnings: priceResult.warnings,
         displayOrder,
         parameters: {
-          create: dto.parameters.map((p, idx) => {
-            const productParam = paramMap.get(p.name);
-            return {
-              name: p.name,
-              label: productParam?.label ?? p.name,
-              value: p.value,
-              valueLabel: this.resolveValueLabel(productParam, p.value),
-              unit: productParam?.unit ?? null,
-              displayOrder: productParam?.displayOrder ?? idx,
-            };
-          }),
+          create: [
+            ...dto.parameters.map((p, idx) => {
+              const productParam = paramMap.get(p.name);
+              return {
+                name: p.name,
+                label: productParam?.label ?? p.name,
+                value: p.value,
+                valueLabel: this.resolveValueLabel(productParam, p.value),
+                unit: productParam?.unit ?? null,
+                displayOrder: productParam?.displayOrder ?? idx,
+              };
+            }),
+            ...(areaParamCreate ? [areaParamCreate] : []),
+          ],
         },
       },
       include: {
@@ -627,6 +634,28 @@ export class QuotationWorkflowService {
         parameters: { orderBy: { displayOrder: 'asc' } },
       },
     });
+  }
+
+  // Snapshot biến phái sinh "area" (BG000031, chốt 11/08/2026) — sản phẩm
+  // không có cặp chieurong/chieucao (Mái hiên, Bạt xếp...) không thể tính M2
+  // trên bản in từ 2 tham số đó. Chỉ snapshot đúng "area" (không snapshot
+  // các biến phái sinh phụ trợ khác như "dientichvai" — chỉ dùng nội bộ tính
+  // định mức, không phải số đo hiển thị cho khách). Lưu GIÁ TRỊ GỐC
+  // (priceResult.rawArea, trước MIN_AREA/BILLABLE_STEP) — cùng nguyên tắc
+  // hiển thị kích thước gốc khách đặt như chieurong/chieucao.
+  private buildAreaParameterCreate(
+    rawArea: number | null,
+    rawParamCount: number,
+  ): { name: string; label: string; value: string; valueLabel: null; unit: string; displayOrder: number } | null {
+    if (typeof rawArea !== 'number') return null;
+    return {
+      name: 'area',
+      label: 'Diện tích',
+      value: String(rawArea),
+      valueLabel: null,
+      unit: 'm²',
+      displayOrder: rawParamCount,
+    };
   }
 
   // 009-in-phieu-san-xuat.md (workbench/sprint-04) — snapshot nhãn hiển thị của option ENUM đã
@@ -677,6 +706,7 @@ export class QuotationWorkflowService {
     let vatRate = Number(item.vatRate);
     let surchargeAfterDiscount = Number(item.surchargeAfterDiscount ?? 0);
     const newParameters = dto.parameters;
+    let rawArea: number | null = null;
 
     if (dto.parameters !== undefined) {
       const priceResult = await this.pricingEngine.calculate({
@@ -689,6 +719,7 @@ export class QuotationWorkflowService {
       warnings = priceResult.warnings;
       vatRate = priceResult.vatRate;
       surchargeAfterDiscount = priceResult.surchargeAfterDiscount;
+      rawArea = priceResult.rawArea;
     }
 
     // discountPercent là snapshot cố định từ lúc thêm dòng (giống hệt cách
@@ -733,19 +764,29 @@ export class QuotationWorkflowService {
           (product?.parameters ?? []).map((p) => [p.name, p]),
         );
 
+        const areaParamCreate = this.buildAreaParameterCreate(
+          rawArea,
+          newParameters.length,
+        );
+
         await tx.quotationItemParameter.createMany({
-          data: newParameters.map((p, idx) => {
-            const productParam = paramMap.get(p.name);
-            return {
-              quotationItemId: itemId,
-              name: p.name,
-              label: productParam?.label ?? p.name,
-              value: p.value,
-              valueLabel: this.resolveValueLabel(productParam, p.value),
-              unit: productParam?.unit ?? null,
-              displayOrder: productParam?.displayOrder ?? idx,
-            };
-          }),
+          data: [
+            ...newParameters.map((p, idx) => {
+              const productParam = paramMap.get(p.name);
+              return {
+                quotationItemId: itemId,
+                name: p.name,
+                label: productParam?.label ?? p.name,
+                value: p.value,
+                valueLabel: this.resolveValueLabel(productParam, p.value),
+                unit: productParam?.unit ?? null,
+                displayOrder: productParam?.displayOrder ?? idx,
+              };
+            }),
+            ...(areaParamCreate
+              ? [{ quotationItemId: itemId, ...areaParamCreate }]
+              : []),
+          ],
         });
       }
 

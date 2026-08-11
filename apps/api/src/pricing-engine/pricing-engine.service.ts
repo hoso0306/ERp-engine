@@ -91,6 +91,13 @@ export interface PricingCalcResult {
   // Phụ phí cộng SAU chiết khấu (Quotation Discount Engine) — mặc định 0 khi
   // Pricing Rule Version không cấu hình surchargeExpression.
   surchargeAfterDiscount: number;
+  // "area" GỐC (biến phái sinh, chưa qua MIN_AREA/BILLABLE_STEP) — CHỈ để
+  // snapshot hiển thị (vd cột M2 bản in) cho sản phẩm không có cặp
+  // chieurong/chieucao (Mái hiên, Bạt xếp...). Khác billableParams['area']
+  // (có thể đã bị nâng theo rule) — giữ đúng nguyên tắc hiển thị kích thước
+  // GỐC khách đặt, giống cách chieurong/chieucao snapshot hiện tại không bị
+  // rule ghi đè (BG000031, chốt 11/08/2026).
+  rawArea: number | null;
 }
 
 const VERSION_INCLUDE = {
@@ -256,6 +263,7 @@ export class PricingEngineService {
   ): PricingCalcResult {
     // 1. Derive — từ tham số GỐC
     const ctx = computeDerivedParams(config.derivedParameters, rawParams);
+    const rawArea = typeof ctx['area'] === 'number' ? ctx['area'] : null;
 
     // 2. Validate — WARN gom vào warnings, BLOCK throw
     const { warnings } = runValidationRules(config.validationRules, ctx);
@@ -340,6 +348,7 @@ export class PricingEngineService {
       pricingRuleVersionId: config.pricingRuleVersionId,
       vatRate: config.vatRate,
       surchargeAfterDiscount,
+      rawArea,
     };
   }
 
@@ -465,6 +474,7 @@ export class PricingEngineService {
       adjustedVariables: result.billableParams,
       warnings: result.warnings,
       surchargeAfterDiscount: result.surchargeAfterDiscount,
+      rawArea: result.rawArea,
     };
   }
 }

@@ -120,7 +120,9 @@ const HEIGHT_PARAM_NAME = "chieucao";
 // Tham số nhập tay đại diện giá bán/giá vốn (VD "Hàng phân phối thêm",
 // "Chi phí Sửa chữa/Lắp đặt") — không phải thông số mô tả sản phẩm, và đặc
 // biệt giá vốn không được lộ cho Xưởng sản xuất, nên không hiện trên phiếu.
-const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
+// "area" — biến phái sinh snapshot cho bản in Báo giá (BG000031, chốt
+// 11/08/2026), không phải thông số Xưởng cần — ẩn khỏi phiếu SX như cũ.
+const HIDDEN_PARAM_NAMES = ["dongia", "giavon", "area"];
 
 // Mái hiên di động (SP000115, Xưởng Bạt XW005) là sản phẩm DUY NHẤT trong
 // toàn hệ thống không có tham số "chieucao" (chỉ có "chieurong") — thay vào
