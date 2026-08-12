@@ -5,7 +5,7 @@
 //
 // Đây là pure function trình bày lại thời gian — không phải Business Logic.
 
-export type ReportGroupBy = 'day' | 'month' | 'year';
+export type ReportGroupBy = 'day' | 'week' | 'month' | 'year';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -26,7 +26,23 @@ function isoDateInTimezone(date: Date, timezone: string): string {
   return formatter.format(date);
 }
 
-// 'day' → '2026-07-18' | 'month' → '2026-07' | 'year' → '2026'
+// ISO-8601 week: tuần chứa thứ Năm đầu tiên của năm là tuần 01, tuần bắt
+// đầu từ thứ Hai. '2026-07-18' → '2026-W29'.
+function isoWeekString(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // gần nhất thứ Năm
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  const week =
+    1 +
+    Math.round((date.getTime() - firstThursday.getTime()) / MS_PER_DAY / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// 'day' → '2026-07-18' | 'week' → '2026-W29' | 'month' → '2026-07' | 'year' → '2026'
 export function bucketDate(
   date: Date,
   timezone: string,
@@ -35,6 +51,7 @@ export function bucketDate(
   const iso = isoDateInTimezone(date, timezone);
   if (groupBy === 'year') return iso.slice(0, 4);
   if (groupBy === 'month') return iso.slice(0, 7);
+  if (groupBy === 'week') return isoWeekString(iso);
   return iso;
 }
 

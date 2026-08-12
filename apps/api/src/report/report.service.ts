@@ -184,9 +184,16 @@ export class ReportService {
     };
   }
 
-  // B4
-  getGrowthByProductType(range: ReportRange) {
-    return this.salesOrderService.getGrowthByProductType(range.from, range.to);
+  // B4 — groupBy chỉ nhận week|month|year, mặc định month.
+  getGrowthByProductType(
+    range: ReportRange,
+    groupBy: 'week' | 'month' | 'year' = 'month',
+  ) {
+    return this.salesOrderService.getGrowthByProductType(
+      range.from,
+      range.to,
+      groupBy,
+    );
   }
 
   // ─────────────────────────────────────────────────────
@@ -266,7 +273,10 @@ export class ReportService {
           groupBy === 'year' ? 'year' : 'month',
         );
       case 'growth-by-product-type':
-        return this.buildGrowthByProductTypeExport(range);
+        return this.buildGrowthByProductTypeExport(
+          range,
+          groupBy === 'week' || groupBy === 'year' ? groupBy : 'month',
+        );
       case 'revenue-by-employee':
         return this.buildRevenueByEmployeeExport(range);
       case 'revenue-by-customer':
@@ -554,16 +564,19 @@ export class ReportService {
 
   private async buildGrowthByProductTypeExport(
     range: ReportRange,
+    groupBy: 'week' | 'month' | 'year',
   ): Promise<ReportExportData> {
-    const data = await this.getGrowthByProductType(range);
+    const data = await this.getGrowthByProductType(range, groupBy);
+    const groupByLabel =
+      groupBy === 'week' ? 'tuần' : groupBy === 'year' ? 'năm' : 'tháng';
     return {
-      title: 'Tốc độ phát triển theo nhóm sản phẩm',
-      landscape: data.months.length > 4,
+      title: `Tốc độ phát triển theo nhóm sản phẩm (theo ${groupByLabel})`,
+      landscape: data.periods.length > 4,
       columns: [
         { header: 'Nhóm sản phẩm', key: 'productTypeName', width: 28 },
-        ...data.months.map((m) => ({
-          header: m,
-          key: `month_${m}`,
+        ...data.periods.map((p) => ({
+          header: p,
+          key: `period_${p}`,
           width: 14,
           align: 'right' as const,
         })),
@@ -572,7 +585,7 @@ export class ReportService {
       rows: data.productTypes.map((t) => ({
         productTypeName: t.productTypeName,
         ...Object.fromEntries(
-          t.byMonth.map((m) => [`month_${m.period}`, m.revenue]),
+          t.byPeriod.map((p) => [`period_${p.period}`, p.revenue]),
         ),
         total: t.revenue,
       })),

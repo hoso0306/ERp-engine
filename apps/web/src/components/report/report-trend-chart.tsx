@@ -25,7 +25,7 @@ export interface ReportTrendSeries {
 
 interface ReportTrendChartProps<T extends { period: string }> {
   // Mỗi phần tử là 1 điểm trên trục thời gian, bắt buộc có field `period`
-  // (nhãn bucket 'yyyy-mm-dd' | 'yyyy-mm' | 'yyyy' từ buildSeries() ở BE).
+  // (nhãn bucket 'yyyy-mm-dd' | 'yyyy-Www' | 'yyyy-mm' | 'yyyy' từ bucketDate() ở BE).
   data: T[];
   series: ReportTrendSeries[];
   // Kỳ ngắn (ngày) dễ đọc dạng cột; kỳ dài (tháng/năm) dùng line cho xu hướng.
@@ -34,6 +34,10 @@ interface ReportTrendChartProps<T extends { period: string }> {
 }
 
 function formatPeriodLabel(period: string): string {
+  if (period.includes("-W")) {
+    const [year, week] = period.split("-W");
+    return `Tuần ${Number(week)}/${year.slice(2)}`;
+  }
   const parts = period.split("-");
   if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
   if (parts.length === 2) return `Th${Number(parts[1])}/${parts[0].slice(2)}`;

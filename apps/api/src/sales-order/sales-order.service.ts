@@ -948,8 +948,13 @@ export class SalesOrderService {
     };
   }
 
-  // B4 — group theo productTypeId/productTypeName snapshot + theo tháng.
-  async getGrowthByProductType(from: Date, to: Date) {
+  // B4 — group theo productTypeId/productTypeName snapshot + theo kỳ
+  // (tuần/tháng/năm — page 026-tang-truong-nhom-sp cho chọn, mặc định tháng).
+  async getGrowthByProductType(
+    from: Date,
+    to: Date,
+    groupBy: ReportGroupBy = 'month',
+  ) {
     const timezone = await this.getCompanyTimezone();
 
     // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — báo cáo B4 nhóm theo
@@ -971,22 +976,22 @@ export class SalesOrderService {
       productTypeId: string;
       productTypeName: string;
       revenue: number;
-      byMonth: Map<string, number>;
+      byPeriod: Map<string, number>;
     };
     const byType = new Map<string, TypeAcc>();
-    const months = new Set<string>();
+    const periods = new Set<string>();
 
     for (const row of rows) {
       const productTypeId = row.productTypeId!;
-      const month = bucketDate(row.salesOrder.createdAt, timezone, 'month');
-      months.add(month);
+      const period = bucketDate(row.salesOrder.createdAt, timezone, groupBy);
+      periods.add(period);
       let acc = byType.get(productTypeId);
       if (!acc) {
         acc = {
           productTypeId,
           productTypeName: row.productTypeName!,
           revenue: 0,
-          byMonth: new Map(),
+          byPeriod: new Map(),
         };
         byType.set(productTypeId, acc);
       }
@@ -994,24 +999,25 @@ export class SalesOrderService {
       // lại ProductType.
       acc.productTypeName = row.productTypeName!;
       acc.revenue += Number(row.subtotal);
-      acc.byMonth.set(
-        month,
-        (acc.byMonth.get(month) ?? 0) + Number(row.subtotal),
+      acc.byPeriod.set(
+        period,
+        (acc.byPeriod.get(period) ?? 0) + Number(row.subtotal),
       );
     }
 
-    const sortedMonths = Array.from(months).sort();
+    const sortedPeriods = Array.from(periods).sort();
 
     return {
-      months: sortedMonths,
+      groupBy,
+      periods: sortedPeriods,
       productTypes: Array.from(byType.values())
         .map((t) => ({
           productTypeId: t.productTypeId,
           productTypeName: t.productTypeName,
           revenue: t.revenue,
-          byMonth: sortedMonths.map((m) => ({
-            period: m,
-            revenue: t.byMonth.get(m) ?? 0,
+          byPeriod: sortedPeriods.map((p) => ({
+            period: p,
+            revenue: t.byPeriod.get(p) ?? 0,
           })),
         }))
         .sort((a, b) => b.revenue - a.revenue),
