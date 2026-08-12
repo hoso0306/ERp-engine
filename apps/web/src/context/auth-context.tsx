@@ -43,6 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
+    // fetch-on-mount hợp lệ (React docs liệt kê rõ đây là use case chính đáng
+    // của Effect) — refreshMe() là async, không set state đồng bộ trong thân
+    // effect, rule không phân tích được qua ranh giới hàm nên báo nhầm.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

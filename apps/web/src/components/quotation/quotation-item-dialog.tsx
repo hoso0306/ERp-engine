@@ -114,8 +114,15 @@ export function QuotationItemDialog({
       setDiscountPercent(Number(item.discountPercent ?? 0));
       setSurchargeAfterDiscount(Number(item.surchargeAfterDiscount ?? 0));
       setNote(item.note ?? "");
+      // "area" là snapshot backend tự sinh (buildAreaParameterCreate), không
+      // phải tham số người dùng nhập — nếu copy vào đây rồi gửi lại lúc Lưu,
+      // backend sẽ lưu thêm 1 dòng "area" nữa bên cạnh dòng nó tự tạo, gây
+      // trùng key "area" (React warning + dữ liệu trùng, phát hiện BG000022).
       const vals: Record<string, string> = {};
-      for (const p of item.parameters) vals[p.name] = p.value;
+      for (const p of item.parameters) {
+        if (p.name === "area") continue;
+        vals[p.name] = p.value;
+      }
       setParamValues(vals);
     } else {
       setProductId("");
