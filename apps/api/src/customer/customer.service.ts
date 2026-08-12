@@ -770,6 +770,20 @@ export class CustomerService {
         });
         return;
       }
+      if (debtLimit !== undefined && Number.isNaN(debtLimit)) {
+        errors.push({
+          row: rowNumber,
+          message: `Hạn mức công nợ "${cell(C.debtLimit)}" không hợp lệ (phải là số).`,
+        });
+        return;
+      }
+      if (debtTermDays !== undefined && Number.isNaN(debtTermDays)) {
+        errors.push({
+          row: rowNumber,
+          message: `Thời hạn công nợ "${cell(C.debtTermDays)}" không hợp lệ (phải là số).`,
+        });
+        return;
+      }
 
       rowsData.push({
         row: rowNumber,
@@ -923,53 +937,64 @@ export class CustomerService {
     };
   }
 
+  // Bọc toàn bộ ghi DB (update + create) trong 1 transaction (chốt 12/08/2026,
+  // cùng pattern applyMaterialImport()) — nếu 1 dòng lỗi giữa chừng (vd DB
+  // constraint không bắt được ở bước validate), các dòng trước đó trong cùng
+  // lượt import không bị kẹt lại nửa vời.
   async importExcel(buffer: Buffer) {
     const { errors, toCreate, toUpdate } = await this.resolveImport(buffer);
 
-    for (const { existingId, updateData } of toUpdate) {
-      if (Object.keys(updateData).length > 0) {
-        await this.prisma.customer.update({
-          where: { id: existingId },
-          data: updateData,
-        });
-      }
-    }
+    const { created, updated } = await this.prisma.$transaction(
+      async (tx) => {
+        for (const { existingId, updateData } of toUpdate) {
+          if (Object.keys(updateData).length > 0) {
+            await tx.customer.update({
+              where: { id: existingId },
+              data: updateData,
+            });
+          }
+        }
 
-    const defaultGroupId = toCreate.length
-      ? await this.getDefaultCustomerGroupId()
-      : null;
+        const defaultGroupId = toCreate.length
+          ? await this.getDefaultCustomerGroupId()
+          : null;
 
-    for (const { dto } of toCreate) {
-      await retryOnCodeConflict(async () => {
-        const code = await this.generateCode('CUSTOMER');
-        return this.prisma.customer.create({
-          data: {
-            code,
-            name: dto.name,
-            phone: dto.phone,
-            email: dto.email || null,
-            companyName: dto.companyName || null,
-            taxCode: dto.taxCode || null,
-            province: dto.province || null,
-            district: dto.district || null,
-            ward: dto.ward || null,
-            address: dto.address || null,
-            customerGroupId: dto.customerGroupId || defaultGroupId,
-            deliveryRouteId: dto.deliveryRouteId || null,
-            priority: dto.priority || 'MEDIUM',
-            status: dto.status || 'ACTIVE',
-            debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
-            debtTermDays: dto.debtTermDays ?? 30,
-            note: dto.note || null,
-            defaultCarrierName: dto.defaultCarrierName || null,
-            defaultCarrierPhone: dto.defaultCarrierPhone || null,
-            defaultCarrierNote: dto.defaultCarrierNote || null,
-          },
-        });
-      });
-    }
+        for (const { dto } of toCreate) {
+          await retryOnCodeConflict(async () => {
+            const code = await this.generateCode('CUSTOMER');
+            return tx.customer.create({
+              data: {
+                code,
+                name: dto.name,
+                phone: dto.phone,
+                email: dto.email || null,
+                companyName: dto.companyName || null,
+                taxCode: dto.taxCode || null,
+                province: dto.province || null,
+                district: dto.district || null,
+                ward: dto.ward || null,
+                address: dto.address || null,
+                customerGroupId: dto.customerGroupId || defaultGroupId,
+                deliveryRouteId: dto.deliveryRouteId || null,
+                priority: dto.priority || 'MEDIUM',
+                status: dto.status || 'ACTIVE',
+                debtLimit: dto.debtLimit ?? DEFAULT_DEBT_LIMIT,
+                debtTermDays: dto.debtTermDays ?? 30,
+                note: dto.note || null,
+                defaultCarrierName: dto.defaultCarrierName || null,
+                defaultCarrierPhone: dto.defaultCarrierPhone || null,
+                defaultCarrierNote: dto.defaultCarrierNote || null,
+              },
+            });
+          });
+        }
 
-    return { created: toCreate.length, updated: toUpdate.length, errors };
+        return { created: toCreate.length, updated: toUpdate.length };
+      },
+      { timeout: 30000 },
+    );
+
+    return { created, updated, errors };
   }
 
   // ──────────────────────────────────────
