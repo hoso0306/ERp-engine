@@ -94,6 +94,7 @@ export function PaymentListTable({
               {showCustomer && <TableHead>Khách hàng</TableHead>}
               <TableHead className="text-right">Số tiền</TableHead>
               <TableHead>Phương thức</TableHead>
+              <TableHead>Ghi chú</TableHead>
               <TableHead>Đơn hàng / Công nợ đầu kỳ</TableHead>
               <TableHead>Số tham chiếu</TableHead>
               <TableHead>Người thu</TableHead>
@@ -128,6 +129,7 @@ export function PaymentListTable({
                   <TableCell>
                     <Badge variant="outline">{PAYMENT_METHOD_LABEL[p.paymentMethod] ?? p.paymentMethod}</Badge>
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{p.note ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.orderCodes.join(", ") || "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.referenceNumber ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.createdBy ?? "—"}</TableCell>
