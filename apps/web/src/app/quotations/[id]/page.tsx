@@ -980,7 +980,6 @@ export default function QuotationDetailPage() {
                 id="discount-amount"
                 type="number"
                 min="0"
-                step="1000"
                 value={discountAmountInput}
                 onChange={(e) => setDiscountAmountInput(e.target.value)}
               />
