@@ -651,7 +651,13 @@ export class QuotationWorkflowService {
     return {
       name: 'area',
       label: 'Diện tích',
-      value: String(rawArea),
+      // Làm tròn 6 chữ số thập phân trước khi String() hoá — chieurong*chieucao
+      // là phép nhân số thực JS (IEEE 754), vd 0.7*0.7 = 0.48999999999999994
+      // thay vì 0.49, hiện ra tab Báo giá gây khó hiểu (BG000022, chốt
+      // 12/08/2026). 6 số thập phân dư sức chính xác cho input mét, chỉ khử
+      // đúng phần sai số floating-point (~1e-13..1e-17), không đụng cách tính
+      // giá/vật tư thật (Pricing/BOM Engine không qua hàm này).
+      value: String(Math.round(rawArea * 1e6) / 1e6),
       valueLabel: null,
       unit: 'm²',
       displayOrder: rawParamCount,
