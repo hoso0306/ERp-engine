@@ -179,7 +179,6 @@ function RetailEnableDialog({
               id="retail-enable-price"
               type="number"
               min="0"
-              step="1000"
               value={retailPrice}
               onChange={(e) => setRetailPrice(e.target.value)}
               required

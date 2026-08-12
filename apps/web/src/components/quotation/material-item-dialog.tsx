@@ -172,7 +172,6 @@ export function MaterialItemDialog({
                 id="material-item-price"
                 type="number"
                 min="0"
-                step="1000"
                 value={finalPrice}
                 onChange={(e) => setFinalPrice(e.target.value)}
               />
