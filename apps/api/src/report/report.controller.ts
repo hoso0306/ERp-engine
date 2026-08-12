@@ -17,7 +17,7 @@ import { ExcelService } from '../shared/excel/excel.service';
 import { PdfService } from '../shared/pdf/pdf.service';
 import type { ReportGroupBy } from '../shared/report-range';
 
-const GROUP_BY_VALUES: ReportGroupBy[] = ['day', 'month', 'year'];
+const GROUP_BY_VALUES: ReportGroupBy[] = ['day', 'week', 'month', 'year'];
 
 // Report chỉ có Read + Export — không Create/Update/Delete (report.md
 // "Vai trò trong ERP"). Một quyền duy nhất report.view cho toàn bộ endpoint
@@ -82,12 +82,14 @@ export class ReportController {
     return this.reportService.getRevenueByProduct(this.parseRange(query));
   }
 
-  // B3 — groupBy chỉ nhận month|year (report.md API), mặc định month.
+  // B3 — groupBy chỉ nhận week|month|year, mặc định month.
   @Get('growth')
   @RequirePermission('report.view')
   getGrowth(@Query() query: ReportQueryDto) {
-    const groupBy = query.groupBy === 'year' ? 'year' : 'month';
-    return this.reportService.getGrowth(this.parseRange(query), groupBy);
+    return this.reportService.getGrowth(
+      this.parseRange(query),
+      this.parseWeekMonthYearGroupBy(query.groupBy),
+    );
   }
 
   // B4 — groupBy chỉ nhận week|month|year, mặc định month.
@@ -96,7 +98,7 @@ export class ReportController {
   getGrowthByProductType(@Query() query: ReportQueryDto) {
     return this.reportService.getGrowthByProductType(
       this.parseRange(query),
-      this.parseGrowthByProductTypeGroupBy(query.groupBy),
+      this.parseWeekMonthYearGroupBy(query.groupBy),
     );
   }
 
@@ -132,8 +134,8 @@ export class ReportController {
   ) {
     const range = this.parseRange(query);
     const groupBy =
-      name === 'growth-by-product-type'
-        ? this.parseGrowthByProductTypeGroupBy(query.groupBy)
+      name === 'growth' || name === 'growth-by-product-type'
+        ? this.parseWeekMonthYearGroupBy(query.groupBy)
         : this.parseGroupBy(query.groupBy);
     const data = await this.reportService.buildExport(name, range, groupBy);
     const filename = `${name}_${query.from}_${query.to}`;
@@ -170,9 +172,7 @@ export class ReportController {
       : 'day';
   }
 
-  private parseGrowthByProductTypeGroupBy(
-    value?: string,
-  ): 'week' | 'month' | 'year' {
+  private parseWeekMonthYearGroupBy(value?: string): 'week' | 'month' | 'year' {
     return value === 'week' || value === 'year' ? value : 'month';
   }
 }

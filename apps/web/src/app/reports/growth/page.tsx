@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { LineChart, BarChart3 } from "lucide-react";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Button } from "@/components/ui/button";
@@ -25,18 +26,22 @@ interface GrowthPoint {
 }
 
 interface GrowthReport {
-  groupBy: "month" | "year";
+  groupBy: "week" | "month" | "year";
   totals: { revenue: number; cashIn: number; plannedProfit: number };
   series: GrowthPoint[];
 }
 
-// B3 — Tốc độ phát triển qua các tháng/năm. KHÔNG phải method mới ở BE — tái
-// dùng A1/A2/A3 với groupBy khác (report.md B3).
+type GroupBy = "week" | "month" | "year";
+type ChartVariant = "line" | "bar";
+
+// B3 — Tốc độ phát triển qua các tuần/tháng/năm. KHÔNG phải method mới ở
+// BE — tái dùng A1/A2/A3 với groupBy khác (report.md B3).
 export default function GrowthReportPage() {
   const initial = defaultReportRange();
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
-  const [groupBy, setGroupBy] = useState<"month" | "year">("month");
+  const [groupBy, setGroupBy] = useState<GroupBy>("month");
+  const [chartVariant, setChartVariant] = useState<ChartVariant>("line");
   const [data, setData] = useState<GrowthReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,15 +68,36 @@ export default function GrowthReportPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tốc độ phát triển"
-        description="Doanh thu, tiền về, lợi nhuận kế hoạch theo tháng/năm"
+        description="Doanh thu, tiền về, lợi nhuận kế hoạch theo tuần/tháng/năm"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-md border p-0.5">
+              <Button variant={groupBy === "week" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("week")}>
+                Theo tuần
+              </Button>
               <Button variant={groupBy === "month" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("month")}>
                 Theo tháng
               </Button>
               <Button variant={groupBy === "year" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("year")}>
                 Theo năm
+              </Button>
+            </div>
+            <div className="flex rounded-md border p-0.5">
+              <Button
+                variant={chartVariant === "line" ? "default" : "ghost"}
+                size="sm"
+                title="Biểu đồ đường"
+                onClick={() => setChartVariant("line")}
+              >
+                <LineChart className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={chartVariant === "bar" ? "default" : "ghost"}
+                size="sm"
+                title="Biểu đồ cột"
+                onClick={() => setChartVariant("bar")}
+              >
+                <BarChart3 className="h-4 w-4" />
               </Button>
             </div>
             <ReportRangeFilter from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
@@ -93,7 +119,7 @@ export default function GrowthReportPage() {
 
           <ReportTrendChart
             data={data.series}
-            variant="line"
+            variant={chartVariant}
             series={[
               { key: "revenue", label: "Doanh thu", color: "var(--chart-1)", formatValue: formatMoney },
               { key: "cashIn", label: "Tiền mặt về", color: "var(--chart-2)", formatValue: formatMoney },

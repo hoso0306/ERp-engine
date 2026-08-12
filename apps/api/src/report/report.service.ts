@@ -130,9 +130,12 @@ export class ReportService {
     return this.salesOrderService.getRevenueByProduct(range.from, range.to);
   }
 
-  // B3 — KHÔNG phải method mới: gọi lại A1/A2/A3 với groupBy tháng/năm, gộp
-  // 3 kết quả. % tăng trưởng tính runtime từ chính chuỗi đã trả về.
-  async getGrowth(range: ReportRange, groupBy: 'month' | 'year' = 'month') {
+  // B3 — KHÔNG phải method mới: gọi lại A1/A2/A3 với groupBy tuần/tháng/năm,
+  // gộp 3 kết quả. % tăng trưởng tính runtime từ chính chuỗi đã trả về.
+  async getGrowth(
+    range: ReportRange,
+    groupBy: 'week' | 'month' | 'year' = 'month',
+  ) {
     const [revenue, cashIn, profit] = await Promise.all([
       this.getRevenue(range, groupBy),
       this.getCashIn(range, groupBy),
@@ -149,7 +152,8 @@ export class ReportService {
 
     const series = revenue.series.map((point, index, all) => {
       const previous = index > 0 ? all[index - 1].revenue : null;
-      // Cùng kỳ năm trước: period 'yyyy-mm' → '(yyyy-1)-mm', 'yyyy' → 'yyyy-1'.
+      // Cùng kỳ năm trước: period 'yyyy-Www'/'yyyy-mm' → '(yyyy-1)-Www'/'(yyyy-1)-mm',
+      // 'yyyy' → 'yyyy-1' (4 ký tự đầu luôn là năm ở mọi groupBy).
       const lastYearPeriod = String(Number(point.period.slice(0, 4)) - 1).concat(
         point.period.slice(4),
       );
@@ -270,7 +274,7 @@ export class ReportService {
       case 'growth':
         return this.buildGrowthExport(
           range,
-          groupBy === 'year' ? 'year' : 'month',
+          groupBy === 'week' || groupBy === 'year' ? groupBy : 'month',
         );
       case 'growth-by-product-type':
         return this.buildGrowthByProductTypeExport(
@@ -531,11 +535,13 @@ export class ReportService {
 
   private async buildGrowthExport(
     range: ReportRange,
-    groupBy: 'month' | 'year',
+    groupBy: 'week' | 'month' | 'year',
   ): Promise<ReportExportData> {
     const data = await this.getGrowth(range, groupBy);
+    const groupByLabel =
+      groupBy === 'week' ? 'tuần' : groupBy === 'year' ? 'năm' : 'tháng';
     return {
-      title: `Báo cáo tốc độ phát triển (theo ${groupBy === 'month' ? 'tháng' : 'năm'})`,
+      title: `Báo cáo tốc độ phát triển (theo ${groupByLabel})`,
       landscape: true,
       columns: [
         { header: 'Kỳ', key: 'period', width: 12 },

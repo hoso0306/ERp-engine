@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { StatTile } from "@/components/dashboard/stat-tile";
+import { Button } from "@/components/ui/button";
 import {
   ReportRangeFilter,
   ReportExportButtons,
@@ -25,17 +26,18 @@ interface CashInReport {
   series: { period: string; cashIn: number; paymentCount: number }[];
 }
 
+type GroupBy = "day" | "week" | "month" | "year";
+
 // A2 — Báo cáo tiền mặt về (report.md: Payment.amount, mốc paymentDate).
 // Chỉ số Actual — không cộng lẫn với A1/A3 (Planned).
 export default function CashInReportPage() {
   const initial = defaultReportRange();
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => autoGroupBy(initial.from, initial.to));
   const [data, setData] = useState<CashInReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const groupBy = useMemo(() => autoGroupBy(from, to), [from, to]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -61,7 +63,21 @@ export default function CashInReportPage() {
         title="Báo cáo tiền mặt về"
         description="Tiền thật đã thu (Actual) — không phải doanh thu kế hoạch"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border p-0.5">
+              <Button variant={groupBy === "day" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("day")}>
+                Ngày
+              </Button>
+              <Button variant={groupBy === "week" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("week")}>
+                Tuần
+              </Button>
+              <Button variant={groupBy === "month" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("month")}>
+                Tháng
+              </Button>
+              <Button variant={groupBy === "year" ? "default" : "ghost"} size="sm" onClick={() => setGroupBy("year")}>
+                Năm
+              </Button>
+            </div>
             <ReportRangeFilter from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
             <ReportExportButtons reportName="cash-in" from={from} to={to} groupBy={groupBy} />
           </div>
