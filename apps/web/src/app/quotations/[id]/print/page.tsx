@@ -705,22 +705,15 @@ export default function QuotationPrintPage() {
                         </div>
                         {/* Khi đã hiện giá hiệu lực (gồm sẵn chiết khấu), ẩn CK%
                             — để khỏi khiến người xem tưởng phải trừ thêm lần
-                            nữa. Phụ phí lắp đặt (surchargeAfterDiscount) luôn
-                            hiện riêng vì effectiveUnitPrice không gồm khoản
-                            này (không tính theo m², xem comment tính toán). */}
-                        {(() => {
-                          const showCK = effectiveUnitPrice === null && item.discountPercent > 0;
-                          const showSurcharge = item.surchargeAfterDiscount > 0;
-                          return (
-                            (showCK || showSurcharge) && (
-                              <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
-                                {showCK && `CK ${item.discountPercent}%`}
-                                {showCK && showSurcharge && " · "}
-                                {showSurcharge && `+${fmt(item.surchargeAfterDiscount)}`}
-                              </div>
-                            )
-                          );
-                        })()}
+                            nữa. Phụ phí lắp đặt (surchargeAfterDiscount) không
+                            hiện riêng trên bản in nữa (chốt 12/08/2026) — vẫn
+                            được cộng vào Thành Tiền như cũ, chỉ bỏ dòng ghi
+                            chú "+x" để khỏi rối mắt khách hàng. */}
+                        {effectiveUnitPrice === null && item.discountPercent > 0 && (
+                          <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
+                            {`CK ${item.discountPercent}%`}
+                          </div>
+                        )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)}</td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>{item.vatRate > 0 ? `${item.vatRate}%` : "—"}</td>
