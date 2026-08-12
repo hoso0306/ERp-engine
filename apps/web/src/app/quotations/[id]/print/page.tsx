@@ -216,6 +216,18 @@ const EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES = new Set([
   "Mành Tăm", // nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
   "Rèm sáo gỗ", // giá bán/giá vốn 100% nhập tay theo m² (tham số dongia/giavon)
 ]);
+// Cả dòng "[RCV] ..." (41 sản phẩm, đã kiểm tra đều dùng area=chieurong×chieucao
+// chuẩn, không có biến thể lệch công thức) — người dùng muốn "Đơn giá" là giá
+// đã trừ CK khách hàng (tính từ Thành Tiền/Diện tích), không phải giá tra bảng
+// thô, để khỏi cần nhìn thêm dòng "CK x%" tách riêng (chốt 12/08/2026).
+const EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES = ["[RCV]"];
+
+function isEffectiveUnitPriceProduct(name: string): boolean {
+  return (
+    EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(name) ||
+    EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES.some((prefix) => name.startsWith(prefix))
+  );
+}
 
 function paramNumber(params: ItemParam[], name: string): number | null {
   const raw = params.find((p) => p.name === name)?.value;
@@ -644,7 +656,7 @@ export default function QuotationPrintPage() {
                   // unitPrice thô như cũ nếu không dựng được diện tích.
                   const effectiveUnitPrice =
                     item.productName &&
-                    EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName) &&
+                    isEffectiveUnitPriceProduct(item.productName) &&
                     m2 !== null &&
                     m2 > 0
                       ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
