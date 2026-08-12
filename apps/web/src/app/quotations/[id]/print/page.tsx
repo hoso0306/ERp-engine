@@ -200,15 +200,21 @@ const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 
 // Sản phẩm có công thức giá không đơn thuần "unitPrice * area" (có hệ số/điều
 // kiện giảm giá riêng trong Pricing Rule) khiến "Đơn giá" tra bảng ma trận
-// không khớp giá thật khách trả (chốt 11/08/2026). Chỉ áp dụng đúng các mã đã
-// xác nhận — KHÔNG áp dụng chung cho mọi sản phẩm ma trận để tránh nhiễu số
-// do làm tròn ở các sản phẩm đang hiển thị đúng (~85 sản phẩm khác), và
-// KHÔNG gồm SP000138/139/140 (người dùng chọn giữ nguyên cách hiển thị cũ,
+// không khớp giá thật khách trả (chốt 11/08/2026). Chỉ áp dụng đúng các sản
+// phẩm đã xác nhận — KHÔNG áp dụng chung cho mọi sản phẩm ma trận để tránh
+// nhiễu số do làm tròn ở các sản phẩm đang hiển thị đúng (~85 sản phẩm khác),
+// và KHÔNG gồm SP000138/139/140 (người dùng chọn giữ nguyên cách hiển thị cũ,
 // dùng Validation Rule ghi chú % thay vì đổi hiển thị — xem product SP000138
 // note "Giá thay thế bằng 70% giá gốc").
-const EFFECTIVE_UNIT_PRICE_PRODUCT_CODES = new Set([
-  "SP000116", // Bạt Cuốn — công thức trừ thêm khi area > 10m²
-  "SP000146", // Mành Tăm — nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
+//
+// So theo TÊN sản phẩm, không theo MÃ (chốt 12/08/2026 — phát hiện bug: mã
+// sản phẩm auto-increment độc lập giữa Local/Production nên KHÔNG ổn định
+// giữa 2 môi trường, vd "SP000146" = Mành Tăm ở Local nhưng lại là Rèm sáo gỗ
+// ở Production — whitelist theo mã cũ vô tình trỏ nhầm sản phẩm khi deploy).
+const EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES = new Set([
+  "Bạt Cuốn", // công thức trừ thêm khi area > 10m²
+  "Mành Tăm", // nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
+  "Rèm sáo gỗ", // giá bán/giá vốn 100% nhập tay theo m² (tham số dongia/giavon)
 ]);
 
 function paramNumber(params: ItemParam[], name: string): number | null {
@@ -637,8 +643,8 @@ export default function QuotationPrintPage() {
                   // `subtotal`, đã bao gồm surcharge). Rơi về hiển thị
                   // unitPrice thô như cũ nếu không dựng được diện tích.
                   const effectiveUnitPrice =
-                    item.productCode &&
-                    EFFECTIVE_UNIT_PRICE_PRODUCT_CODES.has(item.productCode) &&
+                    item.productName &&
+                    EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName) &&
                     m2 !== null &&
                     m2 > 0
                       ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
