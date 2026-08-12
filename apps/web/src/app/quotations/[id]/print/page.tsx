@@ -216,16 +216,16 @@ const EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES = new Set([
   "Mành Tăm", // nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
   "Rèm sáo gỗ", // giá bán/giá vốn 100% nhập tay theo m² (tham số dongia/giavon)
 ]);
-// Cả dòng "[RCV] ..." (41 sản phẩm, đã kiểm tra đều dùng area=chieurong×chieucao
-// chuẩn, không có biến thể lệch công thức) — người dùng muốn "Đơn giá" là giá
-// đã trừ CK khách hàng (tính từ Thành Tiền/Diện tích), không phải giá tra bảng
-// thô, để khỏi cần nhìn thêm dòng "CK x%" tách riêng (chốt 12/08/2026).
-const EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES = ["[RCV]"];
+// Cả dòng "[RCV] ..." (41 sản phẩm, mọi báo giá — khớp theo TIỀN TỐ tên, không
+// theo mã/1 dòng cụ thể). Khác nhóm trên: RCV gộp LUÔN phụ phí lắp đặt vào
+// phép chia — "Đơn giá" = Thành Tiền/Diện tích thẳng, không loại trừ phụ phí
+// (chốt 12/08/2026, người dùng xác nhận muốn đơn giản vậy, khác cách tính
+// "loại trừ phụ phí" của nhóm Bạt Cuốn/Mành Tăm/Rèm sáo gỗ ở trên).
+const EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES_INCLUDE_SURCHARGE = ["[RCV]"];
 
-function isEffectiveUnitPriceProduct(name: string): boolean {
-  return (
-    EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(name) ||
-    EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES.some((prefix) => name.startsWith(prefix))
+function isRcvProduct(name: string): boolean {
+  return EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES_INCLUDE_SURCHARGE.some((prefix) =>
+    name.startsWith(prefix),
   );
 }
 
@@ -645,21 +645,25 @@ export default function QuotationPrintPage() {
                       : area !== null
                         ? area * item.quantity
                         : null;
-                  // Giá/m² hiệu lực (đã gồm mọi hệ số/giảm giá trong công thức
-                  // + chiết khấu khách hàng %, nếu có) cho các sản phẩm trong
-                  // danh sách trên — dùng systemPrice × (1 − CK%), KHÔNG cộng
-                  // `surchargeAfterDiscount`: đây là phụ phí LẮP ĐẶT (vd theo
-                  // Loại cơ cấu/Ống của SP116), một khoản CỘNG THẲNG không
-                  // tính theo m², nếu gộp cả vào rồi chia lại diện tích sẽ ra
-                  // giá/m² sai (bug phát hiện 11/08/2026 — ban đầu dùng thẳng
-                  // `subtotal`, đã bao gồm surcharge). Rơi về hiển thị
-                  // unitPrice thô như cũ nếu không dựng được diện tích.
+                  // Giá/m² hiệu lực cho các sản phẩm trong danh sách trên —
+                  // dùng systemPrice × (1 − CK%), KHÔNG cộng `surchargeAfterDiscount`:
+                  // đây là phụ phí LẮP ĐẶT (vd theo Loại cơ cấu/Ống của SP116),
+                  // một khoản CỘNG THẲNG không tính theo m², nếu gộp cả vào rồi
+                  // chia lại diện tích sẽ ra giá/m² sai (bug phát hiện 11/08/2026
+                  // — ban đầu dùng thẳng `subtotal`, đã bao gồm surcharge).
+                  // Riêng dòng RCV: NGƯỢC LẠI, gộp luôn phụ phí — dùng thẳng
+                  // `subtotal` (Thành Tiền, đã gồm CK% + phụ phí + quantity)
+                  // chia diện tích, theo đúng yêu cầu người dùng (12/08/2026).
+                  // Rơi về hiển thị unitPrice thô như cũ nếu không dựng được
+                  // diện tích.
+                  const isRcv = !!item.productName && isRcvProduct(item.productName);
                   const effectiveUnitPrice =
-                    item.productName &&
-                    isEffectiveUnitPriceProduct(item.productName) &&
-                    m2 !== null &&
-                    m2 > 0
-                      ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
+                    m2 !== null && m2 > 0 && item.productName
+                      ? isRcv
+                        ? item.subtotal / m2
+                        : EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName)
+                          ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
+                          : null
                       : null;
                   const otherParams = item.parameters.filter(
                     (p) =>
