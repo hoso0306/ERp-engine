@@ -212,24 +212,29 @@ const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
 // giữa 2 môi trường, vd "SP000146" = Mành Tăm ở Local nhưng lại là Rèm sáo gỗ
 // ở Production — whitelist theo mã cũ vô tình trỏ nhầm sản phẩm khi deploy).
 //
-// "Đơn giá" hiển thị = Thành Tiền/Diện tích (subtotal/m²), GỘP LUÔN phụ phí
-// lắp đặt — giống hệt cách tính của nhóm "[RCV]" bên dưới (chốt 12/08/2026:
-// người dùng xác nhận Bạt Cuốn cũng phải gộp phụ phí cơ cấu/ống, không loại
-// trừ như bản trước — Mành Tăm/Rèm sáo gỗ vốn không có phụ phí nên số hiển
-// thị không đổi, chỉ dùng chung 1 công thức cho gọn code).
+// Giá/m² hiệu lực dùng systemPrice × (1 − CK%), KHÔNG cộng
+// `surchargeAfterDiscount`: đây là phụ phí LẮP ĐẶT (vd theo Loại cơ cấu/Ống
+// của Bạt Cuốn), một khoản CỘNG THẲNG không tính theo m² — nếu gộp vào rồi
+// chia lại diện tích sẽ ra giá/m² sai (bug phát hiện 11/08/2026). Từng đổi
+// sang gộp phụ phí giống RCV (12/08/2026) rồi quay lại loại trừ như cũ, cùng
+// ngày — người dùng xác nhận muốn Đơn giá × M2 khớp đúng với phần chưa gồm
+// phụ phí, tránh gây thắc mắc khi đối chiếu với Thành Tiền (Thành Tiền vẫn
+// luôn cộng đủ phụ phí, không đổi).
 const EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES = new Set([
   "Bạt Cuốn", // công thức trừ thêm khi area > 10m², có phụ phí theo cơ cấu/ống
   "Mành Tăm", // nhánh "vẽ thủ công" dùng giá nhập tay, không phải giá tra bảng
   "Rèm sáo gỗ", // giá bán/giá vốn 100% nhập tay theo m² (tham số dongia/giavon)
 ]);
 // Cả dòng "[RCV] ..." (41 sản phẩm, mọi báo giá — khớp theo TIỀN TỐ tên, không
-// theo mã/1 dòng cụ thể) — cùng công thức subtotal/m² như trên.
-const EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES = ["[RCV]"];
+// theo mã/1 dòng cụ thể). Khác nhóm trên: RCV gộp LUÔN phụ phí lắp đặt vào
+// phép chia — "Đơn giá" = Thành Tiền/Diện tích thẳng, không loại trừ phụ phí
+// (chốt 12/08/2026, người dùng xác nhận muốn đơn giản vậy, khác cách tính
+// "loại trừ phụ phí" của nhóm Bạt Cuốn/Mành Tăm/Rèm sáo gỗ ở trên).
+const EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES_INCLUDE_SURCHARGE = ["[RCV]"];
 
-function usesEffectiveUnitPriceFromSubtotal(name: string): boolean {
-  return (
-    EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(name) ||
-    EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES.some((prefix) => name.startsWith(prefix))
+function isRcvProduct(name: string): boolean {
+  return EFFECTIVE_UNIT_PRICE_PRODUCT_NAME_PREFIXES_INCLUDE_SURCHARGE.some((prefix) =>
+    name.startsWith(prefix),
   );
 }
 
@@ -650,13 +655,24 @@ export default function QuotationPrintPage() {
                         ? area * item.quantity
                         : null;
                   // Giá/m² hiệu lực cho các sản phẩm trong danh sách trên —
-                  // dùng thẳng `subtotal` (Thành Tiền, đã gồm CK% + phụ phí lắp
-                  // đặt + quantity) chia diện tích, GỘP LUÔN phụ phí (giống RCV,
-                  // chốt 12/08/2026). Rơi về hiển thị unitPrice thô như cũ nếu
-                  // không dựng được diện tích.
+                  // dùng systemPrice × (1 − CK%), KHÔNG cộng `surchargeAfterDiscount`:
+                  // đây là phụ phí LẮP ĐẶT (vd theo Loại cơ cấu/Ống của Bạt Cuốn),
+                  // một khoản CỘNG THẲNG không tính theo m², nếu gộp cả vào rồi
+                  // chia lại diện tích sẽ ra giá/m² sai (bug phát hiện 11/08/2026
+                  // — ban đầu dùng thẳng `subtotal`, đã bao gồm surcharge).
+                  // Riêng dòng RCV: NGƯỢC LẠI, gộp luôn phụ phí — dùng thẳng
+                  // `subtotal` (Thành Tiền, đã gồm CK% + phụ phí + quantity)
+                  // chia diện tích, theo đúng yêu cầu người dùng (12/08/2026).
+                  // Rơi về hiển thị unitPrice thô như cũ nếu không dựng được
+                  // diện tích.
+                  const isRcv = !!item.productName && isRcvProduct(item.productName);
                   const effectiveUnitPrice =
-                    m2 !== null && m2 > 0 && item.productName && usesEffectiveUnitPriceFromSubtotal(item.productName)
-                      ? item.subtotal / m2
+                    m2 !== null && m2 > 0 && item.productName
+                      ? isRcv
+                        ? item.subtotal / m2
+                        : EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName)
+                          ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
+                          : null
                       : null;
                   const otherParams = item.parameters.filter(
                     (p) =>
