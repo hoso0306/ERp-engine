@@ -804,6 +804,95 @@ describe('QuotationWorkflowService — Discount Engine (Sprint 04)', () => {
       }),
     );
   });
+
+  it('addItem(): có dto.unitPrice → truyền unitPriceOverride xuống pricingEngine.calculate, lưu đúng unitPrice/systemPrice', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      id: 'prod-1',
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+      productTypeId: 'pt-1',
+      parameters: [],
+    });
+    prisma.customerProductDiscount.findUnique.mockResolvedValue(null);
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 2_500_000,
+      unitPrice: 500000,
+      pricingRuleVersionId: 'prv-1',
+      vatRate: 0,
+      warnings: [],
+      surchargeAfterDiscount: 0,
+      rawArea: 5,
+    });
+
+    await service.addItem('q-1', {
+      productId: 'prod-1',
+      quantity: 1,
+      parameters: [{ name: 'maukhung', value: 'cafe' }],
+      unitPrice: 500000,
+    });
+
+    expect(pricingEngine.calculate).toHaveBeenCalledWith(
+      expect.objectContaining({ unitPriceOverride: 500000 }),
+    );
+    expect(prisma.quotationItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          systemPrice: 2_500_000,
+          unitPrice: 500000,
+        }),
+      }),
+    );
+  });
+
+  it('updateItem(): chỉ gửi unitPrice (không gửi parameters) → dựng lại parameters từ item.parameters (loại "area"), vẫn tính lại giá', async () => {
+    prisma.quotation.findUnique.mockResolvedValue(
+      makeQuotation({ status: 'DRAFT' }),
+    );
+    prisma.quotationItem.findFirst.mockResolvedValue(
+      makeItem({
+        parameters: [
+          { name: 'maukhung', value: 'cafe' },
+          { name: 'socanh', value: '1' },
+          { name: 'area', value: '5' },
+        ],
+      }),
+    );
+    prisma.product.findUnique.mockResolvedValue({
+      code: 'SP000001',
+      name: 'Cửa nhôm',
+    });
+    pricingEngine.calculate.mockResolvedValue({
+      systemPrice: 600000,
+      unitPrice: 600000,
+      pricingRuleVersionId: 'prv-2',
+      vatRate: 0,
+      warnings: [],
+      surchargeAfterDiscount: 0,
+      rawArea: null,
+    });
+
+    await service.updateItem('q-1', 'item-1', { unitPrice: 600000 });
+
+    expect(pricingEngine.calculate).toHaveBeenCalledWith({
+      productId: 'prod-1',
+      parameters: [
+        { name: 'maukhung', value: 'cafe' },
+        { name: 'socanh', value: '1' },
+      ],
+      unitPriceOverride: 600000,
+    });
+    expect(prisma.quotationItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          systemPrice: 600000,
+          unitPrice: 600000,
+        }),
+      }),
+    );
+  });
 });
 
 // Chốt 24/07/2026 — update() cho đổi customerId khi Nháp, tự động snapshot

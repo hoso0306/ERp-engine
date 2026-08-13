@@ -553,6 +553,7 @@ export class QuotationWorkflowService {
     const priceResult = await this.pricingEngine.calculate({
       productId: dto.productId,
       parameters: dto.parameters,
+      unitPriceOverride: dto.unitPrice,
     });
 
     // Snapshot % Chiết khấu Khách hàng × Loại sản phẩm (Sprint 04, chốt
@@ -714,10 +715,20 @@ export class QuotationWorkflowService {
     const newParameters = dto.parameters;
     let rawArea: number | null = null;
 
-    if (dto.parameters !== undefined) {
+    if (dto.parameters !== undefined || dto.unitPrice !== undefined) {
+      // Sửa tay đơn giá mà không đổi thông số (dto.parameters không gửi lên)
+      // → dựng lại parameters từ snapshot item.parameters đã load sẵn, loại
+      // "area" (field derived hệ thống tự sinh, không phải tham số thật —
+      // cùng cách FE lọc khi populate form sửa).
+      const parameters =
+        dto.parameters ??
+        item.parameters
+          .filter((p) => p.name !== 'area')
+          .map((p) => ({ name: p.name, value: p.value }));
       const priceResult = await this.pricingEngine.calculate({
         productId,
-        parameters: dto.parameters,
+        parameters,
+        unitPriceOverride: dto.unitPrice,
       });
       systemPrice = priceResult.systemPrice;
       unitPrice = priceResult.unitPrice;

@@ -151,6 +151,52 @@ describe('PricingEngine.calculatePrice — Matrix lookup', () => {
 });
 
 // ──────────────────────────────────────
+// unitPriceOverride — sửa tay đơn giá/m² (bỏ qua tra Matrix)
+// ──────────────────────────────────────
+
+describe('PricingEngine.calculatePrice — unitPriceOverride', () => {
+  it('override hợp lệ → dùng thẳng giá override, không tra Matrix, Công thức vẫn chạy đúng', () => {
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+      { chieurong: 250, chieucao: 200, maukhung: 'cafe', socanh: 2 },
+      500000,
+    );
+    expect(result.unitPrice).toBe(500000);
+    expect(result.systemPrice).toBe(2_500_000); // 5m² × 500.000, KHÔNG phải 450.000 tra bảng
+  });
+
+  it('override trên tổ hợp chưa có giá trong Matrix vẫn tính được (bỏ qua lookup)', () => {
+    const result = service().calculatePrice(
+      makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+      { chieurong: 100, chieucao: 100, maukhung: 'van_go', socanh: 1 },
+      300000,
+    );
+    expect(result.unitPrice).toBe(300000);
+    expect(result.systemPrice).toBe(300000);
+  });
+
+  it('sản phẩm KHÔNG dùng Matrix mà vẫn truyền override → lỗi rõ ràng', () => {
+    expect(() =>
+      service().calculatePrice(
+        makeConfig({ matrixRows: [], expression: 'dongia' }),
+        { dongia: 100000 },
+        200000,
+      ),
+    ).toThrow(/không dùng Bảng giá ma trận/);
+  });
+
+  it('override âm → lỗi', () => {
+    expect(() =>
+      service().calculatePrice(
+        makeConfig({ matrixRows: HE30_MATRIX, expression: 'unitPrice * area' }),
+        { chieurong: 100, chieucao: 100, maukhung: 'cafe', socanh: 1 },
+        -1,
+      ),
+    ).toThrow(/không được âm/);
+  });
+});
+
+// ──────────────────────────────────────
 // Normalize — min rule có condition, bậc thang, billable ≠ raw
 // ──────────────────────────────────────
 

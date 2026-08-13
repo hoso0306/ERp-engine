@@ -260,7 +260,21 @@ export class PricingEngineService {
   calculatePrice(
     config: PricingConfig,
     rawParams: ExpressionContext,
+    unitPriceOverride?: number,
   ): PricingCalcResult {
+    // Sửa tay đơn giá/m² (thay tra Price Matrix) — chỉ áp dụng cho sản phẩm
+    // dùng Matrix, và không cho giá âm.
+    if (unitPriceOverride !== undefined) {
+      if (config.matrixRows.length === 0) {
+        throw new BadRequestException(
+          'Sản phẩm này không dùng Bảng giá ma trận — không có đơn giá/m² để sửa.',
+        );
+      }
+      if (unitPriceOverride < 0) {
+        throw new BadRequestException('Đơn giá không được âm.');
+      }
+    }
+
     // 1. Derive — từ tham số GỐC
     const ctx = computeDerivedParams(config.derivedParameters, rawParams);
     const rawArea = typeof ctx['area'] === 'number' ? ctx['area'] : null;
@@ -280,7 +294,10 @@ export class PricingEngineService {
     let unitPrice: number | null = null;
 
     if (config.matrixRows.length > 0) {
-      unitPrice = this.lookupMatrix(config.matrixRows, ctx);
+      unitPrice =
+        unitPriceOverride !== undefined
+          ? unitPriceOverride
+          : this.lookupMatrix(config.matrixRows, ctx);
       if (!config.expression?.trim()) {
         throw new BadRequestException(
           'Sản phẩm dùng Bảng giá ma trận cần có Công thức để tính giá bán từ đơn giá tra được (vd: unitPrice * area).',
@@ -464,6 +481,7 @@ export class PricingEngineService {
     const result = this.calculatePrice(
       config,
       coerceParameters(dto.parameters, config.enumParameterNames),
+      dto.unitPriceOverride,
     );
     return {
       systemPrice: result.systemPrice,

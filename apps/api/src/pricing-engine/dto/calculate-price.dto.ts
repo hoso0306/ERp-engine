@@ -6,6 +6,11 @@ export class ParameterInputDto {
 export class CalculatePriceDto {
   productId: string;
   parameters: ParameterInputDto[];
+  /**
+   * Đơn giá/m² sửa tay — bỏ qua tra Price Matrix, dùng thẳng giá trị này.
+   * Chỉ hợp lệ với sản phẩm có Matrix (calculatePrice() throw nếu không).
+   */
+  unitPriceOverride?: number;
 }
 
 export class CalculatePriceResultDto {

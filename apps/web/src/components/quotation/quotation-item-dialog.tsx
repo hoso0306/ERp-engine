@@ -81,6 +81,9 @@ export function QuotationItemDialog({
   // tính lại khi tham số đổi (giống systemPrice/unitPrice).
   const [surchargeAfterDiscount, setSurchargeAfterDiscount] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number | null>(null);
+  // Sửa tay đơn giá/m² — rỗng nghĩa là dùng đúng giá hệ thống tra Matrix,
+  // không gửi override lên BE (quotation-workflow.service.ts addItem/updateItem).
+  const [manualUnitPrice, setManualUnitPrice] = useState("");
   const [vatRate, setVatRate] = useState<number>(0);
   const [adjustedVariables, setAdjustedVariables] = useState<Record<string, number>>({});
   const [priceWarnings, setPriceWarnings] = useState<string[]>([]);
@@ -137,6 +140,7 @@ export function QuotationItemDialog({
       setSurchargeAfterDiscount(0);
     }
     setUnitPrice(null);
+    setManualUnitPrice("");
     setAdjustedVariables({});
     setPriceWarnings([]);
   }, [open, item]);
@@ -160,6 +164,7 @@ export function QuotationItemDialog({
 
     setPriceLoading(true);
     try {
+      const overrideNum = manualUnitPrice.trim() !== "" ? Number(manualUnitPrice) : undefined;
       const data = await apiPost<{
         systemPrice: number;
         unitPrice: number | null;
@@ -167,7 +172,11 @@ export function QuotationItemDialog({
         adjustedVariables: Record<string, number>;
         warnings: string[];
         surchargeAfterDiscount: number;
-      }>("/pricing-engine/calculate", { productId, parameters });
+      }>("/pricing-engine/calculate", {
+        productId,
+        parameters,
+        ...(overrideNum !== undefined && !isNaN(overrideNum) ? { unitPriceOverride: overrideNum } : {}),
+      });
       setSystemPrice(data.systemPrice);
       setUnitPrice(data.unitPrice);
       setVatRate(data.vatRate ?? 0);
@@ -184,7 +193,7 @@ export function QuotationItemDialog({
     } finally {
       setPriceLoading(false);
     }
-  }, [productId, paramValues, productParams]);
+  }, [productId, paramValues, productParams, manualUnitPrice]);
 
   useEffect(() => {
     if (!open || !productId) return;
@@ -213,6 +222,7 @@ export function QuotationItemDialog({
     setProductId(product?.id ?? "");
     setSystemPrice(null);
     setUnitPrice(null);
+    setManualUnitPrice("");
     setVatRate(0);
     setAdjustedVariables({});
     setPriceWarnings([]);
@@ -245,11 +255,13 @@ export function QuotationItemDialog({
     if (!quantity || parseFloat(quantity) <= 0) { toast.error("Số lượng phải lớn hơn 0."); return; }
 
     const parameters = Object.entries(paramValues).map(([name, value]) => ({ name, value }));
+    const overrideNum = manualUnitPrice.trim() !== "" ? Number(manualUnitPrice) : undefined;
     const body: Record<string, unknown> = {
       productId,
       quantity: parseFloat(quantity),
       parameters,
       note: note.trim() || null,
+      ...(overrideNum !== undefined && !isNaN(overrideNum) ? { unitPrice: overrideNum } : {}),
     };
 
     setSubmitting(true);
@@ -374,9 +386,33 @@ export function QuotationItemDialog({
           {productId && (
             <div className="rounded-md bg-muted p-3 space-y-1.5 text-sm">
               {unitPrice !== null && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Đơn giá</span>
-                  <span className="font-mono">{formatMoney(unitPrice)}/m²</span>
+                <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                  <span>
+                    Đơn giá
+                    {manualUnitPrice !== "" && (
+                      <span className="ml-1 text-amber-600">(đã sửa tay)</span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      className="h-7 w-28 text-right font-mono"
+                      value={manualUnitPrice !== "" ? manualUnitPrice : String(unitPrice)}
+                      onChange={(e) => setManualUnitPrice(e.target.value)}
+                    />
+                    <span>/m²</span>
+                    {manualUnitPrice !== "" && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary underline underline-offset-2"
+                        onClick={() => setManualUnitPrice("")}
+                      >
+                        Đặt lại
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {Object.entries(adjustedVariables).map(([key, adjustedValue]) => {
