@@ -145,6 +145,7 @@ interface ViewItem {
   parameters: ItemParam[];
   systemPrice: number;
   unitPrice: number | null;
+  finalPrice: number;
   discountPercent: number;
   surchargeAfterDiscount: number;
   quantity: number;
@@ -399,6 +400,7 @@ export default function QuotationPrintPage() {
         parameters: i.parameters,
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
+        finalPrice: Number(i.finalPrice),
         discountPercent: Number(i.discountPercent),
         surchargeAfterDiscount: Number(i.surchargeAfterDiscount ?? 0),
         quantity: Number(i.quantity),
@@ -417,6 +419,7 @@ export default function QuotationPrintPage() {
         parameters: i.parameters,
         systemPrice: Number(i.systemPrice),
         unitPrice: i.unitPrice !== null ? Number(i.unitPrice) : null,
+        finalPrice: Number(i.finalPrice),
         discountPercent: Number(i.discountPercent),
         surchargeAfterDiscount: Number(i.surchargeAfterDiscount ?? 0),
         quantity: Number(i.quantity),
@@ -724,9 +727,11 @@ export default function QuotationPrintPage() {
                         <div>
                           {effectiveUnitPrice !== null
                             ? `${fmt(effectiveUnitPrice)}/m²`
-                            : item.unitPrice !== null
-                              ? `${fmt(item.unitPrice)}/m²`
-                              : fmt(item.systemPrice)}
+                            : item.itemType === "MATERIAL"
+                              ? fmt(item.finalPrice)
+                              : item.unitPrice !== null
+                                ? `${fmt(item.unitPrice)}/m²`
+                                : fmt(item.systemPrice)}
                         </div>
                         {/* Khi đã hiện giá hiệu lực (gồm sẵn chiết khấu), ẩn CK%
                             — để khỏi khiến người xem tưởng phải trừ thêm lần

@@ -182,7 +182,9 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
                 )}
               </TableCell>
               <TableCell className="text-right font-mono text-sm">
-                {item.unitPrice !== null ? (
+                {item.itemType === "MATERIAL" ? (
+                  formatMoney(Number(item.finalPrice))
+                ) : item.unitPrice !== null ? (
                   <>
                     <div className="font-semibold">{formatNumber(Number(item.unitPrice))}</div>
                     <div className="text-xs text-muted-foreground font-sans">đ/m²</div>
