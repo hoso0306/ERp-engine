@@ -214,6 +214,25 @@ export class DebtService {
       dto.allocations,
     );
 
+    // Khách không còn công nợ mở nào (totalOpen = 0) — resolveFifoAllocations()
+    // trả về [] thay vì throw (đã chốt với người dùng 14/08/2026). Toàn bộ
+    // dto.amount trở thành Thu tạm ứng: 1 Payment (type=ADVANCE, customerId),
+    // không có PaymentAllocation nào, không cấn vào đâu — kế toán tự cấn vào
+    // công nợ mới phát sinh sau này ngoài hệ thống (chưa xây cơ chế tự động).
+    if (allocations.length === 0) {
+      return this.executeAdvancePayment(
+        {
+          customerId: dto.customerId,
+          amount: dto.amount,
+          paymentDate: dto.paymentDate,
+          paymentMethod,
+          referenceNumber: dto.referenceNumber,
+          note: dto.note,
+        },
+        userId,
+      );
+    }
+
     return this.executeAllocatedPayment(
       {
         paymentDate: dto.paymentDate,
@@ -245,7 +264,12 @@ export class DebtService {
     if (payment.reversedBy) {
       throw new BadRequestException('Payment này đã được hoàn tác trước đó.');
     }
-    if (payment.allocations.length === 0) {
+    // Payment loại ADVANCE (Thu tạm ứng, 14/08/2026) hợp lệ có 0 allocation —
+    // chỉ Payment luồng NORMAL mới bắt buộc phải có ít nhất 1 khoản cấn trừ.
+    if (
+      payment.type !== PaymentType.ADVANCE &&
+      payment.allocations.length === 0
+    ) {
       throw new BadRequestException(
         'Payment không có khoản cấn trừ nào để hoàn tác.',
       );
@@ -262,6 +286,10 @@ export class DebtService {
             code,
             type: PaymentType.REVERSAL,
             reversalOfPaymentId: payment.id,
+            // Redundant reference, propagate từ Payment gốc — chỉ có giá trị
+            // khi Payment gốc là ADVANCE (0 allocation), để reversal vẫn xác
+            // định được thuộc khách hàng nào trong findAllPayments().
+            customerId: payment.customerId,
             paymentDate: new Date(),
             amount: payment.amount,
             paymentMethod: payment.paymentMethod,
@@ -764,6 +792,13 @@ export class DebtService {
       openingBalances.reduce((s, b) => s + Number(b.remainingAmount), 0) +
       receivables.reduce((s, r) => s + Number(r.remainingAmount), 0);
     if (amount > totalOpen) {
+      // Khách không còn công nợ mở nào — không còn gì để so "vượt quá", để
+      // caller (createAllocatedPayment) chuyển sang luồng Thu tạm ứng
+      // (executeAdvancePayment) thay vì throw. Còn nợ một phần rồi trả dư
+      // (totalOpen > 0) vẫn chặn như cũ — chưa gộp phần dư thành tạm ứng.
+      if (totalOpen === 0) {
+        return [];
+      }
       throw new BadRequestException(
         `Số tiền thanh toán (${amount}) vượt quá tổng công nợ hiện tại của khách hàng (${totalOpen}).`,
       );
@@ -946,6 +981,51 @@ export class DebtService {
 
         return tx.payment.findUniqueOrThrow({
           where: { id: payment.id },
+          include: { allocations: true },
+        });
+      }),
+    );
+  }
+
+  // Thu tạm ứng (bổ sung 14/08/2026, rà soát tab Công nợ) — khách không còn
+  // công nợ mở nào nhưng vẫn muốn đưa tiền trước cho đơn hàng tương lai. Tạo
+  // đúng 1 Payment(type=ADVANCE, customerId), KHÔNG tạo PaymentAllocation nào
+  // — không đụng Receivable/OpeningBalance/SalesOrder.paymentStatus nào, chỉ
+  // lưu vết. Không ghi Timeline (Customer không có model Timeline riêng
+  // trong hệ thống này). Kế toán tự cấn khoản này vào công nợ mới phát sinh
+  // sau này ngoài hệ thống — chưa xây cơ chế cấn tự động (đã chốt với người
+  // dùng, xem "Vòng đời" trong thảo luận thiết kế).
+  private async executeAdvancePayment(
+    input: {
+      customerId: string;
+      amount: number;
+      paymentDate?: string;
+      paymentMethod: PaymentMethod;
+      referenceNumber?: string;
+      note?: string;
+    },
+    userId?: string | null,
+  ) {
+    const createdByName = await resolveActorName(this.prisma, userId);
+
+    return retryOnCodeConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const code = await this.nextPaymentCode(tx);
+
+        return tx.payment.create({
+          data: {
+            code,
+            type: PaymentType.ADVANCE,
+            customerId: input.customerId,
+            paymentDate: input.paymentDate
+              ? new Date(input.paymentDate)
+              : new Date(),
+            amount: input.amount,
+            paymentMethod: input.paymentMethod,
+            referenceNumber: input.referenceNumber?.trim() || null,
+            note: input.note?.trim() || null,
+            createdBy: createdByName,
+          },
           include: { allocations: true },
         });
       }),
@@ -1699,16 +1779,20 @@ export class DebtService {
 
   // Tab "Phiếu thu" (rà soát tab Công nợ, 11/08/2026) — danh sách Payment có
   // xem trước trên UI (khác getAllPaymentsRaw() ở trên, vốn chỉ phục vụ export
-  // report). Chỉ lấy Payment thuộc luồng Receivable/OpeningBalance (có
-  // allocations) — Payment luồng VatSettlement (vatSettlementId) đã có màn
-  // hình riêng ở /vat-settlements/[id] (schema.prisma: "Payment thuộc ĐÚNG 1
-  // trong 2 luồng").
+  // report). Lấy Payment thuộc luồng Receivable/OpeningBalance (có
+  // allocations) HOẶC luồng Thu tạm ứng (type=ADVANCE/REVERSAL-của-ADVANCE,
+  // 0 allocation nhưng có customerId — bổ sung 14/08/2026). Payment luồng
+  // VatSettlement (vatSettlementId) đã có màn hình riêng ở
+  // /vat-settlements/[id] (schema.prisma: "Payment thuộc ĐÚNG 1 trong 2 luồng").
   async findAllPayments(query: PaymentQueryDto) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
     const skip = (page - 1) * limit;
 
     const allocationFilter: Prisma.PaymentAllocationWhereInput = {};
+    // Payment ADVANCE (và REVERSAL của nó) không có allocation nào — xác định
+    // khách hàng qua customerId trực tiếp trên Payment thay vì qua allocation.
+    const advanceFilter: Prisma.PaymentWhereInput = { customerId: { not: null } };
     if (query.customerId) {
       // Rà soát tab Công nợ (11/08/2026) — allocation giờ có thể trỏ tới
       // Receivable HOẶC OpeningBalance, cả 2 đều có customerId.
@@ -1716,10 +1800,11 @@ export class DebtService {
         { receivable: { customerId: query.customerId } },
         { openingBalance: { customerId: query.customerId } },
       ];
+      advanceFilter.customerId = query.customerId;
     }
 
     const where: Prisma.PaymentWhereInput = {
-      allocations: { some: allocationFilter },
+      OR: [{ allocations: { some: allocationFilter } }, advanceFilter],
     };
 
     if (query.from || query.to) {
@@ -1758,6 +1843,7 @@ export class DebtService {
     // đơn giản hơn giữ 2 cách lấy tên khách hàng khác nhau.
     const customerIds = new Set<string>();
     for (const p of rows) {
+      if (p.customerId) customerIds.add(p.customerId);
       for (const a of p.allocations) {
         const cid = a.receivable?.customerId ?? a.openingBalance?.customerId;
         if (cid) customerIds.add(cid);
@@ -1772,6 +1858,7 @@ export class DebtService {
     const data = rows.map((p) => {
       const firstAlloc = p.allocations[0];
       const customerId =
+        p.customerId ??
         firstAlloc?.receivable?.customerId ??
         firstAlloc?.openingBalance?.customerId ??
         null;

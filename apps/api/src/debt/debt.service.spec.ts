@@ -508,6 +508,41 @@ describe('DebtService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    // Thu tạm ứng (bổ sung 14/08/2026) — khách không còn công nợ mở nào
+    // (receivable.findMany/openingBalance.findMany đều trả [] theo mock mặc
+    // định của beforeEach ngoài cùng) → không throw, chuyển sang tạo 1 Payment
+    // type=ADVANCE gắn customerId, không có PaymentAllocation nào.
+    it('khách không còn công nợ mở nào → tạo Payment type=ADVANCE, không tạo PaymentAllocation', async () => {
+      prisma.receivable.findMany.mockResolvedValue([]);
+      prisma.payment.create.mockResolvedValue({
+        id: 'pay-adv-1',
+        code: 'PT000001',
+        type: 'ADVANCE',
+        customerId: 'cust-1',
+        amount: 200000,
+        allocations: [],
+      });
+
+      const result = await service.createAllocatedPayment({
+        customerId: 'cust-1',
+        amount: 200000,
+        paymentMethod: 'CASH',
+      });
+
+      expect(prisma.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: 'ADVANCE',
+          customerId: 'cust-1',
+          amount: 200000,
+        }),
+        include: { allocations: true },
+      });
+      expect(prisma.paymentAllocation.create).not.toHaveBeenCalled();
+      expect(result).toEqual(
+        expect.objectContaining({ type: 'ADVANCE', customerId: 'cust-1' }),
+      );
+    });
+
     it('cho phép kế toán cấn tay (override) thay vì FIFO mặc định', async () => {
       prisma.receivable.findMany.mockResolvedValue([
         {
@@ -812,6 +847,53 @@ describe('DebtService', () => {
       });
       expect(prisma.salesOrder.update).not.toHaveBeenCalled();
       expect(prisma.salesOrderTimeline.create).not.toHaveBeenCalled();
+    });
+
+    // Thu tạm ứng (14/08/2026) — Payment type=ADVANCE hợp lệ có 0 allocation,
+    // khác NORMAL. Cho phép hoàn tác, propagate customerId sang bản ghi đảo
+    // chiều để vẫn tra được theo khách hàng trong findAllPayments().
+    it('cho phép hoàn tác Payment type=ADVANCE dù không có allocation nào', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'pay-adv-1',
+        code: 'PT000001',
+        type: 'ADVANCE',
+        customerId: 'cust-1',
+        amount: 200000,
+        paymentMethod: 'CASH',
+        reversedBy: null,
+        allocations: [],
+      });
+      prisma.payment.create.mockResolvedValue({ id: 'pay-adv-2' });
+      prisma.payment.findUniqueOrThrow.mockResolvedValue({
+        id: 'pay-adv-2',
+        code: 'PT000002',
+      });
+
+      await service.reversePayment('pay-adv-1');
+
+      expect(prisma.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: 'REVERSAL',
+          reversalOfPaymentId: 'pay-adv-1',
+          customerId: 'cust-1',
+          amount: 200000,
+        }),
+      });
+      expect(prisma.receivable.update).not.toHaveBeenCalled();
+      expect(prisma.openingBalance.update).not.toHaveBeenCalled();
+    });
+
+    it('chặn hoàn tác Payment type=NORMAL không có allocation nào (khác ADVANCE)', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'pay-1',
+        type: 'NORMAL',
+        reversedBy: null,
+        allocations: [],
+      });
+
+      await expect(service.reversePayment('pay-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('chặn hoàn tác một Payment đã được hoàn tác trước đó', async () => {

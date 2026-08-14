@@ -61,6 +61,7 @@ const RETURN_REASON_LABELS: Record<string, string> = {
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
   NORMAL: 'Thường',
   REVERSAL: 'Đảo chiều',
+  ADVANCE: 'Tạm ứng',
 };
 
 // Khớp enum Priority/CustomerStatus (schema.prisma) — chỉ dùng cho export

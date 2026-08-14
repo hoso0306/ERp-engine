@@ -149,13 +149,18 @@ export function AllocatePaymentDialog({
     e.preventDefault();
     if (!customer) { toast.error("Vui lòng chọn khách hàng."); return; }
     if (!amt || amt <= 0) { toast.error("Số tiền phải lớn hơn 0."); return; }
-    if (amt > totalOpen) {
-      toast.error("Số tiền vượt quá tổng công nợ hiện tại của khách hàng.");
-      return;
-    }
-    if (totalAllocated !== amt) {
-      toast.error("Tổng số tiền cấn từng đơn phải bằng đúng số tiền thanh toán.");
-      return;
+    // totalOpen = 0 (khách không còn công nợ) — không có gì để cấn, toàn bộ
+    // amt sẽ thành Thu tạm ứng (BE tự chuyển nhánh khi allocations rỗng).
+    // Chỉ validate cấn trừ khi khách còn công nợ mở.
+    if (totalOpen > 0) {
+      if (amt > totalOpen) {
+        toast.error("Số tiền vượt quá tổng công nợ hiện tại của khách hàng.");
+        return;
+      }
+      if (totalAllocated !== amt) {
+        toast.error("Tổng số tiền cấn từng đơn phải bằng đúng số tiền thanh toán.");
+        return;
+      }
     }
     if (paymentMethod === "BANK_TRANSFER" && !referenceNumber.trim()) {
       toast.error("Vui lòng nhập số tham chiếu khi chuyển khoản.");
@@ -238,6 +243,14 @@ export function AllocatePaymentDialog({
 
           {customer && loadingReceivables && (
             <p className="text-sm text-muted-foreground">Đang tải danh sách công nợ...</p>
+          )}
+
+          {customer && !loadingReceivables && fifoTargets.length === 0 && amt > 0 && (
+            <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              Khách hàng không còn công nợ mở nào — khoản này sẽ được ghi nhận là{" "}
+              <span className="font-medium text-foreground">Thu tạm ứng</span>, không cấn
+              vào đơn hàng nào. Kế toán tự cấn khoản này vào công nợ mới phát sinh sau này.
+            </p>
           )}
 
           {customer && !loadingReceivables && rows.length > 0 && (
@@ -329,7 +342,15 @@ export function AllocatePaymentDialog({
           <Button
             type="submit"
             form="allocate-payment-form"
-            disabled={saving || !customer || !amount || rows.length === 0}
+            disabled={
+              saving ||
+              !customer ||
+              !amount ||
+              loadingReceivables ||
+              // fifoTargets rỗng = khách không còn công nợ → cho submit (luồng
+              // Thu tạm ứng). Còn công nợ mà rows rỗng (chưa cấn được) thì vẫn chặn.
+              (fifoTargets.length > 0 && rows.length === 0)
+            }
           >
             {saving ? "Đang lưu..." : "Ghi nhận thanh toán"}
           </Button>

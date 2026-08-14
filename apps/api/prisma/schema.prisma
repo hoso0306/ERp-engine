@@ -1562,6 +1562,11 @@ model PaymentAllocation {
 enum PaymentType {
   NORMAL
   REVERSAL
+  // Thu tạm ứng khi khách hàng không còn công nợ mở nào (remainingAmount = 0
+  // ở mọi Receivable/OpeningBalance) — không tạo PaymentAllocation, không cấn
+  // vào đâu, chỉ lưu vết. Kế toán tự cấn vào công nợ mới phát sinh sau này
+  // ngoài hệ thống (đã chốt với người dùng — chưa xây cơ chế cấn tự động).
+  ADVANCE
 }
 
 model Payment {
@@ -1572,9 +1577,18 @@ model Payment {
   // (Reverse Payment) — amount luôn dương, Engine cộng lại thay vì trừ dựa
   // theo đúng các PaymentAllocation của Payment gốc. Append-only vẫn giữ
   // nguyên: không sửa/xoá Payment gốc, chỉ tạo thêm bản ghi đảo chiều.
+  // ADVANCE = thu tạm ứng, xem enum PaymentType.
   type                PaymentType @default(NORMAL)
   // 1 Payment chỉ bị reverse đúng 1 lần — @unique chặn double-reverse.
   reversalOfPaymentId String?     @unique @map("reversal_of_payment_id")
+
+  // Chỉ set khi type = ADVANCE (hoặc REVERSAL của một ADVANCE) — Payment
+  // luồng NORMAL biết khách hàng gián tiếp qua PaymentAllocation ->
+  // Receivable/OpeningBalance -> customerId, nhưng Advance không có
+  // allocation nào nên cần Redundant Reference riêng để biết thuộc khách nào
+  // (cùng convention Receivable.customerId — copy ID bất biến, không phải
+  // Derived Data).
+  customerId String? @map("customer_id")
 
   paymentDate     DateTime      @map("payment_date")
   amount          Decimal       @db.Decimal(15, 0)
@@ -1600,6 +1614,8 @@ model Payment {
 
   // Báo cáo (report.md mục 3) — báo cáo thu tiền lọc theo ngày thanh toán.
   @@index([paymentDate])
+  // Lọc "Phiếu thu" theo khách hàng cho Payment loại ADVANCE (không có allocation).
+  @@index([customerId])
   @@map("payments")
 }
 

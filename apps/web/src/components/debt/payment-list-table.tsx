@@ -104,6 +104,7 @@ export function PaymentListTable({
           <TableBody>
             {rows.map((p) => {
               const isReversal = p.type === "REVERSAL";
+              const isAdvance = p.type === "ADVANCE";
               const canReverseThis = canReverse && !isReversal && !p.reversedBy;
               return (
                 <TableRow key={p.id}>
@@ -111,6 +112,9 @@ export function PaymentListTable({
                     {p.code}
                     {isReversal && (
                       <Badge variant="destructive" className="ml-2">Hoàn tác</Badge>
+                    )}
+                    {isAdvance && (
+                      <Badge variant="secondary" className="ml-2">Tạm ứng</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-sm">{new Date(p.paymentDate).toLocaleString("vi-VN")}</TableCell>
