@@ -16,18 +16,42 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
+import { PermissionService } from '../permission/permission.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
 import { UpdateDeliveryAddressDto } from './dto/update-delivery-address.dto';
 import { UpdateCarrierInfoDto } from './dto/update-carrier-info.dto';
+import { ExportSalesOrderQueryDto } from './dto/export-sales-order-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
+import type {
+  GroupedExcelColumn,
+  ExcelExportGroup,
+} from '../shared/excel/excel.service';
 import {
   bucketDate,
   buildSeries,
   previousRange,
   type ReportGroupBy,
 } from '../shared/report-range';
+
+// Nhãn tiếng Việt cho export Excel — trùng nội dung với report.service.ts
+// (SALES_ORDER_STATUS_LABELS/PAYMENT_STATUS_LABELS), nhưng KHÔNG import
+// chéo được vì report.service.ts đã import ngược lại SalesOrderService
+// (import từ đó sẽ tạo circular dependency).
+const EXPORT_STATUS_LABELS: Record<string, string> = {
+  IN_PRODUCTION: 'Đang sản xuất',
+  PRODUCTION_COMPLETED: 'Hoàn thành sản xuất',
+  SHIPPED: 'Đã gửi xe',
+  DELIVERED: 'Đã giao',
+  CANCELLED: 'Đã huỷ',
+};
+
+const EXPORT_PAYMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: 'Chưa thanh toán',
+  PARTIALLY_PAID: 'Thanh toán một phần',
+  PAID: 'Đã thanh toán',
+};
 
 const STARTED_PRODUCTION_STATUSES: ProductionOrderStatus[] = [
   ProductionOrderStatus.IN_PRODUCTION,
@@ -60,6 +84,7 @@ export class SalesOrderService {
     // Report methods cần Settings.Company.timezone để cắt kỳ (report.md mục
     // "Nguyên tắc mốc ngày") — cùng pattern DebtService đã inject SettingService.
     private readonly settingService: SettingService,
+    private readonly permissionService: PermissionService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -84,6 +109,10 @@ export class SalesOrderService {
 
     if (query.customerId) {
       where.customerId = query.customerId;
+    }
+
+    if (query.ownerId) {
+      where.ownerId = query.ownerId;
     }
 
     const validStatuses = Object.values(SalesOrderStatus) as string[];
@@ -129,6 +158,166 @@ export class SalesOrderService {
     }
 
     return salesOrder;
+  }
+
+  // Nhân viên tự xuất Excel đơn hàng của mình — ownerId bỏ trống = chính
+  // actorUserId. Vai trò có sales-order.export-all mới được xem theo người
+  // khác/'all' (check ở đây vì @RequirePermission chỉ nhận 1 key tĩnh, không
+  // tự phân biệt được theo query param).
+  private async resolveExportOwnerId(
+    actorUserId: string,
+    actorRoleId: string | undefined,
+    requestedOwnerId: string | undefined,
+  ): Promise<string> {
+    if (!requestedOwnerId || requestedOwnerId === actorUserId) {
+      return actorUserId;
+    }
+    if (!actorRoleId) {
+      throw new ForbiddenException('Không xác định được quyền của người dùng.');
+    }
+    const canExportAll = await this.permissionService.hasPermission(
+      actorRoleId,
+      'sales-order.export-all',
+    );
+    if (!canExportAll) {
+      throw new ForbiddenException(
+        'Không có quyền xem/xuất đơn hàng của người khác.',
+      );
+    }
+    return requestedOwnerId;
+  }
+
+  // Danh sách nhân viên để FE dựng dropdown "Người phụ trách" (bộ lọc trang
+  // Đơn hàng + xuất Excel) — chỉ trả id/name (không phải GET /users, vốn yêu
+  // cầu permission user.view mà kế toán trưởng hiện KHÔNG có).
+  async listExportOwners() {
+    const users = await this.prisma.user.findMany({
+      where: { role: { rolePermissions: { some: { permission: { key: 'sales-order.export' } } } } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return users;
+  }
+
+  async exportOrders(
+    actorUserId: string,
+    actorRoleId: string | undefined,
+    query: ExportSalesOrderQueryDto,
+  ): Promise<{
+    groupColumns: GroupedExcelColumn[];
+    itemColumns: GroupedExcelColumn[];
+    groups: ExcelExportGroup[];
+    from: Date;
+    to: Date;
+  }> {
+    const targetOwnerId = await this.resolveExportOwnerId(
+      actorUserId,
+      actorRoleId,
+      query.ownerId,
+    );
+
+    const to = query.to ? new Date(`${query.to}T23:59:59.999`) : new Date();
+    const from = query.from
+      ? new Date(`${query.from}T00:00:00`)
+      : new Date(to.getFullYear(), to.getMonth() - 12, to.getDate());
+
+    const where: Prisma.SalesOrderWhereInput = {
+      createdAt: { gte: from, lte: to },
+    };
+    if (targetOwnerId !== 'all') {
+      where.ownerId = targetOwnerId;
+    }
+
+    // Cùng field/logic search với findAll() — Excel xuất đúng bộ lọc đang
+    // xem trên trang, không phải 1 query độc lập.
+    if (query.search) {
+      where.OR = [
+        { code: { contains: query.search, mode: 'insensitive' } },
+        { customerName: { contains: query.search, mode: 'insensitive' } },
+        { customerPhone: { contains: query.search } },
+        { quotationCode: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.deliveryFrom || query.deliveryTo) {
+      where.expectedDeliveryDate = {
+        ...(query.deliveryFrom && { gte: new Date(`${query.deliveryFrom}T00:00:00`) }),
+        ...(query.deliveryTo && { lte: new Date(`${query.deliveryTo}T23:59:59.999`) }),
+      };
+    }
+
+    const validStatuses = Object.values(SalesOrderStatus) as string[];
+    if (query.status && validStatuses.includes(query.status)) {
+      where.status = query.status as SalesOrderStatus;
+    } else {
+      // Mặc định loại CANCELLED — cùng convention reportRangeWhere() bên dưới.
+      where.status = { not: SalesOrderStatus.CANCELLED };
+    }
+
+    const orders = await this.prisma.salesOrder.findMany({
+      where,
+      include: {
+        items: {
+          include: { parameters: { orderBy: { displayOrder: 'asc' } } },
+          orderBy: { displayOrder: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const groupColumns: GroupedExcelColumn[] = [
+      { header: 'Mã đơn', key: 'code', width: 14 },
+      { header: 'Mã báo giá', key: 'quotationCode', width: 14 },
+      { header: 'Khách hàng', key: 'customerName', width: 24 },
+      { header: 'SĐT', key: 'customerPhone', width: 14, numFmt: '@' },
+      { header: 'Ngày tạo', key: 'createdAt', width: 14 },
+      { header: 'Trạng thái đơn', key: 'statusLabel', width: 18 },
+      { header: 'Trạng thái thanh toán', key: 'paymentStatusLabel', width: 20 },
+      { header: 'Người phụ trách', key: 'ownerName', width: 20 },
+      { header: 'Tổng tiền đơn', key: 'grandTotal', width: 16 },
+    ];
+    const itemColumns: GroupedExcelColumn[] = [
+      { header: 'STT', key: 'stt', width: 6 },
+      { header: 'Sản phẩm / Vật tư', key: 'itemName', width: 30 },
+      { header: 'Mã', key: 'itemCode', width: 14 },
+      { header: 'Thông số', key: 'params', width: 40 },
+      { header: 'Số lượng', key: 'quantity', width: 10 },
+      { header: 'Đơn giá', key: 'finalPrice', width: 14 },
+      { header: 'Thành tiền', key: 'subtotal', width: 14 },
+      { header: 'VAT', key: 'vatAmount', width: 12 },
+    ];
+
+    const groups: ExcelExportGroup[] = orders.map((order) => ({
+      data: {
+        code: order.code,
+        quotationCode: order.quotationCode,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        createdAt: order.createdAt.toLocaleDateString('vi-VN'),
+        statusLabel: EXPORT_STATUS_LABELS[order.status] ?? order.status,
+        paymentStatusLabel:
+          EXPORT_PAYMENT_STATUS_LABELS[order.paymentStatus] ??
+          order.paymentStatus,
+        ownerName: order.ownerName ?? 'Không xác định',
+        grandTotal: Number(order.grandTotal),
+      },
+      items: order.items.map((item, idx) => ({
+        stt: idx + 1,
+        itemName: item.productName ?? item.materialName ?? '',
+        itemCode: item.productCode ?? item.materialCode ?? '',
+        params: item.parameters
+          .map(
+            (p) =>
+              `${p.label}: ${p.valueLabel ?? p.value}${p.unit ? ' ' + p.unit : ''}`,
+          )
+          .join('\n'),
+        quantity: Number(item.quantity),
+        finalPrice: Number(item.finalPrice),
+        subtotal: Number(item.subtotal),
+        vatAmount: Number(item.vatAmount),
+      })),
+    }));
+
+    return { groupColumns, itemColumns, groups, from, to };
   }
 
   // ─────────────────────────────────────────────────────

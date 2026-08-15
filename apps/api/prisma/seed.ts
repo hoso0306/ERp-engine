@@ -25,7 +25,19 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   // riêng khỏi `view`, độc lập hoàn toàn (không phụ thuộc `view`), chỉ
   // OWNER/ADMIN được thấy qua allKeys() — SALES có `view` nhưng KHÔNG có
   // `view-cost` (không thêm vào danh sách permissionKeys của role SALES).
-  'sales-order': ['view', 'ship', 'deliver', 'cancel', 'override', 'view-cost'],
+  // 'export'/'export-all' — nhân viên tự xuất Excel đơn hàng của mình
+  // ('export') hoặc chọn xuất theo người khác/tất cả ('export-all', cùng
+  // tầng quyền với quotation.view-cost — dữ liệu doanh thu/KPI theo người).
+  'sales-order': [
+    'view',
+    'ship',
+    'deliver',
+    'cancel',
+    'override',
+    'view-cost',
+    'export',
+    'export-all',
+  ],
   production: ['view', 'start', 'complete'],
   warehouse: ['view', 'receipt'],
   debt: ['view', 'create-payment'],
@@ -76,6 +88,9 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
         ...allKeys().filter((key) =>
           ['approve', 'override', 'cancel'].includes(key.split('.').slice(1).join('.')),
         ),
+        // Tự xuất đơn của mình — KHÔNG kèm export-all (chỉ OWNER/ADMIN/kế
+        // toán trưởng, cùng tầng quyền quotation.view-cost).
+        'sales-order.export',
       ]),
     ],
   },
@@ -91,6 +106,8 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
         (key) => key !== 'quotation.view-cost',
       ),
       'sales-order.view',
+      // Tự xuất đơn của mình (không có export-all).
+      'sales-order.export',
       // Sprint 03 Task 012 — bắt buộc để chọn sản phẩm khi tạo báo giá.
       'product.view',
     ],
@@ -112,7 +129,15 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
     name: 'Kế toán',
     // report.view thêm tường minh (014-bao-cao.md Task 01) — ACCOUNTANT khai
     // báo thủ công, không dùng viewKeys() như MANAGER/VIEWER.
-    permissionKeys: [...keysForResource('debt'), 'settings.view', 'report.view'],
+    permissionKeys: [
+      ...keysForResource('debt'),
+      'settings.view',
+      'report.view',
+      // Tự xuất đơn của mình (không có export-all) — kế toán bán hàng theo
+      // dõi/báo cáo cá nhân đơn hàng do mình phụ trách.
+      'sales-order.view',
+      'sales-order.export',
+    ],
   },
   { code: 'VIEWER', name: 'Chỉ xem', permissionKeys: viewKeys() },
 ];

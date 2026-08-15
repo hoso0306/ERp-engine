@@ -15,6 +15,18 @@ export interface ExcelColumn {
   validationList?: string[];
 }
 
+export interface GroupedExcelColumn {
+  header: string;
+  key: string;
+  width?: number;
+  numFmt?: string;
+}
+
+export interface ExcelExportGroup {
+  data: Record<string, unknown>;
+  items: Record<string, unknown>[];
+}
+
 @Injectable()
 export class ExcelService {
   async readFile(buffer: Buffer): Promise<ExcelJS.Worksheet> {
@@ -100,5 +112,73 @@ export class ExcelService {
         };
       }
     });
+  }
+
+  // Bảng gom nhóm — mỗi group (VD 1 đơn hàng) chiếm N dòng (N = số item), cột
+  // group-level được merge dọc qua đúng N dòng đó. Khác export() (bảng phẳng
+  // 1 dòng/record) — dùng khi cần thể hiện quan hệ cha-con (đơn hàng → sản
+  // phẩm trong đơn) mà không lặp lại dữ liệu cha trên từng dòng con.
+  async exportGrouped(
+    res: Response,
+    filename: string,
+    groupColumns: GroupedExcelColumn[],
+    itemColumns: GroupedExcelColumn[],
+    groups: ExcelExportGroup[],
+  ): Promise<void> {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Data');
+
+    const columns = [...groupColumns, ...itemColumns];
+    sheet.columns = columns.map((col) => ({
+      header: col.header,
+      key: col.key,
+      width: col.width || 20,
+      ...(col.numFmt ? { style: { numFmt: col.numFmt } } : {}),
+    }));
+    sheet.getRow(1).font = { bold: true };
+
+    const thinBorder: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+    };
+
+    let currentRow = 2;
+    for (const group of groups) {
+      const itemRows = group.items.length > 0 ? group.items : [{}];
+      const startRow = currentRow;
+      const endRow = currentRow + itemRows.length - 1;
+
+      for (const item of itemRows) {
+        const row = sheet.addRow({ ...group.data, ...item });
+        row.eachCell((cell) => {
+          cell.alignment = { vertical: 'top', wrapText: true };
+        });
+        currentRow++;
+      }
+
+      // Đường kẻ phân cách — chỉ vẽ ở dòng ĐẦU của mỗi group (ranh giới giữa
+      // 2 đơn hàng), không vẽ trên từng dòng sản phẩm bên trong group.
+      for (let col = 1; col <= columns.length; col++) {
+        sheet.getCell(startRow, col).border = thinBorder;
+      }
+
+      if (endRow > startRow) {
+        groupColumns.forEach((_col, idx) => {
+          const colIdx = idx + 1;
+          sheet.mergeCells(startRow, colIdx, endRow, colIdx);
+        });
+      }
+    }
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 }

@@ -2,8 +2,20 @@
 
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DateRangeFilter } from "@/components/shared";
 import { Search } from "lucide-react";
+
+export interface SalesOrderOwnerOption {
+  id: string;
+  name: string;
+}
 
 export type SalesOrderTab =
   | "in_production"
@@ -36,6 +48,10 @@ interface SalesOrderFilterProps {
   onDeliveryFromChange: (v: string) => void;
   deliveryTo: string;
   onDeliveryToChange: (v: string) => void;
+  // "self" = của người đang đăng nhập, "all" = tất cả, hoặc userId cụ thể.
+  ownerId: string;
+  onOwnerIdChange: (v: string) => void;
+  owners: SalesOrderOwnerOption[];
 }
 
 export function SalesOrderFilter({
@@ -51,6 +67,9 @@ export function SalesOrderFilter({
   onDeliveryFromChange,
   deliveryTo,
   onDeliveryToChange,
+  ownerId,
+  onOwnerIdChange,
+  owners,
 }: SalesOrderFilterProps) {
   return (
     <div className="space-y-3">
@@ -66,7 +85,7 @@ export function SalesOrderFilter({
       </Tabs>
 
       <div className="flex gap-3 flex-wrap items-end">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Tìm theo mã đơn, mã BG, tên / SĐT khách hàng..."
@@ -75,6 +94,20 @@ export function SalesOrderFilter({
             className="pl-9"
           />
         </div>
+        <Select value={ownerId} onValueChange={(v) => onOwnerIdChange(v ?? "all")}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Người phụ trách" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả nhân viên</SelectItem>
+            <SelectItem value="self">Của tôi</SelectItem>
+            {owners.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <DateRangeFilter
           label="Ngày tạo"
           dateFrom={createdFrom}

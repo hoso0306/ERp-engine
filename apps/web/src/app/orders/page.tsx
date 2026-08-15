@@ -6,9 +6,12 @@ import {
   SalesOrderFilter,
   TAB_STATUS_PARAM,
   type SalesOrderTab,
+  type SalesOrderOwnerOption,
 } from "@/components/sales-order/sales-order-filter";
 import { SalesOrderTable } from "@/components/sales-order/sales-order-table";
+import { SalesOrderExportButton } from "@/components/sales-order/sales-order-export-button";
 import { apiGet } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 interface SalesOrderRow {
   id: string;
@@ -25,6 +28,7 @@ interface SalesOrderRow {
 }
 
 export default function OrdersPage() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<SalesOrderRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
@@ -36,9 +40,20 @@ export default function OrdersPage() {
   const [createdTo, setCreatedTo] = useState(todayISO());
   const [deliveryFrom, setDeliveryFrom] = useState("");
   const [deliveryTo, setDeliveryTo] = useState("");
+  // Bộ lọc "Người phụ trách" — mặc định "all" để giữ đúng hành vi hiện có
+  // (trang vẫn hiện toàn bộ đơn như trước), không tự ý bó hẹp view của
+  // người dùng hiện tại xuống chỉ đơn của họ.
+  const [ownerId, setOwnerId] = useState("all");
+  const [owners, setOwners] = useState<SalesOrderOwnerOption[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiGet<SalesOrderOwnerOption[]>("/sales-orders/export/owners")
+      .then(setOwners)
+      .catch(() => {});
+  }, []);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -48,6 +63,8 @@ export default function OrdersPage() {
       if (search) params.set("search", search);
       const statusParam = TAB_STATUS_PARAM[tab];
       if (statusParam) params.set("status", statusParam);
+      if (ownerId === "self" && user) params.set("ownerId", user.id);
+      else if (ownerId !== "all") params.set("ownerId", ownerId);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -59,7 +76,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, page]);
+  }, [search, tab, ownerId, user, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchOrders, search ? 300 : 0);
@@ -68,7 +85,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab]);
+  }, [search, tab, ownerId]);
 
   // BE chưa hỗ trợ filter theo ngày giao dự kiến / ngày tạo (SalesOrderQueryDto
   // không có field này) — lọc phía FE trên trang dữ liệu hiện tại, theo thiết kế
@@ -92,7 +109,21 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Đơn hàng" description="Theo dõi và vận hành đơn hàng sau khi báo giá được duyệt" />
+      <PageHeader
+        title="Đơn hàng"
+        description="Theo dõi và vận hành đơn hàng sau khi báo giá được duyệt"
+        actions={
+          <SalesOrderExportButton
+            search={search}
+            status={TAB_STATUS_PARAM[tab]}
+            ownerId={ownerId}
+            createdFrom={createdFrom}
+            createdTo={createdTo}
+            deliveryFrom={deliveryFrom}
+            deliveryTo={deliveryTo}
+          />
+        }
+      />
 
       <SalesOrderFilter
         search={search}
@@ -107,6 +138,9 @@ export default function OrdersPage() {
         onDeliveryFromChange={setDeliveryFrom}
         deliveryTo={deliveryTo}
         onDeliveryToChange={setDeliveryTo}
+        ownerId={ownerId}
+        onOwnerIdChange={setOwnerId}
+        owners={owners}
       />
 
       {loading && <Loading />}
