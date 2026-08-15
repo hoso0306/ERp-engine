@@ -115,6 +115,28 @@ export class SalesOrderService {
       where.ownerId = query.ownerId;
     }
 
+    if (query.createdFrom || query.createdTo) {
+      where.createdAt = {
+        ...(query.createdFrom && {
+          gte: new Date(`${query.createdFrom}T00:00:00`),
+        }),
+        ...(query.createdTo && {
+          lte: new Date(`${query.createdTo}T23:59:59.999`),
+        }),
+      };
+    }
+
+    if (query.deliveryFrom || query.deliveryTo) {
+      where.expectedDeliveryDate = {
+        ...(query.deliveryFrom && {
+          gte: new Date(`${query.deliveryFrom}T00:00:00`),
+        }),
+        ...(query.deliveryTo && {
+          lte: new Date(`${query.deliveryTo}T23:59:59.999`),
+        }),
+      };
+    }
+
     const validStatuses = Object.values(SalesOrderStatus) as string[];
     if (query.status && validStatuses.includes(query.status)) {
       where.status = query.status as SalesOrderStatus;
@@ -192,7 +214,13 @@ export class SalesOrderService {
   // cầu permission user.view mà kế toán trưởng hiện KHÔNG có).
   async listExportOwners() {
     const users = await this.prisma.user.findMany({
-      where: { role: { rolePermissions: { some: { permission: { key: 'sales-order.export' } } } } },
+      where: {
+        role: {
+          rolePermissions: {
+            some: { permission: { key: 'sales-order.export' } },
+          },
+        },
+      },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
@@ -240,8 +268,12 @@ export class SalesOrderService {
     }
     if (query.deliveryFrom || query.deliveryTo) {
       where.expectedDeliveryDate = {
-        ...(query.deliveryFrom && { gte: new Date(`${query.deliveryFrom}T00:00:00`) }),
-        ...(query.deliveryTo && { lte: new Date(`${query.deliveryTo}T23:59:59.999`) }),
+        ...(query.deliveryFrom && {
+          gte: new Date(`${query.deliveryFrom}T00:00:00`),
+        }),
+        ...(query.deliveryTo && {
+          lte: new Date(`${query.deliveryTo}T23:59:59.999`),
+        }),
       };
     }
 

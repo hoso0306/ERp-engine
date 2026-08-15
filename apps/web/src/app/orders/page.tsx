@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { PageHeader, Loading, ErrorState, EmptyState, todayISO, endOfDayBound } from "@/components/shared";
+import { useEffect, useState, useCallback } from "react";
+import { PageHeader, Loading, ErrorState, EmptyState, todayISO } from "@/components/shared";
 import {
   SalesOrderFilter,
   TAB_STATUS_PARAM,
@@ -65,6 +65,10 @@ export default function OrdersPage() {
       if (statusParam) params.set("status", statusParam);
       if (ownerId === "self" && user) params.set("ownerId", user.id);
       else if (ownerId !== "all") params.set("ownerId", ownerId);
+      if (createdFrom) params.set("createdFrom", createdFrom);
+      if (createdTo) params.set("createdTo", createdTo);
+      if (deliveryFrom) params.set("deliveryFrom", deliveryFrom);
+      if (deliveryTo) params.set("deliveryTo", deliveryTo);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -76,7 +80,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, ownerId, user, page]);
+  }, [search, tab, ownerId, user, createdFrom, createdTo, deliveryFrom, deliveryTo, page]);
 
   useEffect(() => {
     const timer = setTimeout(fetchOrders, search ? 300 : 0);
@@ -85,27 +89,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, ownerId]);
-
-  // BE chưa hỗ trợ filter theo ngày giao dự kiến / ngày tạo (SalesOrderQueryDto
-  // không có field này) — lọc phía FE trên trang dữ liệu hiện tại, theo thiết kế
-  // đã chốt ở 004-fe-don-hang.md (không thêm query param BE mới).
-  const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
-      if (createdFrom || createdTo) {
-        const c = new Date(o.createdAt);
-        if (createdFrom && c < new Date(createdFrom)) return false;
-        if (createdTo && c > endOfDayBound(createdTo)) return false;
-      }
-      if (deliveryFrom || deliveryTo) {
-        if (!o.expectedDeliveryDate) return false;
-        const d = new Date(o.expectedDeliveryDate);
-        if (deliveryFrom && d < new Date(deliveryFrom)) return false;
-        if (deliveryTo && d > endOfDayBound(deliveryTo)) return false;
-      }
-      return true;
-    });
-  }, [orders, createdFrom, createdTo, deliveryFrom, deliveryTo]);
+  }, [search, tab, ownerId, createdFrom, createdTo, deliveryFrom, deliveryTo]);
 
   return (
     <div className="space-y-6">
@@ -145,7 +129,7 @@ export default function OrdersPage() {
 
       {loading && <Loading />}
       {error && <ErrorState description={error} onRetry={fetchOrders} />}
-      {!loading && !error && filteredOrders.length === 0 && (
+      {!loading && !error && orders.length === 0 && (
         <EmptyState
           title="Không có đơn hàng"
           description={
@@ -155,8 +139,8 @@ export default function OrdersPage() {
           }
         />
       )}
-      {!loading && !error && filteredOrders.length > 0 && (
-        <SalesOrderTable orders={filteredOrders} meta={meta} onPageChange={setPage} />
+      {!loading && !error && orders.length > 0 && (
+        <SalesOrderTable orders={orders} meta={meta} onPageChange={setPage} />
       )}
     </div>
   );
