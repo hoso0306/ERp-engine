@@ -175,6 +175,7 @@ export class QuotationWorkflowService {
                   materialId: true,
                   quantity: true,
                   subtotal: true,
+                  vatAmount: true,
                   parameters: { select: { name: true, value: true } },
                 },
               }
@@ -215,7 +216,7 @@ export class QuotationWorkflowService {
 
       resultData = (
         data as Array<{
-          items: Array<{ id: string; subtotal: unknown }>;
+          items: Array<{ id: string; subtotal: unknown; vatAmount: unknown }>;
         }>
       ).map((q) => {
         const totalCost = q.items.reduce(
@@ -223,7 +224,10 @@ export class QuotationWorkflowService {
           0,
         );
         const totalSale = q.items.reduce((s, i) => s + Number(i.subtotal), 0);
-        return { ...q, totalCost, profit: totalSale - totalCost };
+        // Tách ngược VAT (chốt 16/08/2026): totalSale đã gồm VAT, phải trừ
+        // thêm để không tính VAT vào lợi nhuận.
+        const totalVat = q.items.reduce((s, i) => s + Number(i.vatAmount), 0);
+        return { ...q, totalCost, profit: totalSale - totalVat - totalCost };
       });
     }
 
@@ -265,6 +269,7 @@ export class QuotationWorkflowService {
             quantity: true,
             finalPrice: true,
             subtotal: true,
+            vatAmount: true,
             parameters: { select: { name: true, value: true } },
           },
           orderBy: { displayOrder: 'asc' },
@@ -289,8 +294,12 @@ export class QuotationWorkflowService {
 
     const items = quotation.items.map((item) => {
       const cost = costByItemId.get(item.id)!;
+      // Tách ngược VAT (chốt 16/08/2026): subtotal đã gồm VAT sẵn — totalSale
+      // hiển thị vẫn là subtotal (giá bán thực), nhưng profit phải trừ thêm
+      // vatAmount vì phần đó không phải doanh thu thực.
       const totalSale = Number(item.subtotal);
-      const profit = totalSale - cost.totalCost;
+      const vatAmount = Number(item.vatAmount);
+      const profit = totalSale - vatAmount - cost.totalCost;
 
       return {
         quotationItemId: item.id,
@@ -302,8 +311,6 @@ export class QuotationWorkflowService {
         costUnitPrice: cost.costUnitPrice,
         saleUnitPrice: Number(item.finalPrice),
         totalCost: cost.totalCost,
-        // Đã không gồm VAT sẵn (subtotal = finalPrice × quantity, VAT tách
-        // riêng ở vatAmount) — khớp yêu cầu "tổng giá bán không tính VAT".
         totalSale,
         profit,
         costAvailable: cost.costAvailable,
@@ -1334,13 +1341,15 @@ export class QuotationWorkflowService {
       throw new BadRequestException('Giảm thêm không được âm.');
     }
 
+    // Tách ngược VAT (chốt 16/08/2026): subtotal đã gồm VAT sẵn, không cộng
+    // thêm vatAmount nữa.
     const totalPayable = quotation.items.reduce(
-      (s, i) => s + Number(i.subtotal) + Number(i.vatAmount),
+      (s, i) => s + Number(i.subtotal),
       0,
     );
     if (amount > totalPayable) {
       throw new BadRequestException(
-        'Giảm thêm không được vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
+        'Giảm thêm không được vượt quá Tổng thanh toán.',
       );
     }
 
@@ -1583,23 +1592,28 @@ export class QuotationWorkflowService {
     // Phí vận chuyển (chốt 27/07/2026) — cộng thẳng vào grandTotal, không chịu
     // VAT, không ảnh hưởng plannedProfit (khoản thu hộ khách).
     const shippingFee = Number(quotation.shippingFee);
+    // Tách ngược VAT (chốt 16/08/2026): totalAmount ĐÃ GỒM VAT sẵn (subtotal
+    // từng dòng đã gồm) nên KHÔNG cộng thêm totalVatAmount nữa — totalVatAmount
+    // chỉ còn dùng để tách totalAmountBeforeVat bên dưới.
     const grandTotal =
-      totalAmount +
-      totalVatAmount -
-      Number(quotation.discountAmount) +
-      shippingFee;
+      totalAmount - Number(quotation.discountAmount) + shippingFee;
     if (grandTotal < 0) {
       throw new BadRequestException(
-        'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán (Tổng tiền hàng + VAT).',
+        'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán.',
       );
     }
     // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — Giảm thêm trừ
     // vào cả 2 mức, nên chênh lệch giữa 2 track luôn đúng bằng totalVatAmount.
     // shippingFee không chịu VAT nên cộng đều vào cả 2 mức, giữ nguyên bất
     // biến này (xem vat-settlement.service.ts — tính VAT phải nộp từ chênh
-    // lệch totalAmount - totalAmountBeforeVat của Receivable).
+    // lệch totalAmount - totalAmountBeforeVat của Receivable). Từ 16/08/2026:
+    // totalAmount đã gồm VAT nên totalAmountBeforeVat phải trừ thêm
+    // totalVatAmount (tách ngược) mới ra đúng phần trước thuế.
     const totalAmountBeforeVat =
-      totalAmount - Number(quotation.discountAmount) + shippingFee;
+      totalAmount -
+      totalVatAmount -
+      Number(quotation.discountAmount) +
+      shippingFee;
 
     // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
     // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
@@ -1690,8 +1704,13 @@ export class QuotationWorkflowService {
         // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
         // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
         // phồng đúng bằng số tiền Giảm thêm.
+        // Trừ thêm totalVatAmount (chốt 16/08/2026): totalAmount đã gồm VAT nên
+        // phần VAT không phải doanh thu thực — phải tách ra khỏi lợi nhuận.
         const plannedProfit =
-          totalAmount - plannedCost - Number(quotation.discountAmount);
+          totalAmount -
+          totalVatAmount -
+          plannedCost -
+          Number(quotation.discountAmount);
         // Dòng MATERIAL không sinh Production Order — chỉ đếm xưởng của dòng PRODUCT.
         const totalProductionOrders = new Set(
           itemComputations.map((c) => c.item.product!.productionCenterId),
@@ -2034,8 +2053,12 @@ export class QuotationWorkflowService {
 
   // VAT tính SAU Discount Engine (chốt 16/07/2026) — trên subtotal đã chiết
   // khấu và extend theo số lượng, không phải trên systemPrice gốc.
+  // Tách ngược (chốt 16/08/2026): subtotal từ nay ĐÃ GỒM VAT sẵn (giá Price
+  // Matrix/công thức không còn là giá trước thuế) — vatAmount không còn cộng
+  // thêm lên subtotal, mà là phần thuế tách ra từ trong đó để phục vụ báo
+  // cáo/quyết toán thuế.
   private calcVatAmount(subtotal: number, vatRate: number): number {
-    return Math.round(subtotal * (vatRate / 100));
+    return Math.round((subtotal * vatRate) / (100 + vatRate));
   }
 
   // 022-gia-von-loi-nhuan-bao-gia.md — Giá vốn ƯỚC TÍNH (không phải snapshot)

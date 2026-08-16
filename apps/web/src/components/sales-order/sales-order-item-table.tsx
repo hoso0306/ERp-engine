@@ -242,7 +242,7 @@ export function SalesOrderItemTable({ items, discountAmount = 0, shippingFee = 0
                   Tổng thanh toán
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold">
-                  {formatMoney(totalAmount + totalVat - discountAmount + shippingFee)}
+                  {formatMoney(totalAmount - discountAmount + shippingFee)}
                 </TableCell>
               </TableRow>
             </>

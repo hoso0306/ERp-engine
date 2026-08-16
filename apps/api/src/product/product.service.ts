@@ -2516,9 +2516,12 @@ export class ProductService {
     });
 
     // Preview không có Discount Engine (không gắn với khách hàng/báo giá cụ
-    // thể) — VAT tính thẳng trên systemPrice, khác với Quotation (tính SAU
-    // chiết khấu, xem quotation-workflow.service.ts).
-    const vatAmount = Math.round(result.systemPrice * (result.vatRate / 100));
+    // thể) — VAT tách ngược thẳng từ systemPrice (chốt 16/08/2026: systemPrice
+    // đã gồm VAT sẵn), khác với Quotation (tách trên subtotal SAU chiết khấu,
+    // xem quotation-workflow.service.ts).
+    const vatAmount = Math.round(
+      (result.systemPrice * result.vatRate) / (100 + result.vatRate),
+    );
 
     return {
       inputParams,
@@ -2529,7 +2532,9 @@ export class ProductService {
       warnings: result.warnings,
       vatRate: result.vatRate,
       vatAmount,
-      priceWithVat: result.systemPrice + vatAmount,
+      // priceWithVat: giờ trùng với systemPrice (đã gồm VAT sẵn, không cộng
+      // thêm) — giữ field để FE khỏi phải sửa, chỉ đổi giá trị.
+      priceWithVat: result.systemPrice,
       // Chỉ minh hoạ công thức Phụ phí sau chiết khấu — Preview không gắn
       // khách hàng nên không chạy Discount Engine, số này KHÔNG phải giá trị
       // thật sẽ cộng vào Báo giá (xem quotation-workflow.service.ts calcFinalPrice).

@@ -306,7 +306,6 @@ export default function QuotationPrintPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [terms, setTerms] = useState<string>("");
   const [debtTotalRemaining, setDebtTotalRemaining] = useState<number>(0);
-  const [debtTotalRemainingBeforeVat, setDebtTotalRemainingBeforeVat] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -334,13 +333,12 @@ export default function QuotationPrintPage() {
           document.title = `${data.code} - ${data.customer.name}`;
         }
 
-        apiGet<{ totalRemaining: number; totalRemainingBeforeVat: number }>(
+        apiGet<{ totalRemaining: number }>(
           `/customers/${data.customer.id}/debt-summary`,
         )
           .then((res) => {
             if (!cancelled) {
               setDebtTotalRemaining(res.totalRemaining);
-              setDebtTotalRemainingBeforeVat(res.totalRemainingBeforeVat);
             }
           })
           .catch(() => {});
@@ -435,9 +433,6 @@ export default function QuotationPrintPage() {
   const totalAmount = isOrder
     ? Number(order!.totalAmount)
     : items.reduce((s, i) => s + i.subtotal, 0);
-  const totalVat = isOrder
-    ? Number(order!.totalVatAmount)
-    : items.reduce((s, i) => s + i.vatAmount, 0);
   // Tổng SL/M2 hàng TỔNG — tính tại thời điểm hiển thị (Derived Data hợp lệ,
   // giống m2 từng dòng), chỉ cộng M2 các dòng có đủ Rộng/Cao.
   const totalQuantity = items.reduce((s, i) => s + i.quantity, 0);
@@ -451,9 +446,11 @@ export default function QuotationPrintPage() {
   const discountAmount = isOrder ? Number(order!.discountAmount) : Number(quotation.discountAmount ?? 0);
   const discountReason = isOrder ? order!.discountReason : quotation.discountReason;
   const shippingFee = isOrder ? Number(order!.shippingFee) : Number(quotation.shippingFee ?? 0);
+  // Tách ngược VAT (chốt 16/08/2026): subtotal/totalAmount đã gồm VAT sẵn,
+  // không cộng thêm nữa (khớp grandTotal đã sửa ở BE approve()).
   const grandTotal = isOrder
     ? Number(order!.grandTotal)
-    : totalAmount + totalVat - discountAmount + shippingFee;
+    : totalAmount - discountAmount + shippingFee;
 
   // Công nợ: "Đơn hàng hiện tại" = số còn phải thu của chính đơn này (đã trừ
   // phần đã thanh toán, nếu có) khi đã duyệt; = grandTotal khi còn là Báo giá.
@@ -461,18 +458,7 @@ export default function QuotationPrintPage() {
   const currentOrderRemaining = isOrder && order!.receivable ? Number(order!.receivable.remainingAmount) : grandTotal;
   const existingDebt = Math.max(0, debtTotalRemaining - (isOrder && order!.receivable ? currentOrderRemaining : 0));
   const totalToPay = existingDebt + currentOrderRemaining;
-
-  // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — khách trả tiền
-  // mặt không lấy hoá đơn thì chỉ cần trả mức này. "Đã thanh toán" trừ đều cả
-  // 2 mức (1 Payment không tách được phần gốc/VAT) nên dùng chung 1 số.
-  const totalAmountBeforeVat = totalAmount - discountAmount + shippingFee;
   const paidAmount = isOrder && order!.receivable ? Number(order!.receivable.paidAmount) : 0;
-  const currentOrderRemainingBeforeVat =
-    isOrder && order!.receivable ? Number(order!.receivable.remainingAmountBeforeVat) : totalAmountBeforeVat;
-  // KHÔNG floor tại 0 — âm là trạng thái hợp lệ (đã trả vào phần VAT của đơn khác).
-  const existingDebtBeforeVat =
-    debtTotalRemainingBeforeVat - (isOrder && order!.receivable ? currentOrderRemainingBeforeVat : 0);
-  const totalToPayBeforeVat = existingDebtBeforeVat + currentOrderRemainingBeforeVat;
 
   const customerAddress = [quotation.customer.address, quotation.customer.district, quotation.customer.province]
     .filter(Boolean)
@@ -623,8 +609,7 @@ export default function QuotationPrintPage() {
           <colgroup>
             <col style={{ width: 28 }} /><col style={{ width: 175 }} /><col style={{ width: 55 }} />
             <col style={{ width: 55 }} /><col style={{ width: 36 }} /><col style={{ width: 55 }} />
-            <col style={{ width: 95 }} /><col style={{ width: 100 }} /><col style={{ width: 65 }} />
-            <col style={{ width: 80 }} /><col style={{ width: 125 }} /><col style={{ width: 82 }} />
+            <col style={{ width: 95 }} /><col style={{ width: 140 }} /><col style={{ width: 155 }} />
           </colgroup>
           <thead>
             <tr style={{ background: HEAD_BG }}>
@@ -635,10 +620,7 @@ export default function QuotationPrintPage() {
               <th style={thStyle}>SL</th>
               <th style={thStyle}>M2</th>
               <th style={thStyle}>Đơn giá</th>
-              <th style={thStyle}>Thành Tiền</th>
-              <th style={thStyle}>Mức thuế VAT</th>
-              <th style={thStyle}>Tiền Thuế</th>
-              <th style={thStyle}>Thành tiền<br />(bao gồm VAT)</th>
+              <th style={thStyle}>Thành Tiền<br />(đã bao gồm VAT)</th>
               <th style={thStyle}>Chú thích</th>
             </tr>
           </thead>
@@ -746,9 +728,6 @@ export default function QuotationPrintPage() {
                         )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)}</td>
-                      <td style={{ ...tdStyle, textAlign: "center" }}>{item.vatRate > 0 ? `${item.vatRate}%` : "—"}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{item.vatRate > 0 ? fmt(item.vatAmount) : "—"}</td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal + item.vatAmount)}</td>
                       {/* Cột Chú thích — cảnh báo Validation Rule (WARN) + Ghi chú
                           người dùng, luôn theo TỪNG dòng (kể cả khi cột Sản
                           phẩm đã gộp) vì đây là cột duy nhất Báo giá có để ghi chú. */}
@@ -766,12 +745,12 @@ export default function QuotationPrintPage() {
             {/* Dòng đệm tạo khoảng cách cho dễ nhìn trước dòng Tổng — không
                 viền, không nội dung. */}
             <tr>
-              <td colSpan={12} style={{ border: "none", height: 10 }} />
+              <td colSpan={9} style={{ border: "none", height: 10 }} />
             </tr>
             {/* Hàng Tổng — chữ "TỔNG" ở cột Sản phẩm, kèm tổng SL/M2; số liệu
-                Thành Tiền/Tiền Thuế/Thành tiền (bao gồm VAT) là tổng cộng
-                nguyên trạng — không trừ Giảm thêm cấp báo giá (số đó đã phản
-                ánh trong khối Tình hình công nợ bên dưới, dòng "Báo giá này"). */}
+                Thành Tiền (đã bao gồm VAT) là tổng cộng nguyên trạng — không
+                trừ Giảm thêm cấp báo giá (số đó đã phản ánh trong khối Tình
+                hình công nợ bên dưới, dòng "Báo giá này"). */}
             <tr>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
               <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>TỔNG</td>
@@ -780,11 +759,8 @@ export default function QuotationPrintPage() {
               <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>{totalQuantity}</td>
               <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt2(totalM2)}</td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
-              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalAmount)}</td>
-              <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
-              <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt(totalVat)}</td>
               <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG, color: GRAND_COLOR, fontSize: 13 }}>
-                {fmt(totalAmount + totalVat)}
+                {fmt(totalAmount)}
               </td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
             </tr>
@@ -803,8 +779,9 @@ export default function QuotationPrintPage() {
         )}
 
         {/* Tình hình công nợ — khối riêng (chốt 24/07/2026 theo phản hồi,
-            không gộp vào bảng sản phẩm nữa). Trước VAT / Sau VAT song song —
-            khách trả tiền mặt không lấy hoá đơn thì chỉ cần trả mức trước-VAT. */}
+            không gộp vào bảng sản phẩm nữa). Chỉ còn 1 cột "Đã bao gồm VAT"
+            (chốt 16/08/2026) — cơ chế công nợ song song trước/sau VAT vẫn còn
+            nguyên trong hệ thống, chỉ không in ra bản in nữa. */}
         <div style={{ marginTop: 16, border: BORDER, borderRadius: 6, padding: "14px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: GRAND_COLOR, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
             Tình hình công nợ
@@ -813,34 +790,29 @@ export default function QuotationPrintPage() {
             <thead>
               <tr>
                 <td style={{ padding: "2px 0 6px" }} />
-                <td style={vatColHeaderStyle}>Trước VAT</td>
-                <td style={vatColHeaderStyle}>Sau VAT</td>
+                <td style={vatColHeaderStyle}>Đã bao gồm VAT</td>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td style={{ padding: "3px 0", fontSize: 12.5 }}>{isOrder ? "Đơn hàng này" : "Báo giá này (nếu xác nhận)"}</td>
-                <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(totalAmountBeforeVat)} ₫</td>
                 <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
               </tr>
               <tr>
                 <td style={{ padding: "3px 0", fontSize: 12.5 }}>Công nợ cũ (các đơn khác)</td>
-                <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: DEBT_COLOR, fontWeight: 700 }}>{fmt(existingDebtBeforeVat)} ₫</td>
                 <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: DEBT_COLOR, fontWeight: 700 }}>{fmt(existingDebt)} ₫</td>
               </tr>
               {paidAmount > 0 && (
                 <tr>
                   <td style={{ padding: "3px 0", fontSize: 12.5 }}>Đã thanh toán</td>
                   <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: PAID_COLOR, fontWeight: 700 }}>−{fmt(paidAmount)} ₫</td>
-                  <td style={{ padding: "3px 0", fontSize: 13, textAlign: "right", color: PAID_COLOR, fontWeight: 700 }}>−{fmt(paidAmount)} ₫</td>
                 </tr>
               )}
               <tr>
-                <td colSpan={3} style={{ borderTop: BORDER, paddingTop: 8 }} />
+                <td colSpan={2} style={{ borderTop: BORDER, paddingTop: 8 }} />
               </tr>
               <tr>
                 <td style={{ padding: "4px 0", fontSize: 14, fontWeight: 700 }}>TỔNG PHẢI THANH TOÁN</td>
-                <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 800, textAlign: "right", color: GRAND_COLOR }}>{fmt(totalToPayBeforeVat)} ₫</td>
                 <td style={{ padding: "4px 0", fontSize: 17, fontWeight: 800, textAlign: "right", color: GRAND_COLOR }}>{fmt(totalToPay)} ₫</td>
               </tr>
             </tbody>

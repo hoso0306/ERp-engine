@@ -96,7 +96,9 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
   const hasIncompleteCost = costByItemId
     ? items.some((i) => costByItemId.get(i.id)?.costAvailable === false)
     : false;
-  const profit = totalAmount - totalCost;
+  // Tách ngược VAT (chốt 16/08/2026): totalAmount đã gồm VAT sẵn, trừ thêm
+  // totalVat để không tính VAT vào lợi nhuận.
+  const profit = totalAmount - totalVat - totalCost;
   // Luôn = 9 (Sản phẩm..Chú thích) — không phụ thuộc editable, vì cột action
   // (nếu có) được thêm riêng qua {editable && <TableCell/>} ở cuối mỗi hàng,
   // không phải một phần của colSpan nhãn. Chỉ dùng khi showCost=true (giá trị
@@ -312,7 +314,7 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
                 Tổng thanh toán
               </TableCell>
               <TableCell className="text-right font-mono text-sm font-bold text-primary whitespace-normal break-words">
-                {formatMoney(totalAmount + totalVat - discountAmount + shippingFee)}
+                {formatMoney(totalAmount - discountAmount + shippingFee)}
               </TableCell>
               {showCost ? (
                 <>

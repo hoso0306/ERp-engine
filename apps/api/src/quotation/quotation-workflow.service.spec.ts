@@ -1382,6 +1382,7 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
           quantity: 2,
           finalPrice: 300_000,
           subtotal: 600_000,
+          vatAmount: 100_000,
           parameters: [],
         },
         {
@@ -1392,6 +1393,7 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
           quantity: 1,
           finalPrice: 200_000,
           subtotal: 200_000,
+          vatAmount: 20_000,
           parameters: [],
         },
       ],
@@ -1423,17 +1425,18 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
     expect(item1.totalCost).toBe(250_000);
     expect(item1.costUnitPrice).toBe(125_000);
     expect(item1.totalSale).toBe(600_000);
-    expect(item1.profit).toBe(350_000);
+    // Tách ngược VAT (chốt 16/08/2026): profit = totalSale - vatAmount - totalCost.
+    expect(item1.profit).toBe(250_000);
 
     const item2 = result.items.find((i) => i.quotationItemId === 'item-2')!;
     expect(item2.costAvailable).toBe(false);
     expect(item2.totalCost).toBe(0);
-    expect(item2.profit).toBe(200_000);
+    expect(item2.profit).toBe(180_000);
 
     expect(result.totals).toEqual({
       totalCost: 250_000,
       totalSale: 800_000,
-      profit: 550_000,
+      profit: 430_000,
     });
     expect(result.hasIncompleteData).toBe(true);
   });
@@ -1466,6 +1469,7 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
             productId: 'prod-1',
             quantity: 2,
             subtotal: 600_000,
+            vatAmount: 100_000,
             parameters: [],
           },
         ],
@@ -1493,7 +1497,8 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
     const result = await service.findAll({}, 'role-owner');
 
     expect((result.data[0] as { totalCost: number }).totalCost).toBe(250_000);
-    expect((result.data[0] as { profit: number }).profit).toBe(350_000);
+    // Tách ngược VAT (chốt 16/08/2026): profit = subtotal - vatAmount - totalCost.
+    expect((result.data[0] as { profit: number }).profit).toBe(250_000);
   });
 });
 

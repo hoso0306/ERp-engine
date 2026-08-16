@@ -28,6 +28,8 @@ export function calcSubtotal(finalPrice: number, quantity: number): number {
 
 // VAT tính SAU Discount Engine (chốt 16/07/2026) — trên subtotal đã chiết
 // khấu và extend theo số lượng, không phải trên systemPrice gốc.
+// Tách ngược (chốt 16/08/2026): subtotal từ nay ĐÃ GỒM VAT sẵn — xem
+// quotation-workflow.service.ts calcVatAmount(), sửa 1 bên nhớ sửa bên kia.
 export function calcVatAmount(subtotal: number, vatRate: number): number {
-  return Math.round(subtotal * (vatRate / 100));
+  return Math.round((subtotal * vatRate) / (100 + vatRate));
 }

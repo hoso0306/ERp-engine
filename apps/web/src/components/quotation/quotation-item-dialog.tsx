@@ -244,10 +244,11 @@ export function QuotationItemDialog({
   const subtotal = finalPriceSafe !== null ? Math.round(finalPriceSafe * qty) : null;
   const finalNegative = finalPrice !== null && finalPrice < 0;
 
-  // VAT tính SAU chiết khấu (trên subtotal), mirror calcVatAmount() ở BE
-  // (quotation-workflow.service.ts) — chỉ để preview trước khi submit.
-  const vatAmount = subtotal !== null ? Math.round(subtotal * (vatRate / 100)) : null;
-  const grandTotal = subtotal !== null && vatAmount !== null ? subtotal + vatAmount : null;
+  // VAT tách ngược SAU chiết khấu (trên subtotal), mirror calcVatAmount() ở BE
+  // (quotation-workflow.service.ts) — chỉ để preview trước khi submit. Từ
+  // 16/08/2026: subtotal đã gồm VAT sẵn, không cộng thêm nữa.
+  const vatAmount = subtotal !== null ? Math.round((subtotal * vatRate) / (100 + vatRate)) : null;
+  const grandTotal = subtotal;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -459,28 +460,20 @@ export function QuotationItemDialog({
                 </span>
               </div>
               {qty > 0 && !finalNegative && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Thành tiền ({qty} sp)</span>
+                <div className="flex justify-between border-t pt-1.5 font-semibold">
+                  <span>Tổng thanh toán</span>
                   <span className="font-mono">
-                    {subtotal !== null ? formatMoney(subtotal) : "—"}
+                    {grandTotal !== null ? formatMoney(grandTotal) : "—"}
                   </span>
                 </div>
               )}
               {qty > 0 && !finalNegative && vatRate > 0 && (
-                <>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>VAT ({vatRate}%)</span>
-                    <span className="font-mono">
-                      {vatAmount !== null ? formatMoney(vatAmount) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between border-t pt-1.5 font-semibold">
-                    <span>Tổng thanh toán</span>
-                    <span className="font-mono">
-                      {grandTotal !== null ? formatMoney(grandTotal) : "—"}
-                    </span>
-                  </div>
-                </>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Trong đó đã gồm VAT ({vatRate}%)</span>
+                  <span className="font-mono">
+                    {vatAmount !== null ? formatMoney(vatAmount) : "—"}
+                  </span>
+                </div>
               )}
             </div>
           )}

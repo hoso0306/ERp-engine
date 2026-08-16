@@ -401,17 +401,17 @@ describe('VatSettlementService', () => {
 
     it('tính totalAmount = SUM(vatAmount), tạo VatSettlementItem gắn openingBalanceId (không có receivableId)', async () => {
       // finalPrice = 1000000 (không chiết khấu) → subtotal = 1000000*2 = 2000000
-      // → vatAmount = 2000000*10% = 200000.
+      // → vatAmount tách ngược (chốt 16/08/2026) = round(2000000*10/110) = 181818.
       await service.createFromOpeningBalance(dto, 'user-1');
 
       expect(prisma.vatSettlement.create).toHaveBeenCalledWith({
-        data: { code: 'VS000002', customerId: 'cust-1', totalAmount: 200000 },
+        data: { code: 'VS000002', customerId: 'cust-1', totalAmount: 181818 },
       });
       expect(prisma.vatSettlementItem.create).toHaveBeenCalledWith({
         data: {
           vatSettlementId: 'vs-2',
           openingBalanceId: 'ob-1',
-          amount: 200000,
+          amount: 181818,
         },
       });
       expect(prisma.vatSettlementItemLine.create).toHaveBeenCalledWith(
@@ -421,7 +421,7 @@ describe('VatSettlementService', () => {
             productId: 'prod-1',
             quantity: 2,
             subtotal: 2000000,
-            vatAmount: 200000,
+            vatAmount: 181818,
           }),
         }),
       );
