@@ -610,9 +610,9 @@ export default function QuotationPrintPage() {
             hiển thị ở khối riêng bên dưới bảng, không gộp vào đây. */}
         <table style={{ marginBottom: 4, tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: 28 }} /><col style={{ width: 175 }} /><col style={{ width: 55 }} />
-            <col style={{ width: 55 }} /><col style={{ width: 36 }} /><col style={{ width: 55 }} />
-            <col style={{ width: 95 }} /><col style={{ width: 140 }} /><col style={{ width: 155 }} />
+            <col style={{ width: 24 }} /><col style={{ width: 240 }} /><col style={{ width: 55 }} />
+            <col style={{ width: 55 }} /><col style={{ width: 32 }} /><col style={{ width: 50 }} />
+            <col style={{ width: 95 }} /><col style={{ width: 105 }} /><col style={{ width: 138 }} />
           </colgroup>
           <thead>
             <tr style={{ background: HEAD_BG }}>
@@ -740,7 +740,7 @@ export default function QuotationPrintPage() {
                           </div>
                         )}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)} ₫</td>
                       {/* Cột Chú thích — cảnh báo Validation Rule (WARN) + Ghi chú
                           người dùng, luôn theo TỪNG dòng (kể cả khi cột Sản
                           phẩm đã gộp) vì đây là cột duy nhất Báo giá có để ghi chú. */}
@@ -773,7 +773,7 @@ export default function QuotationPrintPage() {
               <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>{fmt2(totalM2)}</td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
               <td style={{ ...tdStyle, textAlign: "right", fontWeight: 800, background: TOTAL_ROW_BG, color: GRAND_COLOR, fontSize: 13 }}>
-                {fmt(totalAmount)}
+                {fmt(totalAmount)} ₫
               </td>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
             </tr>
