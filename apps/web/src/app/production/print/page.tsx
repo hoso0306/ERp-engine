@@ -156,12 +156,20 @@ const BAT_CUON_PRODUCT_CODE = "SP000116";
 // 17/08/2026, workbench/sessions/2707.md) — số cm giữ nguyên như loại gốc
 // cho cả trung/dài (xác nhận riêng với người dùng, không suy ra từ công thức
 // hao hụt vải — 2 việc độc lập như ghi chú ở trên).
+// BẮT BUỘC giữ lại 3 key CŨ (loxothuong/loxoham/daukeotichhop, không có hậu
+// tố _trung/_dai) — bug phát hiện 17/08/2026: nhiều Đơn hàng đã duyệt (kể cả
+// Phiếu SX đang IN_PRODUCTION) vẫn còn snapshot giá trị "loai" cũ (tạo trước
+// khi tách trung/dài), tra bảng thiếu key này sẽ ra `undefined -> 0cm`, xưởng
+// cắt SAI (rộng hơn đúng 3-4cm). Số cm khớp đúng mức trừ trước khi tách.
 const BAT_CUON_WIDTH_DEDUCT_CM_BY_LOAI: Record<string, number> = {
+  loxothuong: 3, // Lò xo thường (giá trị CŨ, đơn tạo trước 17/08/2026)
   loxothuong_trung: 3, // Lò xo thường (trung)
   loxothuong_dai: 3, // Lò xo thường (dài)
+  loxoham: 4, // Lò xo Hãm (giá trị CŨ, đơn tạo trước 17/08/2026)
   loxoham_trung: 4, // Lò xo Hãm (trung)
   loxoham_dai: 4, // Lò xo Hãm (dài)
   daukeo: 3, // Đầu kéo (thường)
+  daukeotichhop: 4, // Đầu kéo tích hợp (giá trị CŨ, đơn tạo trước 17/08/2026)
   daukeotichhop_trung: 4, // Đầu kéo tích hợp (trung)
   daukeotichhop_dai: 4, // Đầu kéo tích hợp (dài)
   tayquay: 10, // Tay quay
@@ -843,22 +851,7 @@ function WorkshopOrderContent({
                         <div style={{ fontSize: 11, fontWeight: 500, color: "#444" }}>{group.productName}</div>
                         {description && (
                           <div
-                            style={
-                              order.productionCenterCode === BAT_CENTER_CODE
-                                ? // Xưởng Bạt: sản phẩm như Mái hiên di động có nhiều
-                                  // thông số phụ (khổ đua, mã bạt, vật liệu tay, cơ
-                                  // cấu, quảng cáo, ống) — ép 1 dòng sẽ bị cắt mất
-                                  // thông tin, nên cho xuống dòng tự nhiên.
-                                  { fontSize: 13, fontWeight: 700, marginTop: 2, overflowWrap: "break-word" }
-                                : {
-                                    fontSize: 13,
-                                    fontWeight: 700,
-                                    marginTop: 2,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }
-                            }
+                            style={{ fontSize: 13, fontWeight: 700, marginTop: 2, overflowWrap: "break-word" }}
                           >
                             {description}
                           </div>
