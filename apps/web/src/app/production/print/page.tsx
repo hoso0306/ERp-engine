@@ -152,12 +152,18 @@ const VAI_BAT_HANDWRITE_FIELDS = ["U treo", "Buly", "Bi treo", "Dây chia", "Dâ
 // kiện (khác dòng vật tư BOM có sẵn của SP000116 vốn chỉ cộng khi Ống = "Ống
 // nhôm cứng" — 2 việc độc lập, không liên quan nhau).
 const BAT_CUON_PRODUCT_CODE = "SP000116";
-// Trừ khỏi Rộng (đơn vị cm) theo từng giá trị "loai".
+// Trừ khỏi Rộng (đơn vị cm) theo từng giá trị "loai". Tách trung/dài (chốt
+// 17/08/2026, workbench/sessions/2707.md) — số cm giữ nguyên như loại gốc
+// cho cả trung/dài (xác nhận riêng với người dùng, không suy ra từ công thức
+// hao hụt vải — 2 việc độc lập như ghi chú ở trên).
 const BAT_CUON_WIDTH_DEDUCT_CM_BY_LOAI: Record<string, number> = {
-  loxothuong: 3, // Lò xo thường
-  loxoham: 4, // Lò xo Hãm
+  loxothuong_trung: 3, // Lò xo thường (trung)
+  loxothuong_dai: 3, // Lò xo thường (dài)
+  loxoham_trung: 4, // Lò xo Hãm (trung)
+  loxoham_dai: 4, // Lò xo Hãm (dài)
   daukeo: 3, // Đầu kéo (thường)
-  daukeotichhop: 4, // Đầu kéo tích hợp
+  daukeotichhop_trung: 4, // Đầu kéo tích hợp (trung)
+  daukeotichhop_dai: 4, // Đầu kéo tích hợp (dài)
   tayquay: 10, // Tay quay
   motor: 5, // Motor
 };

@@ -480,8 +480,11 @@ export default function QuotationPrintPage() {
   const GRAND_COLOR = "#1155cc";
   const BORDER = "1px solid #333";
   const thStyle: CSSProperties = {
-    padding: "6px 5px", fontSize: 10, fontWeight: 700, border: BORDER, textAlign: "center",
+    padding: "6px 5px", fontSize: 12, fontWeight: 700, border: BORDER, textAlign: "center",
   };
+  // Cỡ chữ gốc của thStyle (trước khi phóng to) — giữ nguyên riêng cho phần
+  // "(đã bao gồm VAT)" trong 2 header Đơn giá/Thành Tiền, không phóng to theo.
+  const vatSuffixStyle: CSSProperties = { fontSize: 10, fontWeight: 700 };
   const tdStyle: CSSProperties = { padding: "5px", fontSize: 11.5, border: BORDER };
   // Header "Trước VAT"/"Sau VAT" dùng chung cho cả khối Tổng đơn và Công nợ.
   const vatColHeaderStyle: CSSProperties = {
@@ -619,8 +622,8 @@ export default function QuotationPrintPage() {
               <th style={thStyle}>Cao</th>
               <th style={thStyle}>SL</th>
               <th style={thStyle}>M2</th>
-              <th style={thStyle}>Đơn giá</th>
-              <th style={thStyle}>Thành Tiền<br />(đã bao gồm VAT)</th>
+              <th style={thStyle}>Đơn giá<br /><span style={vatSuffixStyle}>(đã bao gồm VAT)</span></th>
+              <th style={thStyle}>Thành Tiền<br /><span style={vatSuffixStyle}>(đã bao gồm VAT)</span></th>
               <th style={thStyle}>Chú thích</th>
             </tr>
           </thead>
@@ -651,13 +654,23 @@ export default function QuotationPrintPage() {
                   // Rơi về hiển thị unitPrice thô như cũ nếu không dựng được
                   // diện tích.
                   const isRcv = !!item.productName && isRcvProduct(item.productName);
+                  // Giá nhập tay trực tiếp (tham số "dongia", vd Rèm sáo gỗ, nhánh
+                  // "Vẽ thủ công" của Mành Tăm) — ưu tiên hiện THẲNG số đã gõ, không
+                  // chia ngược từ systemPrice/m2 nữa (bug phát hiện 17/08/2026: BG000036
+                  // Rèm sáo gỗ nhập 480.000đ nhưng bản in hiện 480.007đ, do systemPrice
+                  // đã bị Pricing Rule làm tròn TỔNG dòng lên rồi mới chia lại ra diện
+                  // tích, phát sinh sai số vài đồng). CHỈ áp dụng khi có diện tích (m2 —
+                  // đúng ngữ cảnh "giá/m²"), không áp dụng cho sản phẩm nhập tay không
+                  // đo m² (vd "Hàng phân phối thêm", "Chi phí Sửa chữa/Lắp đặt" — cũng có
+                  // tham số "dongia" nhưng là giá trọn gói, không phải đơn giá/m²).
                   const effectiveUnitPrice =
                     m2 !== null && m2 > 0 && item.productName
-                      ? isRcv
-                        ? item.subtotal / m2
-                        : EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName)
-                          ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
-                          : null
+                      ? (paramNumber(item.parameters, "dongia") ??
+                        (isRcv
+                          ? item.subtotal / m2
+                          : EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName)
+                            ? (item.systemPrice * (1 - item.discountPercent / 100) * item.quantity) / m2
+                            : null))
                       : null;
                   const otherParams = item.parameters.filter(
                     (p) =>
