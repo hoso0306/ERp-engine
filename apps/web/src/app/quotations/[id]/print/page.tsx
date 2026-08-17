@@ -197,7 +197,12 @@ const VAI_BAT_HEIGHT_OVERRIDE_PARAM_NAME = "chieudai";
 // Tham số nhập tay đại diện giá bán/giá vốn (VD "Hàng phân phối thêm",
 // "Chi phí Sửa chữa/Lắp đặt") — không phải thông số mô tả sản phẩm, không
 // hiện trên bản in (giá vốn đặc biệt không được lộ cho khách).
-const HIDDEN_PARAM_NAMES = ["dongia", "giavon"];
+// "day" (Đáy — chốt 17/08/2026, người dùng xác nhận không ảnh hưởng giá bán/
+// phụ phí ở cả 2 nhóm dùng tham số này): ẩn theo TÊN tham số, áp dụng cho mọi
+// sản phẩm có "day" (41 RCV + 4 sản phẩm nhóm Rèm cuốn có sẵn từ trước), chỉ
+// ẩn ở bản in BÁO GIÁ — phiếu sản xuất (production/print/page.tsx) có
+// HIDDEN_PARAM_NAMES riêng, KHÔNG đụng tới, vẫn hiện "Đáy" cho xưởng như cũ.
+const HIDDEN_PARAM_NAMES = ["dongia", "giavon", "day"];
 
 // Sản phẩm có công thức giá không đơn thuần "unitPrice * area" (có hệ số/điều
 // kiện giảm giá riêng trong Pricing Rule) khiến "Đơn giá" tra bảng ma trận
