@@ -34,7 +34,6 @@ LEFT JOIN LATERAL (
     UNION ALL SELECT code FROM production_centers WHERE rn.type = 'PRODUCTION_CENTER' AND code LIKE rn.prefix || '%'
     UNION ALL SELECT code FROM production_orders WHERE rn.type = 'PRODUCTION_ORDER' AND code LIKE rn.prefix || '%'
     UNION ALL SELECT code FROM returns WHERE rn.type = 'RETURN' AND code LIKE rn.prefix || '%'
-    UNION ALL SELECT code FROM vat_settlements WHERE rn.type = 'VAT_SETTLEMENT' AND code LIKE rn.prefix || '%'
     UNION ALL SELECT code FROM opening_balances WHERE rn.type = 'OPENING_BALANCE' AND code LIKE rn.prefix || '%'
     UNION ALL SELECT code FROM payments WHERE rn.type = 'PAYMENT' AND code LIKE rn.prefix || '%'
     UNION ALL SELECT code FROM material_receipts WHERE rn.type = 'MATERIAL_RECEIPT' AND code LIKE rn.prefix || '%'
