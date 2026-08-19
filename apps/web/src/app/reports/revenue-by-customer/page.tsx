@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { ReportRangeFilter, ReportExportButtons, formatMoney, formatDate, defaultReportRange } from "@/components/report";
 import { apiGet } from "@/lib/api";
 
@@ -34,6 +36,7 @@ export default function RevenueByCustomerReportPage() {
   const [data, setData] = useState<RevenueByCustomerReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -52,6 +55,15 @@ export default function RevenueByCustomerReportPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!data) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return data.customers;
+    return data.customers.filter(
+      (c) => c.customerName.toLowerCase().includes(q) || c.customerPhone.toLowerCase().includes(q)
+    );
+  }, [data, search]);
 
   return (
     <div className="space-y-6">
@@ -77,7 +89,19 @@ export default function RevenueByCustomerReportPage() {
             <StatTile label="Khách mới trong kỳ" value={String(data.newCustomers.count)} />
           </div>
 
-          {data.customers.length > 0 ? (
+          {data.customers.length > 0 && (
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Tìm theo tên / SĐT khách hàng..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          )}
+
+          {filteredCustomers.length > 0 ? (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -91,7 +115,7 @@ export default function RevenueByCustomerReportPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.customers.map((c) => (
+                  {filteredCustomers.map((c) => (
                     <TableRow key={c.customerId}>
                       <TableCell>
                         <div className="text-sm font-medium">{c.customerName}</div>
@@ -108,7 +132,13 @@ export default function RevenueByCustomerReportPage() {
               </Table>
             </div>
           ) : (
-            <EmptyState description="Không có dữ liệu bán hàng trong kỳ đã chọn." />
+            <EmptyState
+              description={
+                search
+                  ? `Không tìm thấy khách hàng phù hợp với "${search}".`
+                  : "Không có dữ liệu bán hàng trong kỳ đã chọn."
+              }
+            />
           )}
         </div>
       )}
