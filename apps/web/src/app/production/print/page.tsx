@@ -345,6 +345,14 @@ function formatAddress(o: {
   return [o.deliveryAddress, o.deliveryWard, o.deliveryDistrict, o.deliveryProvince].filter(Boolean).join(", ");
 }
 
+// Chấm phân cách SĐT cho dễ nhìn trên bản in (0988989997 -> 0988.989.997).
+// Chỉ format đúng SĐT di động 10 số — số khác (bàn, 11 số, rỗng...) giữ nguyên.
+function formatPhone(phone: string | null | undefined): string {
+  if (!phone) return phone ?? "";
+  if (!/^\d{10}$/.test(phone)) return phone;
+  return `${phone.slice(0, 4)}.${phone.slice(4, 7)}.${phone.slice(7)}`;
+}
+
 function ProductionOrderPrintContent() {
   const searchParams = useSearchParams();
   const ids = (searchParams.get("ids") ?? "").split(",").filter(Boolean);
@@ -576,7 +584,7 @@ function GenericOrderContent({
             <tr>
               <td style={{ padding: "2px 0" }} colSpan={2}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span><strong>Khách hàng:</strong> {order.salesOrder.deliveryName} — {order.salesOrder.deliveryPhone}</span>
+                  <span><strong>Khách hàng:</strong> {order.salesOrder.deliveryName} — {formatPhone(order.salesOrder.deliveryPhone)}</span>
                   <span className="no-print">
                     <DeliveryAddressDialog
                       salesOrderId={order.salesOrder.id}
@@ -779,7 +787,7 @@ function WorkshopOrderContent({
             </span>
           </div>
           <div style={{ fontSize: 12.5, marginTop: 3 }}>{formatAddress(order.salesOrder) || "—"}</div>
-          <div style={{ fontSize: 12.5, marginTop: 1 }}>SĐT: {order.salesOrder.deliveryPhone}</div>
+          <div style={{ fontSize: 12.5, marginTop: 1 }}>SĐT: {formatPhone(order.salesOrder.deliveryPhone)}</div>
         </div>
         <div style={{ flex: 1, border: WORKSHOP_BORDER, padding: "5px 8px" }}>
           <div style={boxLabelStyle}>Thông tin giao hàng</div>
@@ -800,7 +808,7 @@ function WorkshopOrderContent({
           </div>
           <div style={{ fontSize: 11, marginTop: 3 }}>
             SĐT:{" "}
-            {order.salesOrder.carrierPhone || (
+            {formatPhone(order.salesOrder.carrierPhone) || (
               <span style={{ display: "inline-block", borderBottom: "1px dotted #999", minWidth: 90 }}>&nbsp;</span>
             )}
           </div>
