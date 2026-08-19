@@ -193,7 +193,7 @@ export class CustomerService {
           customerId: id,
           salesOrder: { status: { not: SalesOrderStatus.CANCELLED } },
         },
-        _sum: { remainingAmount: true, remainingAmountBeforeVat: true },
+        _sum: { remainingAmount: true },
       }),
       // opening-balance.md — cộng thêm Công nợ đầu kỳ còn mở của khách này,
       // dùng cho bản in Báo giá (khối "Công nợ cũ").
@@ -203,11 +203,6 @@ export class CustomerService {
     return {
       totalRemaining:
         Number(totals._sum.remainingAmount ?? 0) + openingBalance.remaining,
-      // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — có thể âm
-      // hợp lệ nếu khách đã trả vào phần VAT, không clamp về 0.
-      totalRemainingBeforeVat:
-        Number(totals._sum.remainingAmountBeforeVat ?? 0) +
-        openingBalance.remainingBeforeVat,
     };
   }
 

@@ -1,4 +1,4 @@
 export class ReduceOpeningBalanceDto {
-  amountBeforeVat!: number;
+  amount!: number;
   reason!: string;
 }

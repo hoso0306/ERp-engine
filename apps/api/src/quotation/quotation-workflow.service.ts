@@ -1593,8 +1593,7 @@ export class QuotationWorkflowService {
     // VAT, không ảnh hưởng plannedProfit (khoản thu hộ khách).
     const shippingFee = Number(quotation.shippingFee);
     // Tách ngược VAT (chốt 16/08/2026): totalAmount ĐÃ GỒM VAT sẵn (subtotal
-    // từng dòng đã gồm) nên KHÔNG cộng thêm totalVatAmount nữa — totalVatAmount
-    // chỉ còn dùng để tách totalAmountBeforeVat bên dưới.
+    // từng dòng đã gồm) nên KHÔNG cộng thêm totalVatAmount nữa.
     const grandTotal =
       totalAmount - Number(quotation.discountAmount) + shippingFee;
     if (grandTotal < 0) {
@@ -1602,18 +1601,6 @@ export class QuotationWorkflowService {
         'Không thể duyệt: Giảm thêm vượt quá Tổng thanh toán.',
       );
     }
-    // Công nợ song song trước-VAT (023-cong-no-truoc-sau-vat) — Giảm thêm trừ
-    // vào cả 2 mức, nên chênh lệch giữa 2 track luôn đúng bằng totalVatAmount.
-    // shippingFee không chịu VAT nên cộng đều vào cả 2 mức, giữ nguyên bất
-    // biến này (xem vat-settlement.service.ts — tính VAT phải nộp từ chênh
-    // lệch totalAmount - totalAmountBeforeVat của Receivable). Từ 16/08/2026:
-    // totalAmount đã gồm VAT nên totalAmountBeforeVat phải trừ thêm
-    // totalVatAmount (tách ngược) mới ra đúng phần trước thuế.
-    const totalAmountBeforeVat =
-      totalAmount -
-      totalVatAmount -
-      Number(quotation.discountAmount) +
-      shippingFee;
 
     // Owner (Sprint 02 Task 03 — quyết định 05/07/2026): đơn hàng tính doanh
     // số cho NGƯỜI TẠO báo giá (Quotation.createdBy), không phải người bấm
@@ -1785,8 +1772,6 @@ export class QuotationWorkflowService {
             customerId: quotation.customerId,
             totalAmount: grandTotal,
             remainingAmount: grandTotal,
-            totalAmountBeforeVat,
-            remainingAmountBeforeVat: totalAmountBeforeVat,
             debtLimitSnapshot: Number(quotation.customer.debtLimit),
             debtTermDaysSnapshot: quotation.customer.debtTermDays,
           },

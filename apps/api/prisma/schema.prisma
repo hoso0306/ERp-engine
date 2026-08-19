@@ -126,12 +126,10 @@ enum SalesOrderTimelineAction {
   // (nhà xe chở hàng, không phải người/nơi nhận hàng).
   CARRIER_INFO_UPDATED
   CANCELLED
-  // VAT Settlement (Sprint 04, 024-cong-no-vat-settlement.md) — mỗi mốc quan
-  // trọng của VatSettlement (tạo/gửi/thu tiền/xuất hoá đơn) ghi thêm 1 dòng ở
-  // đây cho từng SalesOrder liên quan (qua VatSettlementItem), để mở đơn hàng
-  // gốc vẫn thấy dấu vết. payload.event phân biệt CREATED/SENT/PAID/INVOICED
-  // — không tách 4 action riêng, cùng cách PAYMENT_STATUS_CHANGED dùng chung
-  // 1 action cho nhiều tình huống khác nhau qua payload.
+  // Legacy — module VAT Settlement đã bị bỏ hoàn toàn (rà soát mô hình công
+  // nợ). Giữ lại giá trị enum này CHỈ vì các bản ghi SalesOrderTimeline lịch
+  // sử đã có (Timeline First — CLAUDE.md mục 6, không xoá/viết đè lịch sử).
+  // Không còn code nào ghi giá trị này nữa.
   VAT_SETTLEMENT_UPDATED
 }
 
@@ -142,36 +140,8 @@ enum ProductionOrderTimelineActorType {
   USER
 }
 
-// Enum riêng cho VAT Settlement, không tái sử dụng SalesOrderTimelineActorType
-// — cùng convention ProductionOrderTimelineActorType (024-cong-no-vat-settlement.md).
-enum VatSettlementTimelineActorType {
-  SYSTEM
-  USER
-}
-
-// Workflow một chiều DRAFT → SENT → PAID → INVOICED (024-cong-no-vat-settlement.md).
-// CANCELLED (bổ sung 26/07/2026, theo yêu cầu người dùng sau khi rà soát mô
-// hình) — chỉ cho phép huỷ khi còn DRAFT (chưa gửi khách, chưa có Payment nào
-// gắn vào), giữ bản ghi lại (không xoá) để có dấu vết, cùng convention
-// SalesOrderStatus/QuotationStatus.
-enum VatSettlementStatus {
-  DRAFT
-  SENT
-  PAID
-  INVOICED
-  CANCELLED
-}
-
-enum VatSettlementTimelineAction {
-  VAT_SETTLEMENT_CREATED
-  VAT_SETTLEMENT_SENT
-  VAT_SETTLEMENT_PAID
-  VAT_SETTLEMENT_INVOICED
-  VAT_SETTLEMENT_CANCELLED
-}
-
 // Enum riêng cho Công nợ đầu kỳ (opening-balance.md), không tái sử dụng
-// VatSettlementTimelineActorType — cùng convention mỗi module Timeline có
+// SalesOrderTimelineActorType — cùng convention mỗi module Timeline có
 // ActorType riêng.
 enum OpeningBalanceTimelineActorType {
   SYSTEM
@@ -296,7 +266,6 @@ model User {
   quotationTimelines       QuotationTimeline[]
   salesOrderTimelines      SalesOrderTimeline[]
   productionOrderTimelines ProductionOrderTimeline[]
-  vatSettlementTimelines   VatSettlementTimeline[]
   completedReturns         Return[]
   createdMaterialReceipts  MaterialReceipt[]
   openingBalanceTimelines  OpeningBalanceTimeline[]
@@ -597,16 +566,15 @@ model Product {
   updatedAt          DateTime      @updatedAt @map("updated_at")
   deletedAt          DateTime?     @map("deleted_at")
 
-  productType            ProductType             @relation(fields: [productTypeId], references: [id])
-  unit                   Unit                    @relation(fields: [unitId], references: [id])
-  productionCenter       ProductionCenter        @relation(fields: [productionCenterId], references: [id])
-  parameters             ProductParameter[]
-  pricingRule            PricingRule?
-  materialRequirement    MaterialRequirement?
-  quotationItems         QuotationItem[]
-  validationRules        ValidationRule[]
-  derivedParameters      DerivedParameter[]
-  vatSettlementItemLines VatSettlementItemLine[]
+  productType         ProductType          @relation(fields: [productTypeId], references: [id])
+  unit                Unit                 @relation(fields: [unitId], references: [id])
+  productionCenter    ProductionCenter     @relation(fields: [productionCenterId], references: [id])
+  parameters          ProductParameter[]
+  pricingRule         PricingRule?
+  materialRequirement MaterialRequirement?
+  quotationItems      QuotationItem[]
+  validationRules     ValidationRule[]
+  derivedParameters   DerivedParameter[]
 
   @@index([productTypeId])
   @@index([productionCenterId])
@@ -1475,16 +1443,6 @@ model Receivable {
   // CHECK (remaining_amount >= 0) khai báo tay trong migration.sql.
   remainingAmount Decimal @map("remaining_amount") @db.Decimal(15, 0)
 
-  // Track song song trước-VAT (023-cong-no-truoc-sau-vat) — khách trả tiền mặt
-  // không lấy hoá đơn thì không cần đóng VAT, kế toán cần biết nợ ở CẢ 2 mức.
-  // Nguồn: SalesOrder.totalAmount - discountAmount tại Approve. Cập nhật ĐỒNG
-  // THỜI với remainingAmount trong DebtService.createPayment() (1 Payment
-  // không tách được phần gốc/VAT nên trừ đều cả 2 track).
-  // KHÔNG có CHECK >= 0 — có thể âm hợp lệ: khách trả nhiều hơn giá không-hoá-
-  // đơn, đang trả dần vào phần VAT của chính đơn này hoặc bù cho đơn khác.
-  totalAmountBeforeVat     Decimal @map("total_amount_before_vat") @db.Decimal(15, 0)
-  remainingAmountBeforeVat Decimal @map("remaining_amount_before_vat") @db.Decimal(15, 0)
-
   // Credit Policy Snapshot — copy từ Customer.debtLimit/debtTermDays tại thời điểm tạo.
   debtLimitSnapshot    Decimal @map("debt_limit_snapshot") @db.Decimal(15, 0)
   debtTermDaysSnapshot Int     @map("debt_term_days_snapshot")
@@ -1492,21 +1450,14 @@ model Receivable {
   // NULL lúc tạo, set = actualDeliveryDate + debtTermDaysSnapshot khi SalesOrder Delivered.
   dueDate DateTime? @map("due_date")
 
-  // Set true qua action "Đóng công nợ (không xuất hóa đơn)" (024-cong-no-vat-settlement.md)
-  // — khách trả xong phần trước-VAT, kế toán chủ động bỏ qua phần VAT, coi
-  // nghiệp vụ đã kết thúc. Dùng để lọc danh sách đơn đủ điều kiện tạo
-  // VatSettlement sau này, không "hồi sinh" Receivable đã đóng.
-  closedWithoutVat Boolean @default(false) @map("closed_without_vat")
-
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  salesOrder         SalesOrder          @relation(fields: [salesOrderId], references: [id])
+  salesOrder  SalesOrder          @relation(fields: [salesOrderId], references: [id])
   // 023-cong-no-payment-allocation-fifo: 1 Payment có thể cấn nhiều Receivable
   // (FIFO đa đơn) — lịch sử thu tiền của 1 Receivable giờ đọc qua allocations,
   // không còn quan hệ Payment 1-1 receivableId trực tiếp.
-  allocations        PaymentAllocation[]
-  vatSettlementItems VatSettlementItem[]
+  allocations PaymentAllocation[]
 
   @@index([customerId])
   // Dashboard (009-dashboard.md Task 07) — overdue/risk/upcoming-due đều lọc theo dueDate.
@@ -1525,10 +1476,8 @@ model PaymentAllocation {
   // Cấn cho ĐÚNG 1 trong 2 đối tượng — Receivable (đơn hàng) hoặc
   // OpeningBalance (Công nợ đầu kỳ, rà soát tab Công nợ 11/08/2026: "coi Công
   // nợ đầu kỳ như 1 đơn cần thanh toán, cấn trừ FIFO như bình thường").
-  // Validate ở Application trong cùng transaction tạo Payment, cùng convention
-  // Payment.vatSettlementId (024-cong-no-vat-settlement.md Quyết định #6) —
-  // không CHECK constraint DB, không rủi ro concurrency vì quyết định ngay
-  // lúc tạo.
+  // Validate ở Application trong cùng transaction tạo Payment — không CHECK
+  // constraint DB, không rủi ro concurrency vì quyết định ngay lúc tạo.
   receivableId String? @map("receivable_id")
   // Redundant reference — Receivable–SalesOrder là 1-1 (Receivable.salesOrderId
   // @unique), tránh join khi cần lọc/hiển thị/ghi Timeline theo đơn. Chỉ có
@@ -1537,14 +1486,9 @@ model PaymentAllocation {
 
   openingBalanceId String? @map("opening_balance_id")
 
-  // Phân bổ theo BeforeVatFirstPolicy (mặc định): trừ hết phần trước-VAT của
-  // Receivable/OpeningBalance trước, dư mới trừ vào VAT. allocatedTotal =
-  // allocatedSubtotal + allocatedVat. Policy tách khỏi Engine (xem
-  // AllocationPolicy trong service), đổi chính sách sau này không cần đổi
-  // field ở đây.
-  allocatedSubtotal Decimal @map("allocated_subtotal") @db.Decimal(15, 0)
-  allocatedVat      Decimal @map("allocated_vat") @db.Decimal(15, 0)
-  allocatedTotal    Decimal @map("allocated_total") @db.Decimal(15, 0)
+  // Số tiền cấn trừ duy nhất — công nợ chỉ còn track ở 1 mức (đã gồm VAT), bỏ
+  // track song song trước-VAT/VAT (rà soát mô hình công nợ, bỏ VAT Settlement).
+  allocatedTotal Decimal @map("allocated_total") @db.Decimal(15, 0)
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -1598,148 +1542,15 @@ model Payment {
   createdBy       String?       @map("created_by")
   createdAt       DateTime      @default(now()) @map("created_at")
 
-  // 024-cong-no-vat-settlement.md (Quyết định #6): Payment thuộc ĐÚNG 1 trong
-  // 2 luồng — có PaymentAllocation (luồng Receivable, 023) HOẶC có
-  // vatSettlementId (luồng VatSettlement), validate ở Application trong cùng
-  // transaction tạo Payment, không CHECK constraint DB (không rủi ro
-  // concurrency giữa 2 luồng vì quyết định ngay lúc tạo). Payment loại này
-  // KHÔNG tạo PaymentAllocation, KHÔNG đụng remainingAmount của Receivable
-  // (không "hồi sinh" nghiệp vụ đã đóng bằng closedWithoutVat).
-  vatSettlementId String? @unique @map("vat_settlement_id")
-
-  allocations   PaymentAllocation[]
-  reversalOf    Payment?            @relation("PaymentReversal", fields: [reversalOfPaymentId], references: [id])
-  reversedBy    Payment?            @relation("PaymentReversal")
-  vatSettlement VatSettlement?      @relation(fields: [vatSettlementId], references: [id])
+  allocations PaymentAllocation[]
+  reversalOf  Payment?            @relation("PaymentReversal", fields: [reversalOfPaymentId], references: [id])
+  reversedBy  Payment?            @relation("PaymentReversal")
 
   // Báo cáo (report.md mục 3) — báo cáo thu tiền lọc theo ngày thanh toán.
   @@index([paymentDate])
   // Lọc "Phiếu thu" theo khách hàng cho Payment loại ADVANCE (không có allocation).
   @@index([customerId])
   @@map("payments")
-}
-
-// ──────────────────────────────────────
-// VAT Settlement (024-cong-no-vat-settlement.md) — xử lý VAT sau khi khách đã
-// đóng theo chế độ "tiền mặt, không xuất hóa đơn" (Receivable.closedWithoutVat)
-// rồi sau đó quay lại yêu cầu xuất hóa đơn. Là MỘT CHỨNG TỪ TÀI CHÍNH ĐỘC LẬP,
-// không phải giao dịch bán hàng mới (không tạo SalesOrder mới — tránh
-// double-count doanh thu/sản lượng/lợi nhuận).
-// ──────────────────────────────────────
-
-model VatSettlement {
-  id         String              @id @default(cuid())
-  code       String              @unique
-  customerId String              @map("customer_id")
-  status     VatSettlementStatus @default(DRAFT)
-
-  invoiceNumber String?   @map("invoice_number")
-  invoiceDate   DateTime? @map("invoice_date")
-
-  // = SUM(receivable.totalAmount - receivable.totalAmountBeforeVat) tại thời
-  // điểm tạo (snapshot, xem VatSettlementItem.amount).
-  totalAmount Decimal @map("total_amount") @db.Decimal(15, 0)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Redundant reference tới Payment.id — Payment.vatSettlementId (unique) mới
-  // là quan hệ Prisma thật (xem field `payment` bên dưới); field này chỉ để
-  // đọc nhanh mà không cần include ngược, cùng convention các Redundant
-  // Reference khác trong schema (vd SalesOrder.customerId).
-  paymentId String? @map("payment_id")
-
-  payment  Payment?                @relation
-  items    VatSettlementItem[]
-  timeline VatSettlementTimeline[]
-
-  @@index([customerId])
-  @@map("vat_settlements")
-}
-
-// Snapshot 1 dòng = 1 Receivable đã closedWithoutVat được đưa vào settlement
-// này. Chỉ lưu receivableId (không lưu thêm salesOrderId) — Receivable–
-// SalesOrder là 1-1 (Receivable.salesOrderId @unique), join thẳng khi cần.
-//
-// opening-balance.md (bổ sung 27/07/2026) — thêm nguồn thứ 2: "phục dựng hoá
-// đơn" từ Công nợ đầu kỳ (không có Receivable/SalesOrder gốc). receivableId
-// nới thành nullable, thêm openingBalanceId song song — ĐÚNG 1 TRONG 2 phải có
-// giá trị (CHECK num_nonnulls ở migration.sql, giống convention "1 Payment chỉ
-// thuộc đúng 1 trong 2 luồng" đã áp dụng cho Payment.vatSettlementId). Path
-// Receivable cũ giữ nguyên 100% hành vi (amount = totalAmount -
-// totalAmountBeforeVat). Path OpeningBalance: amount = SUM(lines[].vatAmount),
-// chi tiết từng dòng sản phẩm nằm ở `lines` (không có ở path Receivable).
-model VatSettlementItem {
-  id               String  @id @default(cuid())
-  vatSettlementId  String  @map("vat_settlement_id")
-  receivableId     String? @map("receivable_id")
-  openingBalanceId String? @map("opening_balance_id")
-
-  // Path Receivable: = totalAmount - totalAmountBeforeVat tại thời điểm tạo.
-  // Path OpeningBalance: = SUM(lines[].vatAmount). Cả 2 đều là snapshot, không
-  // đổi sau đó.
-  amount Decimal @db.Decimal(15, 0)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  vatSettlement  VatSettlement           @relation(fields: [vatSettlementId], references: [id], onDelete: Cascade)
-  receivable     Receivable?             @relation(fields: [receivableId], references: [id])
-  openingBalance OpeningBalance?         @relation(fields: [openingBalanceId], references: [id])
-  lines          VatSettlementItemLine[]
-
-  @@index([vatSettlementId])
-  @@index([receivableId])
-  @@index([openingBalanceId])
-  @@map("vat_settlement_items")
-}
-
-// Dòng sản phẩm nhập tay khi "phục dựng hoá đơn" từ Công nợ đầu kỳ — mirror
-// QuotationItem/QuotationItemParameter (không có ở path Receivable, vì
-// Receivable không cần tính lại giá — VAT đã biết sẵn). Chọn Product thật,
-// dùng Pricing Rule đang ACTIVE để tính giá (opening-balance.md) — CHỈ để tính
-// ra số tiền, không tạo SalesOrder/ProductionOrder/Warehouse.
-model VatSettlementItemLine {
-  id                  String  @id @default(cuid())
-  vatSettlementItemId String  @map("vat_settlement_item_id")
-  productId           String  @map("product_id")
-  productCode         String  @map("product_code")
-  productName         String  @map("product_name")
-  quantity            Decimal @db.Decimal(15, 4)
-
-  pricingRuleVersionId   String? @map("pricing_rule_version_id")
-  systemPrice            Decimal @default(0) @map("system_price") @db.Decimal(15, 0)
-  discountPercent        Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  surchargeAfterDiscount Decimal @default(0) @map("surcharge_after_discount") @db.Decimal(15, 0)
-  finalPrice             Decimal @default(0) @map("final_price") @db.Decimal(15, 0)
-  subtotal               Decimal @default(0) @db.Decimal(15, 0)
-  vatRate                Decimal @default(0) @map("vat_rate") @db.Decimal(5, 2)
-  vatAmount              Decimal @default(0) @map("vat_amount") @db.Decimal(15, 0)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  vatSettlementItem VatSettlementItem                @relation(fields: [vatSettlementItemId], references: [id], onDelete: Cascade)
-  product           Product                          @relation(fields: [productId], references: [id])
-  parameters        VatSettlementItemLineParameter[]
-
-  @@index([vatSettlementItemId])
-  @@map("vat_settlement_item_lines")
-}
-
-// Snapshot tham số từng dòng — mirror QuotationItemParameter.
-model VatSettlementItemLineParameter {
-  id                      String  @id @default(cuid())
-  vatSettlementItemLineId String  @map("vat_settlement_item_line_id")
-  name                    String
-  label                   String
-  value                   String
-  valueLabel              String? @map("value_label")
-  unit                    String?
-  displayOrder            Int     @default(0) @map("display_order")
-
-  vatSettlementItemLine VatSettlementItemLine @relation(fields: [vatSettlementItemLineId], references: [id], onDelete: Cascade)
-
-  @@index([vatSettlementItemLineId])
-  @@map("vat_settlement_item_line_parameters")
 }
 
 // ──────────────────────────────────────
@@ -1755,28 +1566,27 @@ model VatSettlementItemLineParameter {
 // "cố tình đơn giản, không FIFO" ban đầu. Action `reduce()` (Manual Override,
 // bắt buộc lý do) vẫn giữ song song cho trường hợp giảm nợ không qua thu tiền
 // thật (vd xoá nợ khó đòi).
+//
+// Bỏ track song song trước-VAT/sau-VAT (rà soát mô hình công nợ, bỏ VAT
+// Settlement) — chỉ còn `amount`/`remainingAmount` ở 1 mức duy nhất, đã gồm
+// VAT, nhập trực tiếp lúc tạo (không còn suy ra từ giá trị nào khác).
 // ──────────────────────────────────────
 
 model OpeningBalance {
   id         String @id @default(cuid())
   code       String @unique
-  // Plain field, không @relation — cùng convention Receivable.customerId/
-  // VatSettlement.customerId (Redundant Reference, tránh join khi query tổng
-  // hợp theo khách hàng).
+  // Plain field, không @relation — cùng convention Receivable.customerId
+  // (Redundant Reference, tránh join khi query tổng hợp theo khách hàng).
   customerId String @map("customer_id")
 
-  amountBeforeVat Decimal @map("amount_before_vat") @db.Decimal(15, 0)
-  // Sau-VAT — optional lúc nhập; nếu kế toán không nhập, resolve = giá trị của
-  // amountBeforeVat NGAY LÚC TẠO (OpeningBalanceService.create()), lưu thẳng
-  // vào đây — không null+fallback ở downstream, mọi nơi đọc field này luôn có
-  // giá trị (Dashboard/theo khách hàng/bản in Báo giá chỉ cần cộng thẳng).
-  amount          Decimal @db.Decimal(15, 0)
+  // Số tiền công nợ đầu kỳ, đã gồm VAT, nhập trực tiếp khi tạo — bắt buộc.
+  amount Decimal @db.Decimal(15, 0)
 
-  // Track song song trước/sau VAT, giảm dần qua action reduce() — CHECK >= 0
+  // Derived (amount - đã giảm qua reduce()/Payment) nhưng được phép lưu — lý
+  // do hiệu năng đọc, cùng convention Receivable.remainingAmount. CHECK >= 0
   // khai báo tay trong migration.sql, cùng convention
   // receivables_remaining_amount_check.
-  remainingAmountBeforeVat Decimal @map("remaining_amount_before_vat") @db.Decimal(15, 0)
-  remainingAmount          Decimal @map("remaining_amount") @db.Decimal(15, 0)
+  remainingAmount Decimal @map("remaining_amount") @db.Decimal(15, 0)
 
   note String?
 
@@ -1786,15 +1596,14 @@ model OpeningBalance {
   createdBy String?  @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
 
-  timeline        OpeningBalanceTimeline[]
-  settlementItems VatSettlementItem[]
-  allocations     PaymentAllocation[]
+  timeline    OpeningBalanceTimeline[]
+  allocations PaymentAllocation[]
 
   @@index([customerId])
   @@map("opening_balances")
 }
 
-// Theo đúng khuôn VatSettlementTimeline/SalesOrderTimeline.
+// Theo đúng khuôn SalesOrderTimeline.
 model OpeningBalanceTimeline {
   id               String                          @id @default(cuid())
   openingBalanceId String                          @map("opening_balance_id")
@@ -1811,25 +1620,6 @@ model OpeningBalanceTimeline {
   @@index([openingBalanceId])
   @@index([openingBalanceId, createdAt])
   @@map("opening_balance_timelines")
-}
-
-// Theo đúng khuôn SalesOrderTimeline (024-cong-no-vat-settlement.md Việc 1).
-model VatSettlementTimeline {
-  id              String                         @id @default(cuid())
-  vatSettlementId String                         @map("vat_settlement_id")
-  action          VatSettlementTimelineAction
-  actorType       VatSettlementTimelineActorType @map("actor_type")
-  payload         Json?
-  createdBy       String?                        @map("created_by")
-  createdByName   String?                        @map("created_by_name")
-  createdAt       DateTime                       @default(now()) @map("created_at")
-
-  vatSettlement VatSettlement @relation(fields: [vatSettlementId], references: [id])
-  createdByUser User?         @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-
-  @@index([vatSettlementId])
-  @@index([vatSettlementId, createdAt])
-  @@map("vat_settlement_timelines")
 }
 
 // ──────────────────────────────────────

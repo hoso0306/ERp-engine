@@ -26,10 +26,6 @@ import { PaymentQueryDto } from './dto/payment-query.dto';
 import { OpeningBalanceService } from './opening-balance.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { buildSeries, type ReportGroupBy } from '../shared/report-range';
-import {
-  BeforeVatFirstPolicy,
-  type AllocationPolicy,
-} from './allocation-policy';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -37,8 +33,8 @@ type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 // 023-cong-no-payment-allocation-fifo: 1 dòng cấn trừ đã resolve xong (biết
 // đúng receivableId + số tiền), kèm dữ liệu đọc SẴN từ trước khi vào
-// transaction (remainingAmountBeforeVat để tính Policy split, currentPaymentStatus
-// để ghi Timeline fromStatus) — executeAllocatedPayment() không đọc lại.
+// transaction (currentPaymentStatus để ghi Timeline fromStatus) —
+// executeAllocatedPayment() không đọc lại.
 //
 // Rà soát tab Công nợ (11/08/2026): cấn cho ĐÚNG 1 trong 2 đối tượng — Receivable
 // (đơn hàng, có salesOrderId/currentPaymentStatus để ghi SalesOrderTimeline) hoặc
@@ -49,14 +45,12 @@ type ResolvedAllocation =
       receivableId: string;
       salesOrderId: string;
       amount: number;
-      remainingAmountBeforeVat: number;
       currentPaymentStatus: PaymentStatus;
     }
   | {
       target: 'OPENING_BALANCE';
       openingBalanceId: string;
       amount: number;
-      remainingAmountBeforeVat: number;
     };
 
 const RECEIVABLE_LIST_INCLUDE = {
@@ -114,12 +108,6 @@ const RECEIVABLE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class DebtService {
-  // Allocation Policy (023-cong-no-payment-allocation-fifo) — tách rời khỏi
-  // Allocation Engine bên dưới. Đổi chính sách sau này chỉ cần đổi giá trị
-  // gán ở đây, không sửa Engine. Chưa có nhu cầu chọn runtime qua UI.
-  private readonly allocationPolicy: AllocationPolicy =
-    new BeforeVatFirstPolicy();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingService: SettingService,
@@ -177,9 +165,6 @@ export class DebtService {
             receivableId: receivable.id,
             salesOrderId: salesOrder.id,
             amount: dto.amount,
-            remainingAmountBeforeVat: Number(
-              receivable.remainingAmountBeforeVat,
-            ),
             currentPaymentStatus: salesOrder.paymentStatus,
           },
         ],
@@ -306,8 +291,6 @@ export class DebtService {
               data: {
                 paymentId: reversal.id,
                 openingBalanceId: alloc.openingBalanceId,
-                allocatedSubtotal: alloc.allocatedSubtotal,
-                allocatedVat: alloc.allocatedVat,
                 allocatedTotal: alloc.allocatedTotal,
               },
             });
@@ -316,9 +299,6 @@ export class DebtService {
               where: { id: alloc.openingBalanceId },
               data: {
                 remainingAmount: { increment: alloc.allocatedTotal },
-                remainingAmountBeforeVat: {
-                  increment: alloc.allocatedSubtotal,
-                },
               },
             });
 
@@ -349,8 +329,6 @@ export class DebtService {
               paymentId: reversal.id,
               receivableId: alloc.receivableId,
               salesOrderId: alloc.salesOrderId,
-              allocatedSubtotal: alloc.allocatedSubtotal,
-              allocatedVat: alloc.allocatedVat,
               allocatedTotal: alloc.allocatedTotal,
             },
           });
@@ -360,7 +338,6 @@ export class DebtService {
             data: {
               paidAmount: { decrement: alloc.allocatedTotal },
               remainingAmount: { increment: alloc.allocatedTotal },
-              remainingAmountBeforeVat: { increment: alloc.allocatedSubtotal },
             },
           });
 
@@ -398,166 +375,6 @@ export class DebtService {
         });
       }),
     );
-  }
-
-  // Action "Đóng công nợ (không xuất hóa đơn)" (024-cong-no-vat-settlement.md,
-  // Quyết định #3; đổi tên từ "Thu tiền mặt..." chốt 27/07/2026 — action này
-  // không còn thu tiền tại thời điểm bấm nữa, xem validate bên dưới) — khách
-  // đã trả xong phần trước-VAT, kế toán chủ động coi
-  // nghiệp vụ đã kết thúc, không theo dõi phần VAT còn lại như công nợ bình
-  // thường nữa. Set remainingAmount = 0 NGAY LẬP TỨC (dù paidAmount có thể
-  // mới bằng totalAmountBeforeVat, chưa bằng totalAmount có VAT) —
-  // remainingAmountBeforeVat GIỮ NGUYÊN (không reset, dùng để tính
-  // VatSettlementItem.amount sau này nếu khách quay lại xin hóa đơn). Không
-  // cần nhập lý do — đây là 1 nhánh workflow hợp lệ đã định nghĩa sẵn, không
-  // phải Manual Override.
-  async closeReceivableWithoutVat(
-    receivableId: string,
-    userId?: string | null,
-  ) {
-    const receivable = await this.prisma.receivable.findUnique({
-      where: { id: receivableId },
-      include: {
-        salesOrder: { select: { id: true, status: true, paymentStatus: true } },
-      },
-    });
-    if (!receivable) {
-      throw new NotFoundException('Công nợ không tồn tại.');
-    }
-    if (receivable.salesOrder.status === SalesOrderStatus.CANCELLED) {
-      throw new ForbiddenException('Không thể áp dụng cho đơn hàng đã huỷ.');
-    }
-    if (receivable.closedWithoutVat) {
-      throw new BadRequestException(
-        'Công nợ này đã được đóng theo chế độ tiền mặt không xuất hóa đơn.',
-      );
-    }
-    // Rà soát mô hình công nợ (chốt 27/07/2026) — action này chỉ dành cho lúc
-    // khách đã trả ĐỦ phần gốc trước-VAT, kế toán chỉ "bỏ qua" phần VAT còn
-    // thiếu. Nếu còn nợ gốc dở dang (remainingAmountBeforeVat > 0) mà vẫn cho
-    // đóng, remainingAmount (sau VAT) sẽ bị set về 0 dù khách còn nợ tiền
-    // thật — biến mất khỏi mọi nơi tính công nợ (Dashboard, danh sách, theo
-    // khách hàng). Phải thu hết phần gốc qua Payment bình thường trước.
-    if (Number(receivable.remainingAmountBeforeVat) > 0) {
-      throw new BadRequestException(
-        `Chưa thu đủ phần trước VAT (còn ${receivable.remainingAmountBeforeVat}) — chỉ được đóng khi đã thu đủ phần gốc, dùng Ghi nhận thanh toán trước.`,
-      );
-    }
-
-    const createdByName = await resolveActorName(this.prisma, userId);
-    const fromStatus = receivable.salesOrder.paymentStatus;
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.receivable.update({
-        where: { id: receivableId },
-        data: { remainingAmount: 0, closedWithoutVat: true },
-      });
-
-      await tx.salesOrder.update({
-        where: { id: receivable.salesOrderId },
-        data: { paymentStatus: PaymentStatus.PAID },
-      });
-
-      await tx.salesOrderTimeline.create({
-        data: {
-          salesOrderId: receivable.salesOrderId,
-          action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
-          actorType: SalesOrderTimelineActorType.USER,
-          payload: {
-            event: 'CLOSED_WITHOUT_VAT',
-            fromStatus,
-            toStatus: PaymentStatus.PAID,
-          },
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
-
-      return this.withDerivedFields(updated);
-    });
-  }
-
-  // Hoàn tác action "Đóng công nợ (không xuất hóa đơn)" (bổ sung 26/07/2026,
-  // theo rà soát mô hình công nợ) — đối xứng với action đóng ở trên, KHÔNG
-  // cần lý do (giống Reverse Payment: đây là undo của 1 action bình thường,
-  // không phải Manual Override). Action đóng không đụng `paidAmount`, nên chỉ
-  // cần tính lại đúng công thức Derived Data gốc để khôi phục — không cần lưu
-  // snapshot riêng.
-  async reopenReceivableClosedWithoutVat(
-    receivableId: string,
-    userId?: string | null,
-  ) {
-    const receivable = await this.prisma.receivable.findUnique({
-      where: { id: receivableId },
-      include: {
-        salesOrder: { select: { id: true, status: true, paymentStatus: true } },
-        vatSettlementItems: {
-          include: { vatSettlement: { select: { status: true } } },
-        },
-      },
-    });
-    if (!receivable) {
-      throw new NotFoundException('Công nợ không tồn tại.');
-    }
-    if (!receivable.closedWithoutVat) {
-      throw new BadRequestException(
-        'Công nợ này chưa được đóng theo chế độ tiền mặt không xuất hóa đơn.',
-      );
-    }
-    // Chặn nếu đã có VatSettlement nào KHÔNG phải CANCELLED tham chiếu tới —
-    // lúc đó đã có chứng từ tài chính khác phụ thuộc vào trạng thái "đã đóng"
-    // này (đã gửi khách/đã thu/đã xuất hóa đơn), mở lại sẽ phá Snapshot của
-    // VatSettlementItem.amount. Một VatSettlement từng tạo rồi CANCELLED (chưa
-    // gửi khách, chưa đụng gì) thì không chặn.
-    const hasLiveVatSettlement = receivable.vatSettlementItems.some(
-      (item) => item.vatSettlement.status !== 'CANCELLED',
-    );
-    if (hasLiveVatSettlement) {
-      throw new BadRequestException(
-        'Công nợ này đã thuộc một VAT Settlement (chưa huỷ) — không thể hoàn tác.',
-      );
-    }
-
-    const createdByName = await resolveActorName(this.prisma, userId);
-    const fromStatus = receivable.salesOrder.paymentStatus;
-    const restoredRemainingAmount =
-      Number(receivable.totalAmount) - Number(receivable.paidAmount);
-    const restoredPaymentStatus = this.computePaymentStatus(
-      Number(receivable.paidAmount),
-      Number(receivable.totalAmount),
-    );
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.receivable.update({
-        where: { id: receivableId },
-        data: {
-          remainingAmount: restoredRemainingAmount,
-          closedWithoutVat: false,
-        },
-      });
-
-      await tx.salesOrder.update({
-        where: { id: receivable.salesOrderId },
-        data: { paymentStatus: restoredPaymentStatus },
-      });
-
-      await tx.salesOrderTimeline.create({
-        data: {
-          salesOrderId: receivable.salesOrderId,
-          action: SalesOrderTimelineAction.PAYMENT_STATUS_CHANGED,
-          actorType: SalesOrderTimelineActorType.USER,
-          payload: {
-            event: 'REOPENED_AFTER_CLOSE_WITHOUT_VAT',
-            fromStatus,
-            toStatus: restoredPaymentStatus,
-          },
-          createdBy: userId ?? null,
-          createdByName,
-        },
-      });
-
-      return this.withDerivedFields(updated);
-    });
   }
 
   // Danh sách Receivable còn nợ của 1 khách hàng, sort FIFO (createdAt asc) —
@@ -602,14 +419,12 @@ export class DebtService {
         id: b.id,
         code: b.code,
         remainingAmount: Number(b.remainingAmount),
-        remainingAmountBeforeVat: Number(b.remainingAmountBeforeVat),
       })),
       ...receivables.map((r) => ({
         target: 'RECEIVABLE' as const,
         id: r.id,
         code: r.salesOrder.code,
         remainingAmount: Number(r.remainingAmount),
-        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
       })),
     ];
   }
@@ -653,9 +468,9 @@ export class DebtService {
   // Không cho thanh toán vượt tổng công nợ (Quyết định #7). Nếu `overrides`
   // được truyền (kế toán tự sửa tay), validate tổng phải khớp `amount` và
   // từng dòng không vượt remainingAmount của đúng đơn/khoản đó, thuộc đúng
-  // khách hàng. Nếu không, tự tính FIFO. Trả kèm `remainingAmountBeforeVat`/
-  // `currentPaymentStatus` đã đọc sẵn ở đây — executeAllocatedPayment() dùng
-  // thẳng, không đọc lại trong transaction.
+  // khách hàng. Nếu không, tự tính FIFO. Trả kèm `currentPaymentStatus` đã
+  // đọc sẵn ở đây — executeAllocatedPayment() dùng thẳng, không đọc lại
+  // trong transaction.
   //
   // Rà soát tab Công nợ (11/08/2026): Công nợ đầu kỳ tham gia CHUNG Allocation
   // Engine này, LUÔN đứng đầu thứ tự cấn trừ (trước mọi Receivable, bất kể
@@ -740,7 +555,6 @@ export class DebtService {
             receivableId: r.id,
             salesOrderId: r.salesOrderId,
             amount: o.amount,
-            remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
             currentPaymentStatus: r.salesOrder.paymentStatus,
           });
         } else {
@@ -764,7 +578,6 @@ export class DebtService {
             target: 'OPENING_BALANCE',
             openingBalanceId: b.id,
             amount: o.amount,
-            remainingAmountBeforeVat: Number(b.remainingAmountBeforeVat),
           });
         }
       }
@@ -815,7 +628,6 @@ export class DebtService {
         target: 'OPENING_BALANCE',
         openingBalanceId: b.id,
         amount: take,
-        remainingAmountBeforeVat: Number(b.remainingAmountBeforeVat),
       });
       remaining -= take;
     }
@@ -827,7 +639,6 @@ export class DebtService {
         receivableId: r.id,
         salesOrderId: r.salesOrderId,
         amount: take,
-        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
         currentPaymentStatus: r.salesOrder.paymentStatus,
       });
       remaining -= take;
@@ -836,8 +647,8 @@ export class DebtService {
   }
 
   // Nhận danh sách allocation ĐÃ resolve (biết đúng receivableId + amount +
-  // remainingAmountBeforeVat + currentPaymentStatus từng dòng, đọc từ trước
-  // khi vào transaction) — tạo 1 Payment, N PaymentAllocation, update atomic
+  // currentPaymentStatus từng dòng, đọc từ trước khi vào transaction) — tạo
+  // 1 Payment, N PaymentAllocation, update atomic
   // từng Receivable + SalesOrder.paymentStatus + SalesOrderTimeline, trong 1
   // transaction. Concurrency Rule (debt.md) không đổi: CHECK
   // (remaining_amount >= 0) + atomic increment/decrement — nếu 2 giao dịch
@@ -879,15 +690,6 @@ export class DebtService {
         });
 
         for (const alloc of input.allocations) {
-          // BeforeVatFirstPolicy: trừ hết phần trước-VAT trước, dư mới trừ VAT
-          // — floor tại 0, không cho remainingAmountBeforeVat âm qua đường này
-          // (khác hành vi cũ trừ đều cả 2 field, xem allocation-policy.ts).
-          const { allocatedSubtotal, allocatedVat } =
-            this.allocationPolicy.split(
-              { remainingAmountBeforeVat: alloc.remainingAmountBeforeVat },
-              alloc.amount,
-            );
-
           // Công nợ đầu kỳ (rà soát tab Công nợ, 11/08/2026) — không có
           // SalesOrder nên không cập nhật paymentStatus/SalesOrderTimeline,
           // ghi OpeningBalanceTimeline riêng thay thế.
@@ -896,8 +698,6 @@ export class DebtService {
               data: {
                 paymentId: payment.id,
                 openingBalanceId: alloc.openingBalanceId,
-                allocatedSubtotal,
-                allocatedVat,
                 allocatedTotal: alloc.amount,
               },
             });
@@ -909,7 +709,6 @@ export class DebtService {
               where: { id: alloc.openingBalanceId },
               data: {
                 remainingAmount: { decrement: alloc.amount },
-                remainingAmountBeforeVat: { decrement: allocatedSubtotal },
               },
             });
 
@@ -931,8 +730,6 @@ export class DebtService {
               paymentId: payment.id,
               receivableId: alloc.receivableId,
               salesOrderId: alloc.salesOrderId,
-              allocatedSubtotal,
-              allocatedVat,
               allocatedTotal: alloc.amount,
             },
           });
@@ -945,7 +742,6 @@ export class DebtService {
             data: {
               paidAmount: { increment: alloc.amount },
               remainingAmount: { decrement: alloc.amount },
-              remainingAmountBeforeVat: { decrement: allocatedSubtotal },
             },
           });
 
@@ -1185,7 +981,7 @@ export class DebtService {
           remainingAmount: { gt: 0 },
           ...(customerIdFilter ? { customerId: { in: customerIdFilter } } : {}),
         },
-        _sum: { remainingAmount: true, remainingAmountBeforeVat: true },
+        _sum: { remainingAmount: true },
         _count: { _all: true },
         _min: { dueDate: true },
       }),
@@ -1221,9 +1017,6 @@ export class DebtService {
         customerPhone: customer?.phone ?? '',
         receivableCount: g?._count._all ?? 0,
         totalRemaining,
-        totalRemainingBeforeVat:
-          Number(g?._sum.remainingAmountBeforeVat ?? 0) +
-          (openingBalance?.remainingBeforeVat ?? 0),
         daysOverdue,
         riskLevel: this.computeRiskLevel(daysOverdue),
         debtLimit,
@@ -1404,10 +1197,6 @@ export class DebtService {
           totalAmount: true,
           paidAmount: true,
           remainingAmount: true,
-          // Track song song trước-VAT (023-cong-no-truoc-sau-vat) — kế toán
-          // cần theo dõi công nợ ở cả 2 mức, không chỉ dùng cho bản in.
-          totalAmountBeforeVat: true,
-          remainingAmountBeforeVat: true,
         },
       }),
       this.prisma.receivable.aggregate({
@@ -1427,10 +1216,6 @@ export class DebtService {
       totalPaid: Number(totals._sum.paidAmount ?? 0),
       totalRemaining:
         Number(totals._sum.remainingAmount ?? 0) + openingBalance.remaining,
-      totalReceivableBeforeVat: Number(totals._sum.totalAmountBeforeVat ?? 0),
-      totalRemainingBeforeVat:
-        Number(totals._sum.remainingAmountBeforeVat ?? 0) +
-        openingBalance.remainingBeforeVat,
       overdueAmount: Number(overdueAgg._sum.remainingAmount ?? 0),
       overdueCount: overdueAgg._count._all,
     };
@@ -1561,7 +1346,6 @@ export class DebtService {
 
     return {
       totalReceivable: summary.totalRemaining,
-      totalReceivableBeforeVat: summary.totalRemainingBeforeVat,
       overdue: {
         customerCount: overdueGrouped.length,
         totalAmount: summary.overdueAmount,
@@ -1781,9 +1565,7 @@ export class DebtService {
   // xem trước trên UI (khác getAllPaymentsRaw() ở trên, vốn chỉ phục vụ export
   // report). Lấy Payment thuộc luồng Receivable/OpeningBalance (có
   // allocations) HOẶC luồng Thu tạm ứng (type=ADVANCE/REVERSAL-của-ADVANCE,
-  // 0 allocation nhưng có customerId — bổ sung 14/08/2026). Payment luồng
-  // VatSettlement (vatSettlementId) đã có màn hình riêng ở
-  // /vat-settlements/[id] (schema.prisma: "Payment thuộc ĐÚNG 1 trong 2 luồng").
+  // 0 allocation nhưng có customerId — bổ sung 14/08/2026).
   async findAllPayments(query: PaymentQueryDto) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));

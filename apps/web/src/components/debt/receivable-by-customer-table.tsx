@@ -19,23 +19,20 @@ interface CustomerDebtRow {
   customerPhone: string;
   receivableCount: number;
   totalRemaining: number;
-  totalRemainingBeforeVat: number;
   daysOverdue: number | null;
   riskLevel: string | null;
   debtLimit: number;
   creditExceeded: boolean;
 }
 
-// Đủ field để hiển thị trước/sau VAT + đã thu/tổng, giống ReceivableTable
-// (rà soát tab Công nợ, chốt 26/07/2026) — API open-by-customer đã trả sẵn
-// đầy đủ scalar field này (không select giới hạn), không cần đổi backend.
+// Đủ field để hiển thị đã thu/tổng, giống ReceivableTable (rà soát tab Công
+// nợ, chốt 26/07/2026) — API open-by-customer đã trả sẵn đầy đủ scalar field
+// này (không select giới hạn), không cần đổi backend.
 interface OpenOrderRow {
   id: string;
   totalAmount: number;
-  totalAmountBeforeVat: number;
   paidAmount: number;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
   dueDate: string | null;
   salesOrder: { code: string };
 }
@@ -46,9 +43,7 @@ interface OpenOrderRow {
 interface OpeningBalanceRow {
   id: string;
   code: string;
-  amountBeforeVat: number;
   amount: number;
-  remainingAmountBeforeVat: number;
   remainingAmount: number;
 }
 
@@ -187,9 +182,6 @@ export function ReceivableByCustomerTable({
                   <TableCell className="text-right font-mono text-sm">{r.receivableCount}</TableCell>
                   <TableCell className="text-right font-mono text-sm text-destructive">
                     {formatMoney(r.totalRemaining)}
-                    <div className="text-xs text-muted-foreground font-normal">
-                      trước VAT: {formatMoney(r.totalRemainingBeforeVat)}
-                    </div>
                   </TableCell>
                   <TableCell>
                     <RiskBadge riskLevel={r.riskLevel} />
@@ -271,18 +263,12 @@ export function ReceivableByCustomerTable({
                                       </TableCell>
                                       <TableCell className="text-right font-mono text-sm">
                                         {formatMoney(Number(o.totalAmount))}
-                                        <div className="text-xs text-muted-foreground font-normal">
-                                          trước VAT: {formatMoney(Number(o.totalAmountBeforeVat))}
-                                        </div>
                                       </TableCell>
                                       <TableCell className="text-right font-mono text-sm text-green-600">
                                         {formatMoney(Number(o.paidAmount))}
                                       </TableCell>
                                       <TableCell className="text-right font-mono text-sm text-destructive">
                                         {formatMoney(Number(o.remainingAmount))}
-                                        <div className="text-xs text-muted-foreground font-normal">
-                                          trước VAT: {formatMoney(Number(o.remainingAmountBeforeVat))}
-                                        </div>
                                       </TableCell>
                                       <TableCell>
                                         {o.dueDate ? (
@@ -322,15 +308,9 @@ export function ReceivableByCustomerTable({
                                       <TableCell className="font-mono text-xs font-medium">{b.code}</TableCell>
                                       <TableCell className="text-right font-mono text-sm">
                                         {formatMoney(Number(b.amount))}
-                                        <div className="text-xs text-muted-foreground font-normal">
-                                          trước VAT: {formatMoney(Number(b.amountBeforeVat))}
-                                        </div>
                                       </TableCell>
                                       <TableCell className="text-right font-mono text-sm text-destructive">
                                         {formatMoney(Number(b.remainingAmount))}
-                                        <div className="text-xs text-muted-foreground font-normal">
-                                          trước VAT: {formatMoney(Number(b.remainingAmountBeforeVat))}
-                                        </div>
                                       </TableCell>
                                     </TableRow>
                                   ))}

@@ -108,7 +108,6 @@ interface SalesOrder {
   items: SalesOrderItem[];
   receivable: {
     remainingAmount: number;
-    remainingAmountBeforeVat: number;
     paidAmount: number;
   } | null;
 }

@@ -63,57 +63,38 @@ describe('OpeningBalanceService', () => {
   describe('create()', () => {
     it('rejects khi thiếu customerId', async () => {
       await expect(
-        service.create({ customerId: '', amountBeforeVat: 100000 }),
+        service.create({ customerId: '', amount: 100000 }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects khi amountBeforeVat <= 0', async () => {
+    it('rejects khi amount <= 0', async () => {
       await expect(
-        service.create({ customerId: 'cust-1', amountBeforeVat: 0 }),
+        service.create({ customerId: 'cust-1', amount: 0 }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects khi Customer không tồn tại', async () => {
       prisma.customer.findUnique.mockResolvedValue(null);
       await expect(
-        service.create({ customerId: 'cust-1', amountBeforeVat: 100000 }),
+        service.create({ customerId: 'cust-1', amount: 100000 }),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('resolve amount = amountBeforeVat nếu không truyền amount', async () => {
+    it('tạo OpeningBalance với amount/remainingAmount = amount nhập vào', async () => {
       prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1' });
       prisma.openingBalance.create.mockImplementation(({ data }) => data);
 
       await service.create(
-        { customerId: 'cust-1', amountBeforeVat: 100000 },
+        { customerId: 'cust-1', amount: 100000 },
         'user-1',
       );
 
       expect(prisma.openingBalance.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            amountBeforeVat: 100000,
             amount: 100000,
-            remainingAmountBeforeVat: 100000,
             remainingAmount: 100000,
           }),
-        }),
-      );
-    });
-
-    it('giữ nguyên amount nếu có truyền riêng (khác amountBeforeVat)', async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1' });
-      prisma.openingBalance.create.mockImplementation(({ data }) => data);
-
-      await service.create({
-        customerId: 'cust-1',
-        amountBeforeVat: 100000,
-        amount: 110000,
-      });
-
-      expect(prisma.openingBalance.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ amount: 110000 }),
         }),
       );
     });
@@ -126,7 +107,7 @@ describe('OpeningBalanceService', () => {
       });
 
       const result = await service.create(
-        { customerId: 'cust-1', amountBeforeVat: 100000 },
+        { customerId: 'cust-1', amount: 100000 },
         'user-1',
       );
 
@@ -180,54 +161,52 @@ describe('OpeningBalanceService', () => {
   describe('reduce()', () => {
     it('rejects khi thiếu reason', async () => {
       await expect(
-        service.reduce('ob-1', { amountBeforeVat: 10000, reason: '' }),
+        service.reduce('ob-1', { amount: 10000, reason: '' }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects khi amountBeforeVat <= 0', async () => {
+    it('rejects khi amount <= 0', async () => {
       await expect(
-        service.reduce('ob-1', { amountBeforeVat: 0, reason: 'test' }),
+        service.reduce('ob-1', { amount: 0, reason: 'test' }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects khi OpeningBalance không tồn tại', async () => {
       prisma.openingBalance.findUnique.mockResolvedValue(null);
       await expect(
-        service.reduce('ob-x', { amountBeforeVat: 10000, reason: 'test' }),
+        service.reduce('ob-x', { amount: 10000, reason: 'test' }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('rejects khi số tiền giảm vượt quá số dư còn lại', async () => {
       prisma.openingBalance.findUnique.mockResolvedValue({
         id: 'ob-1',
-        remainingAmountBeforeVat: 50000,
+        remainingAmount: 50000,
       });
       await expect(
-        service.reduce('ob-1', { amountBeforeVat: 60000, reason: 'test' }),
+        service.reduce('ob-1', { amount: 60000, reason: 'test' }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('giảm remainingAmount/remainingAmountBeforeVat cùng 1 số tiền và ghi Timeline OPENING_BALANCE_REDUCED', async () => {
+    it('giảm remainingAmount và ghi Timeline OPENING_BALANCE_REDUCED', async () => {
       prisma.openingBalance.findUnique.mockResolvedValue({
         id: 'ob-1',
-        remainingAmountBeforeVat: 100000,
+        remainingAmount: 100000,
       });
       prisma.openingBalance.update.mockResolvedValue({
         id: 'ob-1',
-        remainingAmountBeforeVat: 70000,
         remainingAmount: 70000,
       });
 
       await service.reduce(
         'ob-1',
-        { amountBeforeVat: 30000, reason: 'Khách trả một phần' },
+        { amount: 30000, reason: 'Khách trả một phần' },
         'user-1',
       );
 
       expect(prisma.openingBalance.update).toHaveBeenCalledWith({
         where: { id: 'ob-1' },
         data: {
-          remainingAmountBeforeVat: { decrement: 30000 },
           remainingAmount: { decrement: 30000 },
         },
       });
@@ -253,7 +232,7 @@ describe('OpeningBalanceService', () => {
       prisma.openingBalance.groupBy.mockResolvedValue([
         {
           customerId: 'cust-1',
-          _sum: { remainingAmount: 300000, remainingAmountBeforeVat: 280000 },
+          _sum: { remainingAmount: 300000 },
         },
       ]);
 
@@ -267,10 +246,7 @@ describe('OpeningBalanceService', () => {
           },
         }),
       );
-      expect(result.get('cust-1')).toEqual({
-        remaining: 300000,
-        remainingBeforeVat: 280000,
-      });
+      expect(result.get('cust-1')).toEqual({ remaining: 300000 });
     });
 
     it('không lọc customerId khi gọi không truyền tham số', async () => {
@@ -287,19 +263,19 @@ describe('OpeningBalanceService', () => {
   describe('sumOpenForCustomer()', () => {
     it('trả về 0 nếu khách không có Công nợ đầu kỳ nào còn mở', async () => {
       prisma.openingBalance.aggregate.mockResolvedValue({
-        _sum: { remainingAmount: null, remainingAmountBeforeVat: null },
+        _sum: { remainingAmount: null },
       });
 
       const result = await service.sumOpenForCustomer('cust-1');
 
-      expect(result).toEqual({ remaining: 0, remainingBeforeVat: 0 });
+      expect(result).toEqual({ remaining: 0 });
     });
   });
 
   describe('sumAllOpen()', () => {
     it('tổng hợp toàn bộ Công nợ đầu kỳ còn mở, không lọc theo khách', async () => {
       prisma.openingBalance.aggregate.mockResolvedValue({
-        _sum: { remainingAmount: 900000, remainingAmountBeforeVat: 850000 },
+        _sum: { remainingAmount: 900000 },
       });
 
       const result = await service.sumAllOpen();
@@ -307,7 +283,7 @@ describe('OpeningBalanceService', () => {
       expect(prisma.openingBalance.aggregate).toHaveBeenCalledWith(
         expect.objectContaining({ where: { remainingAmount: { gt: 0 } } }),
       );
-      expect(result).toEqual({ remaining: 900000, remainingBeforeVat: 850000 });
+      expect(result).toEqual({ remaining: 900000 });
     });
   });
 });

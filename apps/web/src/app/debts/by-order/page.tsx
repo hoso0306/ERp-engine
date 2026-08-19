@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import Link from "next/link";
 import { PageHeader, Loading, ErrorState, EmptyState, endOfDayBound } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { CreditCard } from "lucide-react";
@@ -20,10 +19,8 @@ import { useAuth } from "@/context/auth-context";
 interface ReceivableRow {
   id: string;
   totalAmount: number;
-  totalAmountBeforeVat: number;
   paidAmount: number;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
   dueDate: string | null;
   salesOrder: {
     id: string;
@@ -100,15 +97,7 @@ export default function DebtsByOrderPage() {
     <div className="space-y-6">
       <PageHeader
         title="Công nợ"
-        description={
-          <>
-            Theo dõi công nợ phải thu và ghi nhận thanh toán
-            <br />
-            <Link href="/vat-settlements" className="text-primary underline underline-offset-2">
-              Xem Quyết toán VAT (đơn đã thu tiền mặt, nay xin xuất hoá đơn) →
-            </Link>
-          </>
-        }
+        description="Theo dõi công nợ phải thu và ghi nhận thanh toán"
         actions={
           hasPermission("debt.create-payment") && (
             <Button onClick={() => setAllocateOpen(true)}>

@@ -58,21 +58,19 @@ describe('CustomerService', () => {
       );
     });
 
-    it('cộng Công nợ đầu kỳ còn mở vào totalRemaining/totalRemainingBeforeVat', async () => {
+    it('cộng Công nợ đầu kỳ còn mở vào totalRemaining', async () => {
       prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
       prisma.receivable.aggregate.mockResolvedValue({
-        _sum: { remainingAmount: 500000, remainingAmountBeforeVat: 450000 },
+        _sum: { remainingAmount: 500000 },
       });
       openingBalanceService.sumOpenForCustomer.mockResolvedValue({
         remaining: 200000,
-        remainingBeforeVat: 200000,
       });
 
       const result = await service.getDebtSummary('cust-1');
 
       expect(result).toEqual({
         totalRemaining: 700000,
-        totalRemainingBeforeVat: 650000,
       });
       expect(openingBalanceService.sumOpenForCustomer).toHaveBeenCalledWith(
         'cust-1',
@@ -82,29 +80,26 @@ describe('CustomerService', () => {
     it('vẫn đúng khi khách chỉ có Công nợ đầu kỳ, chưa từng có Receivable', async () => {
       prisma.customer.findFirst.mockResolvedValue({ id: 'cust-2' });
       prisma.receivable.aggregate.mockResolvedValue({
-        _sum: { remainingAmount: null, remainingAmountBeforeVat: null },
+        _sum: { remainingAmount: null },
       });
       openingBalanceService.sumOpenForCustomer.mockResolvedValue({
         remaining: 300000,
-        remainingBeforeVat: 300000,
       });
 
       const result = await service.getDebtSummary('cust-2');
 
       expect(result).toEqual({
         totalRemaining: 300000,
-        totalRemainingBeforeVat: 300000,
       });
     });
 
     it('chỉ tính Receivable của SalesOrder chưa CANCELLED', async () => {
       prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
       prisma.receivable.aggregate.mockResolvedValue({
-        _sum: { remainingAmount: 0, remainingAmountBeforeVat: 0 },
+        _sum: { remainingAmount: 0 },
       });
       openingBalanceService.sumOpenForCustomer.mockResolvedValue({
         remaining: 0,
-        remainingBeforeVat: 0,
       });
 
       await service.getDebtSummary('cust-1');

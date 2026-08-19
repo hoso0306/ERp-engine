@@ -14,7 +14,7 @@ import { apiPost, ApiError } from "@/lib/api";
 interface ReduceOpeningBalanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  openingBalance: { id: string; code: string; remainingAmountBeforeVat: number } | null;
+  openingBalance: { id: string; code: string; remainingAmount: number } | null;
   onSaved: () => void;
 }
 
@@ -23,31 +23,31 @@ function formatMoney(amount: number) {
 }
 
 // opening-balance.md — Manual Override: giảm số dư Công nợ đầu kỳ, bắt buộc
-// lý do (không phải Payment, không đụng FIFO/VAT-split engine).
+// lý do (không phải Payment, không đụng FIFO engine).
 export function ReduceOpeningBalanceDialog({
   open,
   onOpenChange,
   openingBalance,
   onSaved,
 }: ReduceOpeningBalanceDialogProps) {
-  const [amountBeforeVat, setAmountBeforeVat] = useState("");
+  const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   function reset() {
-    setAmountBeforeVat("");
+    setAmount("");
     setReason("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!openingBalance) return;
-    const amt = parseFloat(amountBeforeVat);
+    const amt = parseFloat(amount);
     if (!amt || amt <= 0) {
       toast.error("Số tiền giảm phải lớn hơn 0.");
       return;
     }
-    if (amt > openingBalance.remainingAmountBeforeVat) {
+    if (amt > openingBalance.remainingAmount) {
       toast.error("Số tiền giảm không được vượt quá số dư còn lại.");
       return;
     }
@@ -59,7 +59,7 @@ export function ReduceOpeningBalanceDialog({
     setSaving(true);
     try {
       await apiPost(`/opening-balances/${openingBalance.id}/reduce`, {
-        amountBeforeVat: amt,
+        amount: amt,
         reason: reason.trim(),
       });
       toast.success("Đã giảm trừ Công nợ đầu kỳ.");
@@ -82,21 +82,21 @@ export function ReduceOpeningBalanceDialog({
         {openingBalance && (
           <form id="reduce-opening-balance-form" onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Số dư còn lại (trước VAT):{" "}
+              Số dư còn lại:{" "}
               <span className="font-mono font-semibold text-foreground">
-                {formatMoney(openingBalance.remainingAmountBeforeVat)}
+                {formatMoney(openingBalance.remainingAmount)}
               </span>
             </p>
             <div className="space-y-2">
-              <Label htmlFor="reduce-amount">Số tiền giảm (trước VAT) *</Label>
+              <Label htmlFor="reduce-amount">Số tiền giảm *</Label>
               <Input
                 id="reduce-amount"
                 type="number"
                 min="0"
-                max={openingBalance.remainingAmountBeforeVat}
+                max={openingBalance.remainingAmount}
                 step="any"
-                value={amountBeforeVat}
-                onChange={(e) => setAmountBeforeVat(e.target.value)}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
                 required
               />
@@ -119,7 +119,7 @@ export function ReduceOpeningBalanceDialog({
           <Button
             type="submit"
             form="reduce-opening-balance-form"
-            disabled={saving || !amountBeforeVat || !reason.trim()}
+            disabled={saving || !amount || !reason.trim()}
           >
             {saving ? "Đang lưu..." : "Giảm trừ"}
           </Button>

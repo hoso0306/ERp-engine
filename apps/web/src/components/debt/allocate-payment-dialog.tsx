@@ -30,7 +30,6 @@ interface FifoPreviewItem {
   id: string;
   code: string;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
 }
 
 interface AllocationRow {
@@ -38,7 +37,6 @@ interface AllocationRow {
   id: string;
   code: string;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
   allocated: number;
 }
 
@@ -98,10 +96,6 @@ export function AllocatePaymentDialog({
     () => fifoTargets.reduce((s, r) => s + Number(r.remainingAmount), 0),
     [fifoTargets],
   );
-  const totalOpenBeforeVat = useMemo(
-    () => fifoTargets.reduce((s, r) => s + Number(r.remainingAmountBeforeVat), 0),
-    [fifoTargets],
-  );
 
   // Preview FIFO — tính trực tiếp trong render (useMemo), không qua effect+state.
   // fifoTargets đã đúng thứ tự ưu tiên (Công nợ đầu kỳ trước, rồi Receivable
@@ -118,7 +112,6 @@ export function AllocatePaymentDialog({
         id: r.id,
         code: r.code,
         remainingAmount: Number(r.remainingAmount),
-        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
         allocated: take,
       });
       remaining -= take;
@@ -221,8 +214,6 @@ export function AllocatePaymentDialog({
             <p className="text-sm text-muted-foreground">
               Tổng công nợ hiện tại:{" "}
               <span className="font-mono font-semibold text-foreground">{formatMoney(totalOpen)}</span>
-              <br />
-              <span className="text-xs">trước VAT: {formatMoney(totalOpenBeforeVat)}</span>
             </p>
           )}
 
@@ -283,7 +274,6 @@ export function AllocatePaymentDialog({
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
                           {formatMoney(r.remainingAmount)}
-                          <div className="text-xs font-normal">trước VAT: {formatMoney(r.remainingAmountBeforeVat)}</div>
                         </TableCell>
                         <TableCell>
                           <Input

@@ -53,9 +53,7 @@ interface ProductDiscount {
 interface OpeningBalance {
   id: string;
   code: string;
-  amountBeforeVat: number;
   amount: number;
-  remainingAmountBeforeVat: number;
   remainingAmount: number;
   note: string | null;
   createdAt: string;

@@ -26,22 +26,20 @@ export function OpeningBalanceDialog({
   customerId,
   onSaved,
 }: OpeningBalanceDialogProps) {
-  const [amountBeforeVat, setAmountBeforeVat] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   function reset() {
-    setAmountBeforeVat("");
     setAmount("");
     setNote("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const amtBeforeVat = parseFloat(amountBeforeVat);
-    if (!amtBeforeVat || amtBeforeVat <= 0) {
-      toast.error("Số tiền trước VAT phải lớn hơn 0.");
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      toast.error("Số tiền phải lớn hơn 0.");
       return;
     }
 
@@ -49,8 +47,7 @@ export function OpeningBalanceDialog({
     try {
       await apiPost("/opening-balances", {
         customerId,
-        amountBeforeVat: amtBeforeVat,
-        amount: amount ? parseFloat(amount) : undefined,
+        amount: amt,
         note: note.trim() || undefined,
       });
       toast.success("Đã thêm Công nợ đầu kỳ.");
@@ -72,20 +69,7 @@ export function OpeningBalanceDialog({
         </DialogHeader>
         <form id="opening-balance-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="ob-amount-before-vat">Số tiền trước VAT *</Label>
-            <Input
-              id="ob-amount-before-vat"
-              type="number"
-              min="0"
-              step="any"
-              value={amountBeforeVat}
-              onChange={(e) => setAmountBeforeVat(e.target.value)}
-              placeholder="0"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ob-amount">Số tiền sau VAT</Label>
+            <Label htmlFor="ob-amount">Số tiền *</Label>
             <Input
               id="ob-amount"
               type="number"
@@ -93,7 +77,8 @@ export function OpeningBalanceDialog({
               step="any"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="Để trống = bằng số tiền trước VAT"
+              placeholder="0"
+              required
             />
           </div>
           <div className="space-y-2">
@@ -109,7 +94,7 @@ export function OpeningBalanceDialog({
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button type="submit" form="opening-balance-form" disabled={saving || !amountBeforeVat}>
+          <Button type="submit" form="opening-balance-form" disabled={saving || !amount}>
             {saving ? "Đang lưu..." : "Thêm"}
           </Button>
         </DialogFooter>

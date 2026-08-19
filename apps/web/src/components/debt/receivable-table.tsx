@@ -11,10 +11,8 @@ import { RiskBadge, computeDaysOverdue, computeRiskLevel } from "./risk-badge";
 interface ReceivableRow {
   id: string;
   totalAmount: number;
-  totalAmountBeforeVat: number;
   paidAmount: number;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
   dueDate: string | null;
   salesOrder: {
     id: string;
@@ -75,18 +73,12 @@ export function ReceivableTable({ receivables, meta, onPageChange }: ReceivableT
                   <TableCell className="font-mono text-xs font-medium">{r.salesOrder.code}</TableCell>
                   <TableCell className="text-right font-mono text-sm">
                     {formatMoney(Number(r.totalAmount))}
-                    <div className="text-xs text-muted-foreground font-normal">
-                      trước VAT: {formatMoney(Number(r.totalAmountBeforeVat))}
-                    </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm text-green-600">
                     {formatMoney(Number(r.paidAmount))}
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm text-destructive">
                     {formatMoney(Number(r.remainingAmount))}
-                    <div className="text-xs text-muted-foreground font-normal">
-                      trước VAT: {formatMoney(Number(r.remainingAmountBeforeVat))}
-                    </div>
                   </TableCell>
                   <TableCell>
                     {r.dueDate ? (

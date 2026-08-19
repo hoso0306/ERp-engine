@@ -783,10 +783,7 @@ export class ReportService {
         { header: 'Tổng tiền', key: 'totalAmount', width: 16, align: 'right' },
         { header: 'Đã thu', key: 'paidAmount', width: 16, align: 'right' },
         { header: 'Còn lại', key: 'remainingAmount', width: 16, align: 'right' },
-        { header: 'Tổng trước VAT', key: 'totalAmountBeforeVat', width: 16, align: 'right' },
-        { header: 'Còn lại trước VAT', key: 'remainingAmountBeforeVat', width: 16, align: 'right' },
         { header: 'Hạn thanh toán', key: 'dueDate', width: 14 },
-        { header: 'Đóng không xuất HĐ', key: 'closedWithoutVat', width: 16 },
         { header: 'Ngày tạo', key: 'createdAt', width: 16 },
       ],
       rows: receivables.map((r) => ({
@@ -796,10 +793,7 @@ export class ReportService {
         totalAmount: Number(r.totalAmount),
         paidAmount: Number(r.paidAmount),
         remainingAmount: Number(r.remainingAmount),
-        totalAmountBeforeVat: Number(r.totalAmountBeforeVat),
-        remainingAmountBeforeVat: Number(r.remainingAmountBeforeVat),
         dueDate: r.dueDate ? r.dueDate.toLocaleDateString('vi-VN') : '',
-        closedWithoutVat: r.closedWithoutVat ? 'Có' : 'Không',
         createdAt: r.createdAt.toLocaleDateString('vi-VN'),
       })),
     };

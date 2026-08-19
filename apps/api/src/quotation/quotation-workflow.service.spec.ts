@@ -399,9 +399,9 @@ describe('QuotationWorkflowService.approve()', () => {
     expect(soData.plannedProfit).toBe(2_000_000 - 0 - 300_000);
   });
 
-  // Phí vận chuyển (chốt 27/07/2026) — cộng vào grandTotal/totalAmountBeforeVat
-  // (không chịu VAT), KHÔNG ảnh hưởng plannedProfit (khoản thu hộ khách).
-  it('cộng shippingFee vào grandTotal/totalAmountBeforeVat nhưng không ảnh hưởng plannedProfit khi Approve', async () => {
+  // Phí vận chuyển (chốt 27/07/2026) — cộng vào grandTotal (không chịu VAT),
+  // KHÔNG ảnh hưởng plannedProfit (khoản thu hộ khách).
+  it('cộng shippingFee vào grandTotal nhưng không ảnh hưởng plannedProfit khi Approve', async () => {
     const item = makeItem(); // subtotal 2.000.000, plannedCost 0
     prisma.quotation.findUnique.mockResolvedValue(
       makeQuotation({ items: [item], shippingFee: 150_000 }),
@@ -447,7 +447,7 @@ describe('QuotationWorkflowService.approve()', () => {
     expect(soData.plannedProfit).toBe(2_000_000 - 0 - 0);
 
     const receivableData = tx.receivable.create.mock.calls[0][0].data;
-    expect(receivableData.totalAmountBeforeVat).toBe(2_000_000 - 0 + 150_000);
+    expect(receivableData.totalAmount).toBe(2_000_000 - 0 + 150_000);
   });
 
   // Fix 19/07/2026 — expectedDeliveryDate không được set ở đâu cả, dù field

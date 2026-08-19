@@ -21,9 +21,6 @@ function makeSalesOrder(overrides: Record<string, unknown> = {}) {
       totalAmount: 1000000,
       paidAmount: 0,
       remainingAmount: 1000000,
-      // Mặc định kịch bản không VAT (remainingAmountBeforeVat = remainingAmount)
-      // — đủ cho các test không quan tâm tới BeforeVatFirstPolicy split.
-      remainingAmountBeforeVat: 1000000,
     },
     ...overrides,
   };
@@ -107,12 +104,8 @@ describe('DebtService', () => {
     // Mặc định không có Công nợ đầu kỳ nào — các test merge ghi đè riêng.
     openingBalanceService = {
       sumOpenByCustomerIds: jest.fn().mockResolvedValue(new Map()),
-      sumOpenForCustomer: jest
-        .fn()
-        .mockResolvedValue({ remaining: 0, remainingBeforeVat: 0 }),
-      sumAllOpen: jest
-        .fn()
-        .mockResolvedValue({ remaining: 0, remainingBeforeVat: 0 }),
+      sumOpenForCustomer: jest.fn().mockResolvedValue({ remaining: 0 }),
+      sumAllOpen: jest.fn().mockResolvedValue({ remaining: 0 }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -253,7 +246,6 @@ describe('DebtService', () => {
         data: {
           paidAmount: { increment: 300000 },
           remainingAmount: { decrement: 300000 },
-          remainingAmountBeforeVat: { decrement: 300000 },
         },
       });
     });
@@ -308,7 +300,6 @@ describe('DebtService', () => {
             totalAmount: 1000000,
             paidAmount: 300000,
             remainingAmount: 700000,
-            remainingAmountBeforeVat: 700000,
           },
         }),
       );
@@ -377,7 +368,7 @@ describe('DebtService', () => {
       );
     });
 
-    it('BeforeVatFirstPolicy: phần vượt remainingAmountBeforeVat tính vào allocatedVat (023-cong-no-payment-allocation-fifo)', async () => {
+    it('ghi PaymentAllocation với allocatedTotal duy nhất, không còn split subtotal/VAT', async () => {
       prisma.salesOrder.findUnique.mockResolvedValue(
         makeSalesOrder({
           receivable: {
@@ -385,7 +376,6 @@ describe('DebtService', () => {
             totalAmount: 1100000,
             paidAmount: 0,
             remainingAmount: 1100000,
-            remainingAmountBeforeVat: 800000, // VAT = 300000
           },
         }),
       );
@@ -407,8 +397,6 @@ describe('DebtService', () => {
           paymentId: 'pay-1',
           receivableId: 'rec-1',
           salesOrderId: 'so-1',
-          allocatedSubtotal: 800000,
-          allocatedVat: 200000,
           allocatedTotal: 1000000,
         },
       });
@@ -417,7 +405,6 @@ describe('DebtService', () => {
         data: {
           paidAmount: { increment: 1000000 },
           remainingAmount: { decrement: 1000000 },
-          remainingAmountBeforeVat: { decrement: 800000 },
         },
       });
     });
@@ -453,7 +440,6 @@ describe('DebtService', () => {
           salesOrderId: 'so-1',
           customerId: 'cust-1',
           remainingAmount: 300000,
-          remainingAmountBeforeVat: 300000,
           salesOrder: { paymentStatus: 'UNPAID' },
         },
         {
@@ -461,7 +447,6 @@ describe('DebtService', () => {
           salesOrderId: 'so-2',
           customerId: 'cust-1',
           remainingAmount: 500000,
-          remainingAmountBeforeVat: 500000,
           salesOrder: { paymentStatus: 'UNPAID' },
         },
       ]);
@@ -494,7 +479,6 @@ describe('DebtService', () => {
           salesOrderId: 'so-1',
           customerId: 'cust-1',
           remainingAmount: 300000,
-          remainingAmountBeforeVat: 300000,
           salesOrder: { paymentStatus: 'UNPAID' },
         },
       ]);
@@ -550,7 +534,6 @@ describe('DebtService', () => {
           customerId: 'cust-1',
           salesOrderId: 'so-1',
           remainingAmount: 500000,
-          remainingAmountBeforeVat: 500000,
           salesOrder: { status: 'IN_PRODUCTION', paymentStatus: 'UNPAID' },
         },
         {
@@ -558,7 +541,6 @@ describe('DebtService', () => {
           customerId: 'cust-1',
           salesOrderId: 'so-2',
           remainingAmount: 500000,
-          remainingAmountBeforeVat: 500000,
           salesOrder: { status: 'IN_PRODUCTION', paymentStatus: 'UNPAID' },
         },
       ]);
@@ -599,7 +581,6 @@ describe('DebtService', () => {
             id: 'ob-1',
             customerId: 'cust-1',
             remainingAmount: 200000,
-            remainingAmountBeforeVat: 200000,
           },
         ]);
         prisma.receivable.findMany.mockResolvedValue([
@@ -608,7 +589,6 @@ describe('DebtService', () => {
             salesOrderId: 'so-1',
             customerId: 'cust-1',
             remainingAmount: 500000,
-            remainingAmountBeforeVat: 500000,
             salesOrder: { paymentStatus: 'UNPAID' },
           },
         ]);
@@ -636,7 +616,6 @@ describe('DebtService', () => {
           where: { id: 'ob-1' },
           data: {
             remainingAmount: { decrement: 200000 },
-            remainingAmountBeforeVat: { decrement: 200000 },
           },
         });
         // Không có SalesOrder nào gắn với Công nợ đầu kỳ — không ghi
@@ -656,7 +635,6 @@ describe('DebtService', () => {
             id: 'ob-1',
             customerId: 'cust-1',
             remainingAmount: 100000,
-            remainingAmountBeforeVat: 100000,
           },
         ]);
         prisma.receivable.findMany.mockResolvedValue([
@@ -665,7 +643,6 @@ describe('DebtService', () => {
             salesOrderId: 'so-1',
             customerId: 'cust-1',
             remainingAmount: 300000,
-            remainingAmountBeforeVat: 300000,
             salesOrder: { paymentStatus: 'UNPAID' },
           },
         ]);
@@ -687,7 +664,6 @@ describe('DebtService', () => {
             id: 'ob-1',
             customerId: 'cust-1',
             remainingAmount: 200000,
-            remainingAmountBeforeVat: 200000,
           },
         ]);
 
@@ -708,7 +684,6 @@ describe('DebtService', () => {
           where: { id: 'ob-1' },
           data: {
             remainingAmount: { decrement: 150000 },
-            remainingAmountBeforeVat: { decrement: 150000 },
           },
         });
       });
@@ -751,7 +726,7 @@ describe('DebtService', () => {
       });
     });
 
-    it('cộng lại đúng paidAmount/remainingAmount/remainingAmountBeforeVat theo từng PaymentAllocation gốc', async () => {
+    it('cộng lại đúng paidAmount/remainingAmount theo từng PaymentAllocation gốc', async () => {
       prisma.payment.findUnique.mockResolvedValue({
         id: 'pay-1',
         code: 'PT000001',
@@ -763,8 +738,6 @@ describe('DebtService', () => {
           {
             receivableId: 'rec-1',
             salesOrderId: 'so-1',
-            allocatedSubtotal: 250000,
-            allocatedVat: 50000,
             allocatedTotal: 300000,
           },
         ],
@@ -792,7 +765,6 @@ describe('DebtService', () => {
         data: {
           paidAmount: { decrement: 300000 },
           remainingAmount: { increment: 300000 },
-          remainingAmountBeforeVat: { increment: 250000 },
         },
       });
       expect(prisma.salesOrder.update).toHaveBeenCalledWith({
@@ -814,8 +786,6 @@ describe('DebtService', () => {
             receivableId: null,
             salesOrderId: null,
             openingBalanceId: 'ob-1',
-            allocatedSubtotal: 150000,
-            allocatedVat: 0,
             allocatedTotal: 150000,
           },
         ],
@@ -832,7 +802,6 @@ describe('DebtService', () => {
         where: { id: 'ob-1' },
         data: {
           remainingAmount: { increment: 150000 },
-          remainingAmountBeforeVat: { increment: 150000 },
         },
       });
       expect(prisma.openingBalanceTimeline.create).toHaveBeenCalledWith({
@@ -923,249 +892,6 @@ describe('DebtService', () => {
     });
   });
 
-  describe('closeReceivableWithoutVat() — 024-cong-no-vat-settlement.md', () => {
-    it('set remainingAmount = 0, closedWithoutVat = true, paymentStatus = PAID; giữ nguyên remainingAmountBeforeVat', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: false,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PARTIALLY_PAID',
-        },
-      });
-      prisma.receivable.update.mockResolvedValue({
-        id: 'rec-1',
-        dueDate: null,
-        remainingAmount: 0,
-        closedWithoutVat: true,
-      });
-
-      await service.closeReceivableWithoutVat('rec-1');
-
-      expect(prisma.receivable.update).toHaveBeenCalledWith({
-        where: { id: 'rec-1' },
-        data: { remainingAmount: 0, closedWithoutVat: true },
-      });
-      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
-        where: { id: 'so-1' },
-        data: { paymentStatus: 'PAID' },
-      });
-      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            action: 'PAYMENT_STATUS_CHANGED',
-            payload: expect.objectContaining({
-              event: 'CLOSED_WITHOUT_VAT',
-              fromStatus: 'PARTIALLY_PAID',
-              toStatus: 'PAID',
-            }),
-          }),
-        }),
-      );
-    });
-
-    it('chặn khi Receivable không tồn tại', async () => {
-      prisma.receivable.findUnique.mockResolvedValue(null);
-      await expect(service.closeReceivableWithoutVat('rec-x')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('chặn khi SalesOrder đã CANCELLED', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: false,
-        salesOrder: {
-          id: 'so-1',
-          status: 'CANCELLED',
-          paymentStatus: 'UNPAID',
-        },
-      });
-      await expect(service.closeReceivableWithoutVat('rec-1')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('chặn khi Receivable đã closedWithoutVat trước đó', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: true,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PAID',
-        },
-      });
-      await expect(service.closeReceivableWithoutVat('rec-1')).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    // Rà soát mô hình công nợ (chốt 27/07/2026): không cho đóng khi còn nợ gốc
-    // dở dang, tránh remainingAmount (sau VAT) bị set về 0 trong khi khách còn
-    // nợ tiền thật (không chỉ VAT).
-    it('chặn khi còn nợ gốc dở dang (remainingAmountBeforeVat > 0)', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: false,
-        remainingAmountBeforeVat: 500000,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PARTIALLY_PAID',
-        },
-      });
-      await expect(service.closeReceivableWithoutVat('rec-1')).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(prisma.receivable.update).not.toHaveBeenCalled();
-    });
-
-    it('cho phép đóng khi remainingAmountBeforeVat = 0 (đã thu đủ phần gốc)', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: false,
-        remainingAmountBeforeVat: 0,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PARTIALLY_PAID',
-        },
-      });
-      prisma.receivable.update.mockResolvedValue({
-        id: 'rec-1',
-        dueDate: null,
-        remainingAmount: 0,
-        closedWithoutVat: true,
-      });
-
-      await service.closeReceivableWithoutVat('rec-1');
-
-      expect(prisma.receivable.update).toHaveBeenCalledWith({
-        where: { id: 'rec-1' },
-        data: { remainingAmount: 0, closedWithoutVat: true },
-      });
-    });
-  });
-
-  describe('reopenReceivableClosedWithoutVat() — bổ sung 26/07/2026 (rà soát mô hình công nợ)', () => {
-    it('khôi phục remainingAmount/paymentStatus đúng công thức Derived Data gốc (totalAmount - paidAmount)', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: true,
-        totalAmount: 1000000,
-        paidAmount: 400000,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PAID',
-        },
-        vatSettlementItems: [],
-      });
-      prisma.receivable.update.mockResolvedValue({
-        id: 'rec-1',
-        dueDate: null,
-        remainingAmount: 600000,
-        closedWithoutVat: false,
-      });
-
-      await service.reopenReceivableClosedWithoutVat('rec-1');
-
-      expect(prisma.receivable.update).toHaveBeenCalledWith({
-        where: { id: 'rec-1' },
-        data: { remainingAmount: 600000, closedWithoutVat: false },
-      });
-      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
-        where: { id: 'so-1' },
-        data: { paymentStatus: 'PARTIALLY_PAID' },
-      });
-      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            payload: expect.objectContaining({
-              event: 'REOPENED_AFTER_CLOSE_WITHOUT_VAT',
-              fromStatus: 'PAID',
-              toStatus: 'PARTIALLY_PAID',
-            }),
-          }),
-        }),
-      );
-    });
-
-    it('chặn khi Receivable chưa closedWithoutVat', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: false,
-        totalAmount: 1000000,
-        paidAmount: 400000,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PARTIALLY_PAID',
-        },
-        vatSettlementItems: [],
-      });
-
-      await expect(
-        service.reopenReceivableClosedWithoutVat('rec-1'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('chặn khi đã thuộc 1 VatSettlement chưa huỷ (SENT)', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: true,
-        totalAmount: 1000000,
-        paidAmount: 1000000,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PAID',
-        },
-        vatSettlementItems: [{ vatSettlement: { status: 'SENT' } }],
-      });
-
-      await expect(
-        service.reopenReceivableClosedWithoutVat('rec-1'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('cho phép khi VatSettlement liên quan đã CANCELLED', async () => {
-      prisma.receivable.findUnique.mockResolvedValue({
-        id: 'rec-1',
-        salesOrderId: 'so-1',
-        closedWithoutVat: true,
-        totalAmount: 1000000,
-        paidAmount: 1000000,
-        salesOrder: {
-          id: 'so-1',
-          status: 'IN_PRODUCTION',
-          paymentStatus: 'PAID',
-        },
-        vatSettlementItems: [{ vatSettlement: { status: 'CANCELLED' } }],
-      });
-      prisma.receivable.update.mockResolvedValue({
-        id: 'rec-1',
-        dueDate: null,
-        remainingAmount: 0,
-        closedWithoutVat: false,
-      });
-
-      await expect(
-        service.reopenReceivableClosedWithoutVat('rec-1'),
-      ).resolves.toBeDefined();
-    });
-  });
-
   describe('findAllReceivables()', () => {
     it('always excludes Receivable của SalesOrder đã CANCELLED (công nợ đang mở)', async () => {
       prisma.receivable.findMany.mockResolvedValue([]);
@@ -1194,7 +920,7 @@ describe('DebtService', () => {
       prisma.receivable.groupBy.mockResolvedValue([
         {
           customerId: 'cust-1',
-          _sum: { remainingAmount: 500000, remainingAmountBeforeVat: 500000 },
+          _sum: { remainingAmount: 500000 },
           _count: { _all: 1 },
           _min: { dueDate: null },
         },
@@ -1203,9 +929,7 @@ describe('DebtService', () => {
         { id: 'cust-1', name: 'Khách A', phone: '0900000001', debtLimit: 0 },
       ]);
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
-        new Map([
-          ['cust-1', { remaining: 200000, remainingBeforeVat: 200000 }],
-        ]),
+        new Map([['cust-1', { remaining: 200000 }]]),
       );
 
       const result = await service.findReceivablesByCustomer({});
@@ -1214,7 +938,6 @@ describe('DebtService', () => {
         expect.objectContaining({
           customerId: 'cust-1',
           totalRemaining: 700000,
-          totalRemainingBeforeVat: 700000,
         }),
       ]);
     });
@@ -1225,9 +948,7 @@ describe('DebtService', () => {
         { id: 'cust-2', name: 'Khách B', phone: '0900000002', debtLimit: 0 },
       ]);
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
-        new Map([
-          ['cust-2', { remaining: 300000, remainingBeforeVat: 300000 }],
-        ]),
+        new Map([['cust-2', { remaining: 300000 }]]),
       );
 
       const result = await service.findReceivablesByCustomer({});
@@ -1255,9 +976,7 @@ describe('DebtService', () => {
       // Receivable riêng (800k) chưa vượt hạn mức (1tr), nhưng cộng thêm
       // Công nợ đầu kỳ (300k) thì vượt.
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
-        new Map([
-          ['cust-1', { remaining: 300000, remainingBeforeVat: 300000 }],
-        ]),
+        new Map([['cust-1', { remaining: 300000 }]]),
       );
 
       const result = await service.getCreditLimitExceededCustomers();
@@ -1276,9 +995,7 @@ describe('DebtService', () => {
         { id: 'cust-3', name: 'Khách C', debtLimit: 100000 },
       ]);
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
-        new Map([
-          ['cust-3', { remaining: 200000, remainingBeforeVat: 200000 }],
-        ]),
+        new Map([['cust-3', { remaining: 200000 }]]),
       );
 
       const result = await service.getCreditLimitExceededCustomers();
@@ -1293,15 +1010,13 @@ describe('DebtService', () => {
   });
 
   describe('getDashboardSummary() — merge Công nợ đầu kỳ', () => {
-    it('cộng Công nợ đầu kỳ vào totalRemaining/totalRemainingBeforeVat, không đụng totalReceivable/totalPaid', async () => {
+    it('cộng Công nợ đầu kỳ vào totalRemaining, không đụng totalReceivable/totalPaid', async () => {
       prisma.receivable.aggregate
         .mockResolvedValueOnce({
           _sum: {
             totalAmount: 5000000,
             paidAmount: 2000000,
             remainingAmount: 3000000,
-            totalAmountBeforeVat: 4500000,
-            remainingAmountBeforeVat: 2700000,
           },
         })
         .mockResolvedValueOnce({
@@ -1310,7 +1025,6 @@ describe('DebtService', () => {
         });
       openingBalanceService.sumAllOpen.mockResolvedValue({
         remaining: 500000,
-        remainingBeforeVat: 500000,
       });
 
       const result = await service.getDashboardSummary();
@@ -1319,8 +1033,6 @@ describe('DebtService', () => {
         totalReceivable: 5000000,
         totalPaid: 2000000,
         totalRemaining: 3500000,
-        totalReceivableBeforeVat: 4500000,
-        totalRemainingBeforeVat: 3200000,
         overdueAmount: 1000000,
         overdueCount: 2,
       });
@@ -1336,9 +1048,7 @@ describe('DebtService', () => {
         { customerId: 'cust-2', _sum: { remainingAmount: 100000 } },
       ]);
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
-        new Map([
-          ['cust-2', { remaining: 1000000, remainingBeforeVat: 1000000 }],
-        ]),
+        new Map([['cust-2', { remaining: 1000000 }]]),
       );
       prisma.customer.findMany.mockResolvedValue([
         { id: 'cust-1', name: 'Khách A', phone: '0900000001' },
@@ -1365,8 +1075,8 @@ describe('DebtService', () => {
       ]);
       openingBalanceService.sumOpenByCustomerIds.mockResolvedValue(
         new Map([
-          ['cust-2', { remaining: 50000, remainingBeforeVat: 50000 }],
-          ['cust-3', { remaining: 900000, remainingBeforeVat: 900000 }],
+          ['cust-2', { remaining: 50000 }],
+          ['cust-3', { remaining: 900000 }],
         ]),
       );
       prisma.customer.findMany.mockResolvedValue([

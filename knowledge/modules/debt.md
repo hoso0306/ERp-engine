@@ -199,31 +199,16 @@ customerId              // redundant reference — xem lý do bên dưới
 totalAmount              // snapshot từ SalesOrder.grandTotal (KHÔNG phải totalAmount doanh thu — Sprint 04, chốt 16/07/2026)
 paidAmount
 remainingAmount
-totalAmountBeforeVat     // track song song trước-VAT — xem "Track song song Trước VAT / Sau VAT"
-remainingAmountBeforeVat // track song song trước-VAT — xem "Track song song Trước VAT / Sau VAT"
 debtLimitSnapshot        // Credit Policy Snapshot
 debtTermDaysSnapshot     // Credit Policy Snapshot
 dueDate                  // NULL cho tới khi Delivered — xem "Due Date & Overdue Tracking"
-closedWithoutVat         // 024-cong-no-vat-settlement.md — xem mục "Đóng công nợ (không xuất hóa đơn)"
 createdAt
 updatedAt
 ```
 
 **`totalAmount` = `SalesOrder.grandTotal`, không phải `SalesOrder.totalAmount` (Sprint 04, chốt 16/07/2026).** `SalesOrder.totalAmount` là doanh thu sổ sách (không gồm VAT, không trừ Giảm thêm) — giữ nguyên công thức cũ, dùng cho Báo cáo doanh số. `grandTotal = totalAmount + totalVatAmount − discountAmount + shippingFee` (Phí vận chuyển, chốt 27/07/2026 — xem `quotation.md` mục "Phí vận chuyển") mới là số tiền hoá đơn thực tế khách phải trả — đây mới đúng là số tiền cần thu công nợ. Hai giá trị này **chỉ trùng nhau tình cờ** khi VAT = 0%, không có Giảm thêm và không có Phí vận chuyển; không có code nào khác so sánh trực tiếp hai field này với nhau.
 
-### Track song song Trước VAT / Sau VAT
-
-Khách trả tiền mặt không lấy hoá đơn thì không cần đóng phần VAT — kế toán cần theo dõi công nợ ở **cả 2 mức cùng lúc**, không chỉ một mức duy nhất.
-
-```text
-totalAmountBeforeVat     = SalesOrder.totalAmount - discountAmount + shippingFee, snapshot tại Approve
-remainingAmountBeforeVat = totalAmountBeforeVat - (tổng Payment đã trừ vào track này)
-```
-
-- **Nguồn:** `SalesOrder.totalAmount - discountAmount + shippingFee` tại thời điểm `Quotation.approve()` — cùng nơi snapshot `totalAmount` (sau-VAT). `shippingFee` không chịu VAT nên cộng đều vào cả 2 mức, giữ đúng bất biến `totalAmount − totalAmountBeforeVat = totalVatAmount` (dùng để tính VAT phải nộp — xem `vat-settlement.service.ts`).
-- **Cập nhật:** mỗi lần có `PaymentAllocation` mới cấn cho Receivable này, `remainingAmountBeforeVat` bị trừ theo `allocatedSubtotal` do `AllocationPolicy` tính (mặc định `BeforeVatFirstPolicy` — xem mục riêng phía trên), **không còn trừ đều theo full amount** như trước 023-cong-no-payment-allocation-fifo.
-- **Không có `CHECK >= 0`** trên `remainingAmountBeforeVat` ở DB (khác với `remainingAmount`) — nhưng qua Allocation Engine, giá trị này **floor tại 0** (`BeforeVatFirstPolicy` chặn `allocatedSubtotal` không vượt quá phần còn lại), không tự nhiên âm nữa như thiết kế cũ.
-- **Hiển thị song song ở mọi nơi có `totalAmount`/`remainingAmount`** trên tab Công nợ (danh sách, chi tiết Receivable, Owner Dashboard — tile "Tổng còn phải thu") và bản in Báo giá/Xác nhận đơn hàng (`Customer.getDebtSummary`).
+**Chỉ quản lý công nợ ở 1 mức duy nhất — đã gồm VAT.** Trước đây từng có track song song "Trước VAT / Sau VAT" (phục vụ khách trả tiền mặt không lấy hoá đơn, đóng công nợ tạm rồi sau này quay lại xin hoá đơn qua module VAT Settlement) — đã bỏ hoàn toàn (rà soát mô hình công nợ). `totalAmount`/`remainingAmount` là số tiền duy nhất, đã gồm VAT.
 
 **Không có field `status`.** Hiệu lực công nợ của Receivable hoàn toàn phụ thuộc vào `SalesOrder.status` — xem mục "Receivable không tự quyết định hiệu lực công nợ" bên dưới.
 
@@ -279,27 +264,13 @@ Cấn 1 Payment vào 1 Receivable. Một Payment có nhiều PaymentAllocation (
 paymentId
 receivableId
 salesOrderId          // redundant reference — Receivable–SalesOrder là 1-1, tránh join khi lọc/ghi Timeline theo đơn
-allocatedSubtotal      // phần cấn vào track trước-VAT của Receivable này
-allocatedVat           // phần cấn vào track VAT của Receivable này
-allocatedTotal          // = allocatedSubtotal + allocatedVat, = số tiền Payment này cấn cho ĐÚNG đơn này
+allocatedTotal          // số tiền Payment này cấn cho ĐÚNG đơn này (1 mức duy nhất, đã gồm VAT)
 createdAt
 ```
 
 **`allocatedTotal` không nhất thiết bằng `Payment.amount`** — nếu Payment đó cấn cho nhiều đơn, mỗi `PaymentAllocation` chỉ giữ đúng phần của đơn mình. `GET /receivables/:id` hiển thị lịch sử thu tiền của 1 đơn qua danh sách `PaymentAllocation` (kèm `payment` lồng bên trong để lấy code/paymentDate/paymentMethod), không phải danh sách Payment thô.
 
-## Allocation Policy — tách rời khỏi Allocation Engine
-
-Khi 1 khoản tiền `allocatedTotal` được cấn cho 1 Receivable, cần quyết định bao nhiêu vào `allocatedSubtotal` (trước-VAT), bao nhiêu vào `allocatedVat`. Logic này tách thành 1 interface riêng (`AllocationPolicy`), độc lập với Allocation Engine (phần chọn Receivable nào được cấn, cấn bao nhiêu) — đổi chính sách sau này (vd chia theo tỷ lệ subtotal:vat của đơn) chỉ cần viết class mới, không sửa Engine.
-
-**Chính sách mặc định — `BeforeVatFirstPolicy`:**
-
-```text
-subtotalAvailable = max(receivable.remainingAmountBeforeVat, 0)
-allocatedSubtotal  = min(allocatedTotal, subtotalAvailable)
-allocatedVat       = allocatedTotal - allocatedSubtotal
-```
-
-Trừ hết phần trước-VAT của Receivable trước, dư mới trừ vào VAT — khách trả tiền mặt không lấy hoá đơn thì chỉ cần trả tới mức trước-VAT. **`remainingAmountBeforeVat` floor tại 0** qua đường Allocation Engine (không âm) — khác hành vi trước 023-cong-no-payment-allocation-fifo (khi đó trừ đều `remainingAmount` và `remainingAmountBeforeVat` cùng số tiền, có thể để `remainingAmountBeforeVat` âm). Chưa có nhu cầu chọn Policy khác qua UI — đang gán cứng 1 instance trong `DebtService`.
+**Không còn Allocation Policy tách subtotal/VAT.** Trước đây từng có interface `AllocationPolicy` (`BeforeVatFirstPolicy`) quyết định chia `allocatedTotal` thành `allocatedSubtotal`/`allocatedVat` — đã bỏ cùng lúc bỏ track song song trước-VAT/sau-VAT (rà soát mô hình công nợ). Một khoản cấn trừ giờ chỉ là 1 số tiền duy nhất (`allocatedTotal`) trừ thẳng vào `remainingAmount`.
 
 ---
 
@@ -468,9 +439,7 @@ Create Payment (1 hoặc N Receivable)
 Insert Payment
 ↓
 Với TỪNG Receivable được cấn:
-    AllocationPolicy.split() → allocatedSubtotal/allocatedVat
-    ↓
-    Insert PaymentAllocation
+    Insert PaymentAllocation (allocatedTotal = số tiền cấn, 1 mức duy nhất)
     ↓
     Update Receivable (atomic, xem "Concurrency Rule")
     ↓
@@ -493,9 +462,9 @@ Payment gốc (type=NORMAL) → có N PaymentAllocation
 Payment mới (type=REVERSAL, reversalOfPaymentId = payment gốc, amount luôn dương)
         ↓
 Với TỪNG PaymentAllocation của Payment gốc:
-    Tạo PaymentAllocation đối xứng (cùng receivableId/allocatedSubtotal/allocatedVat/allocatedTotal)
+    Tạo PaymentAllocation đối xứng (cùng receivableId/allocatedTotal)
     ↓
-    Receivable: CỘNG lại (paidAmount -= amount, remainingAmount += amount, remainingAmountBeforeVat += allocatedSubtotal)
+    Receivable: CỘNG lại (paidAmount -= amount, remainingAmount += amount)
     ↓
     Tính lại SalesOrder.paymentStatus
     ↓
@@ -503,36 +472,6 @@ Với TỪNG PaymentAllocation của Payment gốc:
 ```
 
 Chặn: hoàn tác một Payment `type = REVERSAL` (không cho reverse-of-reverse); hoàn tác một Payment đã từng bị reverse trước đó (`reversalOfPaymentId` @unique — 1 Payment chỉ bị reverse đúng 1 lần).
-
----
-
-# Đóng công nợ (không xuất hóa đơn)
-
-Kế toán có thể chọn ngay lúc thu tiền: nếu khách trả tiền mặt và không lấy hóa đơn, coi nghiệp vụ của Receivable đó **đã kết thúc**, không tiếp tục theo dõi phần VAT còn lại như công nợ bình thường.
-
-```http
-POST /receivables/:id/close-without-vat
-```
-
-Set `remainingAmount = 0` **ngay lập tức** (dù `paidAmount` có thể mới bằng `totalAmountBeforeVat`, chưa bằng `totalAmount` có VAT), `remainingAmountBeforeVat` **giữ nguyên** (không reset), `closedWithoutVat = true`, `SalesOrder.paymentStatus = PAID`. Không cần nhập lý do — đây là một nhánh workflow hợp lệ đã định nghĩa sẵn, không phải Manual Override.
-
-**Có thể hoàn tác nếu bấm nhầm** (`reopenReceivableClosedWithoutVat()`, bổ sung 26/07/2026 sau khi rà soát mô hình công nợ):
-
-```http
-POST /receivables/:id/reopen-without-vat
-```
-
-Đối xứng với action đóng — cũng không cần lý do (undo của 1 action bình thường, giống Reverse Payment, không phải Manual Override). Vì action đóng không đụng `paidAmount`, khôi phục chỉ cần tính lại đúng công thức Derived Data gốc, không cần snapshot riêng:
-
-```text
-remainingAmount = totalAmount - paidAmount
-paymentStatus   = computePaymentStatus(paidAmount, totalAmount)
-closedWithoutVat = false
-```
-
-**Chặn nếu Receivable đã thuộc 1 VAT Settlement chưa `CANCELLED`** — lúc đó đã có chứng từ tài chính khác (đã gửi khách/đã thu/đã xuất hóa đơn) phụ thuộc vào trạng thái "đã đóng" này, mở lại sẽ phá Snapshot của `VatSettlementItem.amount`. Một VAT Settlement từng tạo rồi huỷ (`CANCELLED`, chưa gửi khách) thì không chặn.
-
-Nếu sau này khách quay lại yêu cầu xuất hóa đơn, phần VAT còn lại được xử lý qua **VAT Settlement** — một chứng từ tài chính độc lập, không phải giao dịch bán hàng mới, không "hồi sinh" Receivable đã đóng. Xem chi tiết đầy đủ (schema `VatSettlement`/`VatSettlementItem`, workflow, `Payment.vatSettlementId`) tại **[`vat-settlement.md`](vat-settlement.md)**.
 
 ---
 
@@ -693,7 +632,7 @@ Timeline (CANCELLED) payload: { reason, paidAmount, refundNote: "Refund handled 
 - customerId trên Receivable là Redundant Reference (copy ID bất biến để tránh join), không phải Derived Data.
 - Toàn bộ thao tác nằm trong một transaction.
 - `GET /receivables` (danh sách trên tab Công nợ) luôn lọc `SalesOrder.status != CANCELLED` — cùng định nghĩa "công nợ đang mở" dùng chung với Dashboard/Report, không có ngoại lệ nào hiển thị lại Receivable của đơn đã huỷ.
-- `allocatedSubtotal`/`allocatedVat` (trên từng PaymentAllocation) do `AllocationPolicy` quyết định — mặc định `BeforeVatFirstPolicy`, trừ hết phần trước-VAT của Receivable trước, dư mới trừ vào VAT, floor tại 0 (xem "Allocation Policy").
+- `allocatedTotal` (trên từng PaymentAllocation) là số tiền cấn trừ duy nhất — không còn tách subtotal/VAT.
 
 ---
 
@@ -716,7 +655,7 @@ SalesOrder
 Màn hình tổng quan công nợ dành cho Owner, dựa trên các giá trị Derived ở mục "Due Date & Overdue Tracking" và "Credit Limit Monitoring":
 
 ```text
-Tổng còn phải thu (kèm song song mức trước-VAT — totalReceivableBeforeVat)
+Tổng còn phải thu
 Quá hạn (số khách, tổng tiền)
 Quá hạn > 30 ngày (riskLevel = HIGH)
 Khách vượt hạn mức (số khách, tổng tiền)
@@ -735,7 +674,7 @@ GET /receivables/:id
 GET /receivables/open-by-customer/:customerId
 ```
 
-- `GET /receivables`: list, search theo khách hàng/mã Sales Order, filter theo `paymentStatus`, `overdue=true`, `risk=LOW|MEDIUM|HIGH`, `creditExceeded=true` (theo khách hàng), pagination. **Luôn lọc `SalesOrder.status != CANCELLED`** — cùng rule "công nợ đang mở" áp dụng cho Dashboard (xem "Dashboard Rule"), không có tham số nào bật lại việc hiển thị Receivable của đơn đã huỷ. Mỗi item trả kèm `totalAmountBeforeVat`/`remainingAmountBeforeVat` (xem "Track song song Trước VAT / Sau VAT").
+- `GET /receivables`: list, search theo khách hàng/mã Sales Order, filter theo `paymentStatus`, `overdue=true`, `risk=LOW|MEDIUM|HIGH`, `creditExceeded=true` (theo khách hàng), pagination. **Luôn lọc `SalesOrder.status != CANCELLED`** — cùng rule "công nợ đang mở" áp dụng cho Dashboard (xem "Dashboard Rule"), không có tham số nào bật lại việc hiển thị Receivable của đơn đã huỷ.
 - `GET /receivables/:id`: chi tiết, kèm danh sách `PaymentAllocation` (Payment History) lồng bên trong — mỗi dòng kèm `payment` (code/paymentDate/paymentMethod/...) và `allocatedTotal` (số tiền Payment đó cấn cho ĐÚNG đơn này, không phải tổng Payment). **Không có `GET /payments` độc lập ở V1**. Lý do: kế toán luôn tra cứu theo khách hàng/đơn hàng trước, không có nhu cầu xem toàn bộ Payment của hệ thống trên một màn hình. Nếu sau này cần báo cáo/đối soát cắt ngang theo ngày hoặc phương thức thanh toán, việc đó thuộc về Module Report (V2), không mở rộng ở đây.
 - `GET /receivables/open-by-customer/:customerId`: danh sách Receivable còn nợ của 1 khách hàng, sort FIFO (`createdAt asc`) — phục vụ preview trước khi xác nhận `POST /payments/allocate` (023-cong-no-payment-allocation-fifo).
 
@@ -796,7 +735,6 @@ sẽ phát triển thành Accounting Module / Report Module (V2).
   - `cancel()` không chặn theo `Receivable.paidAmount` — nhưng phải trả về thông tin cọc đã thu để UI hiển thị cảnh báo xác nhận, và ghi `paidAmount` + refundNote vào Timeline payload
   - `deliver()` cần set thêm `Receivable.dueDate`
 - Dashboard
-- VAT Settlement (module mới, `vat-settlement.md`) — mở rộng schema `Receivable` (`closedWithoutVat`) và `Payment` (`vatSettlementId`), đọc action `closeReceivableWithoutVat()` của `DebtService`.
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã thống nhất ở đây.
 

@@ -19,7 +19,6 @@ interface PaymentDialogProps {
   onOpenChange: (open: boolean) => void;
   salesOrderId: string;
   remainingAmount: number;
-  remainingAmountBeforeVat: number;
   onSaved: () => void;
 }
 
@@ -32,7 +31,6 @@ export function PaymentDialog({
   onOpenChange,
   salesOrderId,
   remainingAmount,
-  remainingAmountBeforeVat,
   onSaved,
 }: PaymentDialogProps) {
   const [amount, setAmount] = useState("");
@@ -89,8 +87,6 @@ export function PaymentDialog({
         <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Còn phải thu: <span className="font-mono font-semibold text-foreground">{formatMoney(remainingAmount)}</span>
-            <br />
-            <span className="text-xs">trước VAT: {formatMoney(remainingAmountBeforeVat)}</span>
           </p>
           <div className="space-y-2">
             <Label htmlFor="payment-amount">Số tiền *</Label>

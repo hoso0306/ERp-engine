@@ -23,7 +23,6 @@ interface CustomerDebtRow {
   customerPhone: string;
   receivableCount: number;
   totalRemaining: number;
-  totalRemainingBeforeVat: number;
   daysOverdue: number | null;
   riskLevel: string | null;
   debtLimit: number;
