@@ -1,8 +1,15 @@
 /**
  * Thêm danh sách phụ phí hiển thị dưới đơn giá (SURCHARGE_BREAKDOWN) cho 3
- * sản phẩm SP000113/115/116 — CHỈ để hiển thị cho sale khi thêm dòng báo
- * giá, KHÔNG thay đổi cách tính giá thật (surchargeExpression giữ nguyên
- * 100%, xem pricing-engine.service.ts).
+ * sản phẩm "Rèm ngăn lạnh - Loại thu xếp" / "Mái hiên di động" / "Bạt Cuốn"
+ * — CHỈ để hiển thị cho sale khi thêm dòng báo giá, KHÔNG thay đổi cách
+ * tính giá thật (surchargeExpression giữ nguyên 100%, xem
+ * pricing-engine.service.ts).
+ *
+ * Xác định sản phẩm theo TÊN, KHÔNG theo mã (Product.code) — mã sản phẩm ở
+ * Local và VPS có thể lệch nhau (mỗi môi trường tự sinh RunningNumber độc
+ * lập), đã xác nhận với người dùng 19/08/2026 sau khi phát hiện script cũ
+ * (chạy theo mã SP000113/115/116) may mắn đúng SP ở cả 2 môi trường nhưng
+ * đó là trùng hợp, không nên dựa vào.
  *
  * Điều kiện + số tiền lấy NGUYÊN VĂN từ surchargeExpression đang ACTIVE của
  * từng sản phẩm (đã đối chiếu trực tiếp trên DB, không suy diễn), nhãn hiển
@@ -32,14 +39,14 @@ const SURCHARGE_ITEMS: Record<
   { condition: string; value: number; targetParameter: string | null; description: string }[]
 > = {
   // if(chieucao < 1.8, area*20000, 0)
-  SP000113: [
+  'Rèm ngăn lạnh - Loại thu xếp': [
     { condition: 'chieucao < 1.8', value: 20000, targetParameter: 'area', description: 'Chiều cao dưới 1,8m' },
   ],
   // if(vatlieutay=="tayinox", 460000, 0)
   //   + if(quangcao=="khongqc", 0, if(quangcao=="qc100", 100000, if(quangcao=="qc150", 150000, 200000)))
   //   + if(ong=="ongthuong", 0, if(ong=="ongnhomcung100", 100000, if(ong=="ongnhomcung120", 120000,
   //       if(ong=="ongnhomcung150", 150000, if(ong=="ongsat100", 100000, if(ong=="ongsat120", 120000, 150000))))))
-  SP000115: [
+  'Mái hiên di động': [
     { condition: 'vatlieutay=="tayinox"', value: 460000, targetParameter: null, description: 'Tay inox' },
     { condition: 'quangcao=="qc100"', value: 100000, targetParameter: null, description: 'QC 100k' },
     { condition: 'quangcao=="qc150"', value: 150000, targetParameter: null, description: 'QC150k' },
@@ -55,7 +62,7 @@ const SURCHARGE_ITEMS: Record<
   //   if(loai=="loxoham_dai",110000,if(loai=="daukeo",80000,if(loai=="daukeotichhop_trung",130000,
   //   if(loai=="daukeotichhop_dai",140000,0)))))))
   //   + if(ong=="ongnhomcung"||ong=="ongsat",area*15000,0)
-  SP000116: [
+  'Bạt Cuốn': [
     { condition: 'loai=="tayquay"', value: 80000, targetParameter: null, description: 'Tay quay' },
     { condition: 'loai=="loxothuong_dai"', value: 10000, targetParameter: null, description: 'Lò xo thường (dài)' },
     { condition: 'loai=="loxoham_trung"', value: 100000, targetParameter: null, description: 'Lò xo Hãm (trung)' },
@@ -69,10 +76,10 @@ const SURCHARGE_ITEMS: Record<
 
 let prisma: PrismaService;
 
-async function fixProduct(svc: ProductService, code: string) {
-  const items = SURCHARGE_ITEMS[code];
-  const product = await prisma.product.findUnique({
-    where: { code },
+async function fixProduct(svc: ProductService, name: string) {
+  const items = SURCHARGE_ITEMS[name];
+  const candidates = await prisma.product.findMany({
+    where: { name },
     include: {
       pricingRule: {
         include: {
@@ -84,18 +91,24 @@ async function fixProduct(svc: ProductService, code: string) {
       },
     },
   });
-  if (!product) throw new Error(`Không tìm thấy sản phẩm ${code} trên môi trường này.`);
+  if (candidates.length === 0) throw new Error(`Không tìm thấy sản phẩm tên "${name}" trên môi trường này.`);
+  if (candidates.length > 1) {
+    throw new Error(
+      `Có ${candidates.length} sản phẩm cùng tên "${name}" (mã: ${candidates.map((p) => p.code).join(', ')}) — cần xử lý tay, không tự đoán đúng cái nào.`,
+    );
+  }
+  const product = candidates[0];
 
   const activePrv = product.pricingRule?.versions[0];
-  if (!activePrv) throw new Error(`${code}: không có Pricing Rule Version ACTIVE.`);
+  if (!activePrv) throw new Error(`"${name}" (${product.code}): không có Pricing Rule Version ACTIVE.`);
 
   const alreadyApplied = activePrv.items.some((i) => i.ruleType === 'SURCHARGE_BREAKDOWN');
   if (alreadyApplied) {
-    console.log(`  [BỎ QUA] ${code} "${product.name}" đã có SURCHARGE_BREAKDOWN — coi như đã áp dụng.`);
+    console.log(`  [BỎ QUA] "${name}" (${product.code}) đã có SURCHARGE_BREAKDOWN — coi như đã áp dụng.`);
     return;
   }
 
-  console.log(`  Nhân bản Pricing Rule Version cho ${code}...`);
+  console.log(`  Nhân bản Pricing Rule Version cho "${name}" (${product.code})...`);
   const newPrv = await svc.duplicatePricingRuleVersion(activePrv.id);
   let displayOrder = 1;
   for (const item of items) {
@@ -110,7 +123,7 @@ async function fixProduct(svc: ProductService, code: string) {
   }
   await svc.activatePricingRuleVersion(newPrv!.id);
 
-  console.log(`  [XONG] ${code} "${product.name}": +${items.length} dòng SURCHARGE_BREAKDOWN.`);
+  console.log(`  [XONG] "${name}" (${product.code}): +${items.length} dòng SURCHARGE_BREAKDOWN.`);
 }
 
 async function main() {
@@ -119,9 +132,9 @@ async function main() {
   const svc = app.get(ProductService);
 
   try {
-    for (const code of Object.keys(SURCHARGE_ITEMS)) {
-      console.log(`\n--- ${code} ---`);
-      await fixProduct(svc, code);
+    for (const name of Object.keys(SURCHARGE_ITEMS)) {
+      console.log(`\n--- ${name} ---`);
+      await fixProduct(svc, name);
     }
     console.log('\n=== DONE ===');
   } finally {

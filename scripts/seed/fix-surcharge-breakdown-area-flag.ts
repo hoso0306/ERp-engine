@@ -8,6 +8,9 @@
  *
  * Idempotent: nếu dòng cần sửa đã có targetParameter="area" thì bỏ qua.
  *
+ * Xác định sản phẩm theo TÊN, không theo mã (mã lệch giữa Local/VPS, xác
+ * nhận với người dùng 19/08/2026 — xem add-surcharge-breakdown-sp113-115-116.ts).
+ *
  * Chạy: (từ apps/api)
  *   TS_NODE_PROJECT=./tsconfig.json npx ts-node --transpile-only \
  *     -r tsconfig-paths/register \
@@ -20,31 +23,37 @@ import { ProductService } from '../../apps/api/src/product/product.service';
 import { PrismaService } from '../../apps/api/src/prisma/prisma.service';
 
 const FIXES: Record<string, { description: string; condition: string; value: number }> = {
-  SP000113: { description: 'Chiều cao dưới 1,8m', condition: 'chieucao < 1.8', value: 20000 },
-  SP000116: { description: 'Ống nhôm cứng / Ống sắt', condition: 'ong=="ongnhomcung"||ong=="ongsat"', value: 15000 },
+  'Rèm ngăn lạnh - Loại thu xếp': { description: 'Chiều cao dưới 1,8m', condition: 'chieucao < 1.8', value: 20000 },
+  'Bạt Cuốn': { description: 'Ống nhôm cứng / Ống sắt', condition: 'ong=="ongnhomcung"||ong=="ongsat"', value: 15000 },
 };
 
 let prisma: PrismaService;
 
-async function fixProduct(svc: ProductService, code: string) {
-  const fix = FIXES[code];
-  const product = await prisma.product.findUnique({
-    where: { code },
+async function fixProduct(svc: ProductService, name: string) {
+  const fix = FIXES[name];
+  const candidates = await prisma.product.findMany({
+    where: { name },
     include: { pricingRule: { include: { versions: { where: { status: 'ACTIVE' }, include: { items: true } } } } },
   });
-  if (!product) throw new Error(`Không tìm thấy sản phẩm ${code}.`);
+  if (candidates.length === 0) throw new Error(`Không tìm thấy sản phẩm tên "${name}".`);
+  if (candidates.length > 1) {
+    throw new Error(
+      `Có ${candidates.length} sản phẩm cùng tên "${name}" (mã: ${candidates.map((p) => p.code).join(', ')}) — cần xử lý tay.`,
+    );
+  }
+  const product = candidates[0];
   const activePrv = product.pricingRule!.versions[0];
 
   const wrongItem = activePrv.items.find(
     (i) => i.ruleType === 'SURCHARGE_BREAKDOWN' && i.description === fix.description,
   );
-  if (!wrongItem) throw new Error(`${code}: không tìm thấy dòng SURCHARGE_BREAKDOWN "${fix.description}".`);
+  if (!wrongItem) throw new Error(`"${name}" (${product.code}): không tìm thấy dòng SURCHARGE_BREAKDOWN "${fix.description}".`);
   if (wrongItem.targetParameter === 'area') {
-    console.log(`  [BỎ QUA] ${code}: "${fix.description}" đã đúng targetParameter=area.`);
+    console.log(`  [BỎ QUA] "${name}" (${product.code}): "${fix.description}" đã đúng targetParameter=area.`);
     return;
   }
 
-  console.log(`  Nhân bản Pricing Rule Version cho ${code}...`);
+  console.log(`  Nhân bản Pricing Rule Version cho "${name}" (${product.code})...`);
   const newPrv = await svc.duplicatePricingRuleVersion(activePrv.id);
   const copiedWrongItem = (
     await prisma.pricingRuleItem.findMany({ where: { pricingRuleVersionId: newPrv!.id } })
@@ -61,7 +70,7 @@ async function fixProduct(svc: ProductService, code: string) {
   } as any);
   await svc.activatePricingRuleVersion(newPrv!.id);
 
-  console.log(`  [XONG] ${code}: sửa "${fix.description}" -> targetParameter=area.`);
+  console.log(`  [XONG] "${name}" (${product.code}): sửa "${fix.description}" -> targetParameter=area.`);
 }
 
 async function main() {
@@ -70,9 +79,9 @@ async function main() {
   const svc = app.get(ProductService);
 
   try {
-    for (const code of Object.keys(FIXES)) {
-      console.log(`\n--- ${code} ---`);
-      await fixProduct(svc, code);
+    for (const name of Object.keys(FIXES)) {
+      console.log(`\n--- ${name} ---`);
+      await fixProduct(svc, name);
     }
     console.log('\n=== DONE ===');
   } finally {
