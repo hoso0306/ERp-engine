@@ -53,6 +53,13 @@ export interface PricingRuleItemConfig {
   rangeTo: number | null;
   billValue: number | null;
   displayOrder: number;
+  description?: string | null;
+}
+
+export interface ApplicableSurcharge {
+  label: string;
+  amount: number;
+  perArea: boolean;
 }
 
 export interface PriceMatrixRowConfig {
@@ -98,6 +105,11 @@ export interface PricingCalcResult {
   // GỐC khách đặt, giống cách chieurong/chieucao snapshot hiện tại không bị
   // rule ghi đè (BG000031, chốt 11/08/2026).
   rawArea: number | null;
+  // Danh sách phụ phí ĐANG áp dụng theo tham số khách vừa chọn (rule items
+  // ruleType=SURCHARGE_BREAKDOWN có condition đúng) — CHỈ để hiển thị dưới
+  // đơn giá ở Báo giá, KHÔNG cộng vào systemPrice/surchargeAfterDiscount
+  // (surchargeAfterDiscount vẫn tính riêng từ surchargeExpression như cũ).
+  applicableSurcharges: ApplicableSurcharge[];
 }
 
 const VERSION_INCLUDE = {
@@ -190,6 +202,7 @@ export class PricingEngineService {
         rangeTo: unknown;
         billValue: unknown;
         displayOrder: number;
+        description: string | null;
       }>;
       matrixRows: Array<{
         dimensions: unknown;
@@ -234,6 +247,7 @@ export class PricingEngineService {
             ? Number(i.billValue)
             : null,
         displayOrder: i.displayOrder,
+        description: i.description,
       })),
       matrixRows: version.matrixRows.map((r) => ({
         dimensions: r.dimensions as Record<string, string>,
@@ -356,6 +370,33 @@ export class PricingEngineService {
       }
     }
 
+    // 7. Danh sách phụ phí đang áp dụng (hiển thị dưới đơn giá) — độc lập với
+    // surchargeAfterDiscount ở trên, không cộng dồn hai lần. Evaluate đúng
+    // condition trên billable params (giống cách normalize() evaluate
+    // condition của các rule khác).
+    const applicableSurcharges: ApplicableSurcharge[] = [];
+    for (const item of config.ruleItems) {
+      if (item.ruleType !== 'SURCHARGE_BREAKDOWN') continue;
+      if (!item.condition) continue;
+      let matched: boolean;
+      try {
+        matched = evaluateBoolean(item.condition, billable);
+      } catch (e) {
+        throw new BadRequestException(
+          `Condition của phụ phí (${item.condition}) lỗi: ${(e as Error).message}`,
+        );
+      }
+      if (!matched) continue;
+      // amount = ĐƠN GIÁ cấu hình (vd 15.000đ/m²), KHÔNG nhân area — hiển thị
+      // đúng dạng "đơn giá x /m²" như config, không phải tổng tiền dòng đó
+      // (tổng tiền thật đã có sẵn ở surchargeAfterDiscount phía trên).
+      applicableSurcharges.push({
+        label: item.description ?? '',
+        amount: item.value,
+        perArea: item.targetParameter === 'area',
+      });
+    }
+
     return {
       systemPrice,
       rawPrice,
@@ -366,6 +407,7 @@ export class PricingEngineService {
       vatRate: config.vatRate,
       surchargeAfterDiscount,
       rawArea,
+      applicableSurcharges,
     };
   }
 
@@ -493,6 +535,7 @@ export class PricingEngineService {
       warnings: result.warnings,
       surchargeAfterDiscount: result.surchargeAfterDiscount,
       rawArea: result.rawArea,
+      applicableSurcharges: result.applicableSurcharges,
     };
   }
 }

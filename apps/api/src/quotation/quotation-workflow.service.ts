@@ -619,6 +619,7 @@ export class QuotationWorkflowService {
         note: dto.note?.trim() || null,
         // Snapshot cảnh báo Validation Rule tại thời điểm tính giá (Task 06)
         warnings: priceResult.warnings,
+        applicableSurcharges: priceResult.applicableSurcharges,
         displayOrder,
         parameters: {
           create: [
@@ -717,6 +718,9 @@ export class QuotationWorkflowService {
     let unitPrice = item.unitPrice !== null ? Number(item.unitPrice) : null;
     let pricingRuleVersionId = item.pricingRuleVersionId;
     let warnings = item.warnings as string[] | null;
+    let applicableSurcharges = item.applicableSurcharges as
+      | { label: string; amount: number; perArea: boolean }[]
+      | null;
     let vatRate = Number(item.vatRate);
     let surchargeAfterDiscount = Number(item.surchargeAfterDiscount ?? 0);
     const newParameters = dto.parameters;
@@ -741,6 +745,7 @@ export class QuotationWorkflowService {
       unitPrice = priceResult.unitPrice;
       pricingRuleVersionId = priceResult.pricingRuleVersionId;
       warnings = priceResult.warnings;
+      applicableSurcharges = priceResult.applicableSurcharges;
       vatRate = priceResult.vatRate;
       surchargeAfterDiscount = priceResult.surchargeAfterDiscount;
       rawArea = priceResult.rawArea;
@@ -829,6 +834,7 @@ export class QuotationWorkflowService {
           vatRate,
           vatAmount,
           warnings: warnings ?? [],
+          applicableSurcharges: applicableSurcharges ?? [],
           ...(dto.note !== undefined ? { note: dto.note?.trim() || null } : {}),
           ...(dto.displayOrder !== undefined
             ? { displayOrder: dto.displayOrder }
@@ -1092,6 +1098,7 @@ export class QuotationWorkflowService {
       vatRate: number;
       vatAmount: number;
       warnings: string[];
+      applicableSurcharges: { label: string; amount: number; perArea: boolean }[];
     }> = [];
 
     // Dòng MATERIAL (chốt 28/07/2026, sprint-04/025) không có Pricing Rule —
@@ -1141,6 +1148,7 @@ export class QuotationWorkflowService {
         vatRate: priceResult.vatRate,
         vatAmount: newVatAmount,
         warnings: priceResult.warnings,
+        applicableSurcharges: priceResult.applicableSurcharges,
       });
     }
 
@@ -1160,6 +1168,7 @@ export class QuotationWorkflowService {
             vatRate: u.vatRate,
             vatAmount: u.vatAmount,
             warnings: u.warnings,
+            applicableSurcharges: u.applicableSurcharges,
           },
         });
       }

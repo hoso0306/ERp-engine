@@ -62,6 +62,13 @@ enum PricingRuleType {
   BILLABLE_STEP
   ROUND
   CUSTOM
+  // Dòng phụ phí hiển thị dưới đơn giá ở Báo giá — CHỈ để hiển thị, KHÔNG
+  // tham gia tính giá (Pricing Engine bỏ qua loại này ở normalize(), xem
+  // pricing-engine.service.ts). condition = điều kiện kích hoạt, value = số
+  // tiền, targetParameter = "area" nếu tính theo m² (còn lại là số tiền cố
+  // định), description = nhãn hiển thị (lấy nguyên văn label thông số/lựa
+  // chọn thật, không tự đặt).
+  SURCHARGE_BREAKDOWN
 }
 
 enum ValidationSeverity {
@@ -979,6 +986,12 @@ model QuotationItem {
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này
   // (Sprint 03 Task 06) — mảng string, in được trên báo giá, không đọc lại rule.
   warnings Json?
+
+  // Snapshot danh sách phụ phí ĐANG áp dụng (PricingRuleItem
+  // SURCHARGE_BREAKDOWN có condition đúng) tại thời điểm thêm/sửa dòng —
+  // {label, amount, perArea}[], in được trên báo giá, không đọc lại rule.
+  // NULL/[] với đa số sản phẩm (chỉ vài SP có cấu hình loại rule này).
+  applicableSurcharges Json? @map("applicable_surcharges")
 
   // Chú thích tay nhập thêm (Sprint 04, chốt 16/07/2026) — hiển thị cạnh warnings
   // ở cột "Chú thích" trên bảng dòng báo giá và bản in.

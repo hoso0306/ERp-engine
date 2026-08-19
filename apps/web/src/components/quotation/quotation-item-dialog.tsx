@@ -87,6 +87,11 @@ export function QuotationItemDialog({
   const [vatRate, setVatRate] = useState<number>(0);
   const [adjustedVariables, setAdjustedVariables] = useState<Record<string, number>>({});
   const [priceWarnings, setPriceWarnings] = useState<string[]>([]);
+  // Danh sách phụ phí ĐANG áp dụng theo tham số vừa chọn — chỉ để hiển thị
+  // dưới đơn giá, không cộng thêm vào finalPrice (đã nằm trong surchargeAfterDiscount).
+  const [applicableSurcharges, setApplicableSurcharges] = useState<
+    { label: string; amount: number; perArea: boolean }[]
+  >([]);
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -143,6 +148,7 @@ export function QuotationItemDialog({
     setManualUnitPrice("");
     setAdjustedVariables({});
     setPriceWarnings([]);
+    setApplicableSurcharges([]);
   }, [open, item]);
 
   // Nạp thông số + giá trị mặc định khi productId đổi (chọn mới hoặc lúc sửa mở lên)
@@ -172,6 +178,7 @@ export function QuotationItemDialog({
         adjustedVariables: Record<string, number>;
         warnings: string[];
         surchargeAfterDiscount: number;
+        applicableSurcharges: { label: string; amount: number; perArea: boolean }[];
       }>("/pricing-engine/calculate", {
         productId,
         parameters,
@@ -183,6 +190,7 @@ export function QuotationItemDialog({
       setAdjustedVariables(data.adjustedVariables ?? {});
       setPriceWarnings(data.warnings ?? []);
       setSurchargeAfterDiscount(data.surchargeAfterDiscount ?? 0);
+      setApplicableSurcharges(data.applicableSurcharges ?? []);
     } catch {
       setSystemPrice(null);
       setUnitPrice(null);
@@ -190,6 +198,7 @@ export function QuotationItemDialog({
       setAdjustedVariables({});
       setPriceWarnings([]);
       setSurchargeAfterDiscount(0);
+      setApplicableSurcharges([]);
     } finally {
       setPriceLoading(false);
     }
@@ -227,6 +236,7 @@ export function QuotationItemDialog({
     setAdjustedVariables({});
     setPriceWarnings([]);
     setSurchargeAfterDiscount(0);
+    setApplicableSurcharges([]);
     if (!product) {
       setProductParams([]);
       setParamValues({});
@@ -435,6 +445,19 @@ export function QuotationItemDialog({
                   ) : systemPrice !== null ? formatMoney(systemPrice) : "—"}
                 </span>
               </div>
+              {applicableSurcharges.length > 0 && (
+                <div className="space-y-0.5 pl-3">
+                  {applicableSurcharges.map((s, idx) => (
+                    <div key={idx} className="flex justify-between text-xs text-amber-800">
+                      <span>+ {s.label}</span>
+                      <span className="font-mono">
+                        {formatMoney(s.amount)}
+                        {s.perArea ? "/m²" : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {discountPercent > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Chiết khấu ({discountPercent}%)</span>

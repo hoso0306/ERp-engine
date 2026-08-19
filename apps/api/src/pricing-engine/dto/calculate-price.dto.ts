@@ -46,4 +46,10 @@ export class CalculatePriceResultDto {
    * bản in) cho sản phẩm không có cặp chieurong/chieucao.
    */
   rawArea: number | null;
+  /**
+   * Danh sách phụ phí ĐANG áp dụng theo tham số khách vừa chọn (rule
+   * SURCHARGE_BREAKDOWN có condition đúng) — CHỈ để hiển thị dưới đơn giá,
+   * KHÔNG cộng thêm vào surchargeAfterDiscount (đã tính riêng ở trên).
+   */
+  applicableSurcharges: { label: string; amount: number; perArea: boolean }[];
 }

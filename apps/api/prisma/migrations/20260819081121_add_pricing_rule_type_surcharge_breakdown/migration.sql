@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "PricingRuleType" ADD VALUE 'SURCHARGE_BREAKDOWN';

@@ -2101,12 +2101,16 @@ export class ProductService {
     rangeFrom?: number | null;
     rangeTo?: number | null;
     billValue?: number | null;
+    description?: string | null;
   }): void {
     const validTypes = [
       'MIN_AREA',
       'MIN_DIMENSION',
       'MIN_VALUE',
       'BILLABLE_STEP',
+      // Dòng phụ phí hiển thị dưới đơn giá ở Báo giá — CHỈ để hiển thị, KHÔNG
+      // tham gia tính giá (xem pricing-engine.service.ts normalize()).
+      'SURCHARGE_BREAKDOWN',
     ];
     if (!validTypes.includes(input.ruleType)) {
       throw new BadRequestException(
@@ -2120,6 +2124,18 @@ export class ProductService {
       throw new BadRequestException(
         `${input.ruleType} cần chỉ định targetParameter.`,
       );
+    }
+    if (input.ruleType === 'SURCHARGE_BREAKDOWN') {
+      if (!input.condition?.trim()) {
+        throw new BadRequestException(
+          'SURCHARGE_BREAKDOWN cần điều kiện kích hoạt (condition).',
+        );
+      }
+      if (!input.description?.trim()) {
+        throw new BadRequestException(
+          'SURCHARGE_BREAKDOWN cần mô tả (nhãn hiển thị).',
+        );
+      }
     }
     if (input.ruleType !== 'BILLABLE_STEP') {
       if (
@@ -2175,9 +2191,13 @@ export class ProductService {
       data: {
         pricingRuleVersionId: versionId,
         ruleType: dto.ruleType as PricingRuleType,
-        // BILLABLE_STEP: targetParameter tùy chọn (mặc định 'area' khi tính)
+        // BILLABLE_STEP: targetParameter tùy chọn (mặc định 'area' khi tính).
+        // SURCHARGE_BREAKDOWN: targetParameter="area" nghĩa là phụ phí tính
+        // theo m² (xem pricing-engine.service.ts calculatePrice() bước 7).
         targetParameter:
-          needsTarget || dto.ruleType === 'BILLABLE_STEP'
+          needsTarget ||
+          dto.ruleType === 'BILLABLE_STEP' ||
+          dto.ruleType === 'SURCHARGE_BREAKDOWN'
             ? dto.targetParameter?.trim() || null
             : null,
         value: dto.value ?? 0,
@@ -2544,6 +2564,7 @@ export class ProductService {
       // (bug 16/07/2026: nhãn hiện "Làm tròn lên 1000" nhưng giá không đổi vì DB đang NONE).
       priceRoundType: config.priceRoundType,
       priceRoundValue: config.priceRoundValue,
+      applicableSurcharges: result.applicableSurcharges,
     };
   }
 

@@ -33,6 +33,10 @@ interface QuotationItem {
   note: string | null;
   // Snapshot cảnh báo Validation Rule (WARN) tại thời điểm tính giá dòng này.
   warnings: string[] | null;
+  // Snapshot danh sách phụ phí ĐANG áp dụng (PricingRuleItem
+  // SURCHARGE_BREAKDOWN) — NULL/[] với đa số sản phẩm (chỉ cấu hình cho vài
+  // SP cụ thể, xem pricing-engine.service.ts).
+  applicableSurcharges: { label: string; amount: number; perArea: boolean }[] | null;
   productCode: string | null;
   productName: string | null;
   materialCode?: string | null;
@@ -153,6 +157,8 @@ interface ViewItem {
   vatAmount: number;
   note: string | null;
   warnings: string[] | null;
+  // Chỉ có ở Báo giá (Order không lưu snapshot này) — xem QuotationItem.applicableSurcharges.
+  applicableSurcharges: { label: string; amount: number; perArea: boolean }[] | null;
 }
 
 function fmt(n: number) {
@@ -411,6 +417,7 @@ export default function QuotationPrintPage() {
         vatAmount: Number(i.vatAmount),
         note: i.note,
         warnings: null,
+        applicableSurcharges: null,
       }))
     : quotation.items.map((i) => ({
         id: i.id,
@@ -430,6 +437,7 @@ export default function QuotationPrintPage() {
         vatAmount: Number(i.vatAmount),
         note: i.note,
         warnings: i.warnings,
+        applicableSurcharges: i.applicableSurcharges,
       }));
 
   // Order: tổng tiền đã snapshot sẵn (Derived Data hợp lệ — xem SalesOrder.grandTotal).
@@ -722,7 +730,7 @@ export default function QuotationPrintPage() {
                         {item.unit && <span style={{ fontWeight: 400 }}> {item.unit}</span>}
                       </td>
                       <td style={{ ...tdStyle, textAlign: "center" }}>{m2 !== null ? fmt2(m2) : "—"}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <td style={{ ...tdStyle, textAlign: "center" }}>
                         <div>
                           {effectiveUnitPrice !== null
                             ? `${fmt(effectiveUnitPrice)}/m²`
@@ -734,13 +742,25 @@ export default function QuotationPrintPage() {
                         </div>
                         {/* Khi đã hiện giá hiệu lực (gồm sẵn chiết khấu), ẩn CK%
                             — để khỏi khiến người xem tưởng phải trừ thêm lần
-                            nữa. Phụ phí lắp đặt (surchargeAfterDiscount) không
-                            hiện riêng trên bản in nữa (chốt 12/08/2026) — vẫn
-                            được cộng vào Thành Tiền như cũ, chỉ bỏ dòng ghi
-                            chú "+x" để khỏi rối mắt khách hàng. */}
+                            nữa. Tổng phụ phí gộp (surchargeAfterDiscount) vẫn
+                            KHÔNG hiện riêng (chốt 12/08/2026, tránh rối mắt) —
+                            nhưng đổi ý 19/08/2026: hiện DANH SÁCH chi tiết
+                            từng phụ phí (applicableSurcharges, chỉ có ở vài SP
+                            cấu hình PricingRuleItem SURCHARGE_BREAKDOWN, đa số
+                            SP kể cả toàn bộ dòng RCV không có field này nên
+                            không hiện gì thêm ở đây, giữ nguyên hành vi cũ). */}
                         {effectiveUnitPrice === null && item.discountPercent > 0 && (
                           <div style={{ fontSize: 9.5, color: "var(--grey)" }}>
                             {`CK ${item.discountPercent}%`}
+                          </div>
+                        )}
+                        {item.applicableSurcharges && item.applicableSurcharges.length > 0 && (
+                          <div style={{ marginTop: 2, marginLeft: -5, textAlign: "left" }}>
+                            {item.applicableSurcharges.map((s, idx) => (
+                              <div key={idx} style={{ fontSize: 9, color: "#92400e" }}>
+                                {`+${fmt(s.amount)}${s.perArea ? "/m²" : ""} ${s.label}`}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </td>
