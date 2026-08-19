@@ -15,6 +15,7 @@ import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-
 import { Prisma, SalesOrderStatus } from '@prisma/client';
 import { OpeningBalanceService } from '../debt/opening-balance.service';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 
 const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
 const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
@@ -33,6 +34,17 @@ export class CustomerService {
     private readonly openingBalanceService: OpeningBalanceService,
   ) {}
 
+  // Tìm không phân biệt dấu tiếng Việt (vd "hoang" khớp "Hoàng") — giữ
+  // nguyên đúng 3 field đang tìm (tên/SĐT/mã), chỉ đổi cách so khớp.
+  private searchCustomerIds(search: string): Promise<string[]> {
+    return findMatchingIds(
+      this.prisma,
+      Prisma.sql`SELECT id FROM customers WHERE ${unaccentLike(Prisma.sql`name`, search)}
+        OR ${unaccentLike(Prisma.sql`phone`, search)}
+        OR ${unaccentLike(Prisma.sql`code`, search)}`,
+    );
+  }
+
   async findAll(query: CustomerQueryDto) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
@@ -43,11 +55,7 @@ export class CustomerService {
     };
 
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { phone: { contains: query.search } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchCustomerIds(query.search) };
     }
 
     if (query.customerGroupId) {
@@ -307,11 +315,7 @@ export class CustomerService {
     };
 
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { phone: { contains: query.search } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchCustomerIds(query.search) };
     }
 
     const [data, total] = await Promise.all([
@@ -358,11 +362,7 @@ export class CustomerService {
     const where: Prisma.CustomerWhereInput = { deletedAt: null };
 
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { phone: { contains: query.search } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchCustomerIds(query.search) };
     }
     if (query.customerGroupId) where.customerGroupId = query.customerGroupId;
     if (query.deliveryRouteId) where.deliveryRouteId = query.deliveryRouteId;

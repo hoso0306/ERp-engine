@@ -22,6 +22,7 @@ import { coerceParameters } from '../shared/derived-params';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { PricingEngineService } from '../pricing-engine/pricing-engine.service';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import {
   BomEngineService,
   BomConfig,
@@ -97,11 +98,18 @@ export class QuotationWorkflowService {
     const where: Prisma.QuotationWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { customer: { name: { contains: query.search, mode: 'insensitive' } } },
-        { customer: { phone: { contains: query.search } } },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 3 field đang
+      // tìm (mã BG/tên KH/SĐT KH, KH qua JOIN), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT q.id FROM quotations q
+            LEFT JOIN customers c ON c.id = q.customer_id
+            WHERE ${unaccentLike(Prisma.sql`q.code`, query.search)}
+              OR ${unaccentLike(Prisma.sql`c.name`, query.search)}
+              OR ${unaccentLike(Prisma.sql`c.phone`, query.search)}`,
+        ),
+      };
     }
 
     if (query.customerId) {

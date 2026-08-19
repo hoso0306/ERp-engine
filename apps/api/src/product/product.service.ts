@@ -12,6 +12,7 @@ import { BomEngineService } from '../bom-engine/bom-engine.service';
 import { ExcelService, ExcelColumn } from '../shared/excel/excel.service';
 import { validate as validateExpressionSyntax } from '../shared/expression';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import {
   Prisma,
   ProductStatus,
@@ -309,15 +310,20 @@ export class ProductService {
   // Material
   // ──────────────────────────────────────
 
-  private buildMaterialWhere(
+  private async buildMaterialWhere(
     query: MaterialQueryDto,
-  ): Prisma.MaterialWhereInput {
+  ): Promise<Prisma.MaterialWhereInput> {
     const where: Prisma.MaterialWhereInput = {};
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 2 field đang
+      // tìm (tên/mã), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT id FROM materials WHERE ${unaccentLike(Prisma.sql`name`, query.search)}
+            OR ${unaccentLike(Prisma.sql`code`, query.search)}`,
+        ),
+      };
     }
     if (query.isActive !== undefined) {
       where.isActive = query.isActive === 'true';
@@ -336,7 +342,7 @@ export class ProductService {
   }
 
   private async findFilteredMaterials(query: MaterialQueryDto) {
-    const where = this.buildMaterialWhere(query);
+    const where = await this.buildMaterialWhere(query);
     // Sort A-Z không phân biệt hoa/thường phải làm ở tầng JS (DB collation mặc
     // định phân biệt hoa/thường — xem sortByNameAsc) nên lấy hết rồi mới cắt
     // trang, thay vì skip/take ở DB theo thứ tự có thể sai.
@@ -1207,6 +1213,16 @@ export class ProductService {
   // Product
   // ──────────────────────────────────────
 
+  // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 2 field đang tìm
+  // (tên/mã), chỉ đổi cách so khớp.
+  private searchProductIds(search: string): Promise<string[]> {
+    return findMatchingIds(
+      this.prisma,
+      Prisma.sql`SELECT id FROM products WHERE ${unaccentLike(Prisma.sql`name`, search)}
+        OR ${unaccentLike(Prisma.sql`code`, search)}`,
+    );
+  }
+
   async findAllProducts(query: ProductQueryDto) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '20', 10)));
@@ -1214,10 +1230,7 @@ export class ProductService {
 
     const where: Prisma.ProductWhereInput = { deletedAt: null };
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchProductIds(query.search) };
     }
     if (
       query.status === 'DRAFT' ||
@@ -1306,10 +1319,7 @@ export class ProductService {
 
     const where: Prisma.ProductWhereInput = { deletedAt: { not: null } };
     if (query.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { code: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchProductIds(query.search) };
     }
 
     const [data, total] = await Promise.all([
@@ -1633,7 +1643,16 @@ export class ProductService {
   async getParameterNameSuggestions(query?: string) {
     const q = query?.trim();
     const params = await this.prisma.productParameter.findMany({
-      where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+      where: q
+        ? {
+            id: {
+              in: await findMatchingIds(
+                this.prisma,
+                Prisma.sql`SELECT id FROM product_parameters WHERE ${unaccentLike(Prisma.sql`name`, q)}`,
+              ),
+            },
+          }
+        : undefined,
       select: { name: true, label: true, type: true, unit: true },
       orderBy: { createdAt: 'desc' },
     });

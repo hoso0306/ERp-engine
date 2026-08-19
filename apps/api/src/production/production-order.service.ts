@@ -17,6 +17,7 @@ import { ProductionOrderQueryDto } from './dto/production-order-query.dto';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { SettingService } from '../setting/setting.service';
 import { PermissionService } from '../permission/permission.service';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 
 const PRODUCTION_ORDER_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -69,17 +70,18 @@ export class ProductionOrderService {
     const where: Prisma.ProductionOrderWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        {
-          salesOrder: { code: { contains: query.search, mode: 'insensitive' } },
-        },
-        {
-          salesOrder: {
-            customerName: { contains: query.search, mode: 'insensitive' },
-          },
-        },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 3 field đang
+      // tìm (mã PSX/mã ĐH/tên KH, ĐH qua JOIN), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT po.id FROM production_orders po
+            LEFT JOIN sales_orders so ON so.id = po.sales_order_id
+            WHERE ${unaccentLike(Prisma.sql`po.code`, query.search)}
+              OR ${unaccentLike(Prisma.sql`so.code`, query.search)}
+              OR ${unaccentLike(Prisma.sql`so.customer_name`, query.search)}`,
+        ),
+      };
     }
 
     if (query.productionCenterId) {

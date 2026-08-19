@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
@@ -847,11 +848,16 @@ export class DebtService {
     };
 
     if (query.search) {
-      salesOrderWhere.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { customerName: { contains: query.search, mode: 'insensitive' } },
-        { customerPhone: { contains: query.search } },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 3 field đang
+      // tìm (mã ĐH/tên KH/SĐT), chỉ đổi cách so khớp.
+      salesOrderWhere.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT id FROM sales_orders WHERE ${unaccentLike(Prisma.sql`code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`customer_name`, query.search)}
+            OR ${unaccentLike(Prisma.sql`customer_phone`, query.search)}`,
+        ),
+      };
     }
 
     const validPaymentStatuses = Object.values(PaymentStatus) as string[];
@@ -956,16 +962,13 @@ export class DebtService {
 
     let customerIdFilter: string[] | undefined;
     if (query.search) {
-      const matched = await this.prisma.customer.findMany({
-        where: {
-          OR: [
-            { name: { contains: query.search, mode: 'insensitive' } },
-            { phone: { contains: query.search } },
-          ],
-        },
-        select: { id: true },
-      });
-      customerIdFilter = matched.map((c) => c.id);
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 2 field đang
+      // tìm (tên/SĐT), chỉ đổi cách so khớp.
+      customerIdFilter = await findMatchingIds(
+        this.prisma,
+        Prisma.sql`SELECT id FROM customers WHERE ${unaccentLike(Prisma.sql`name`, query.search)}
+          OR ${unaccentLike(Prisma.sql`phone`, query.search)}`,
+      );
       if (customerIdFilter.length === 0) {
         return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
       }

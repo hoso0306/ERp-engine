@@ -17,6 +17,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
 import { PermissionService } from '../permission/permission.service';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
@@ -87,6 +88,18 @@ export class SalesOrderService {
     private readonly permissionService: PermissionService,
   ) {}
 
+  // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 4 field đang tìm
+  // (mã ĐH/tên KH/SĐT KH/mã BG), chỉ đổi cách so khớp.
+  private searchSalesOrderIds(search: string): Promise<string[]> {
+    return findMatchingIds(
+      this.prisma,
+      Prisma.sql`SELECT id FROM sales_orders WHERE ${unaccentLike(Prisma.sql`code`, search)}
+        OR ${unaccentLike(Prisma.sql`customer_name`, search)}
+        OR ${unaccentLike(Prisma.sql`customer_phone`, search)}
+        OR ${unaccentLike(Prisma.sql`quotation_code`, search)}`,
+    );
+  }
+
   // ─────────────────────────────────────────────────────
   // Read API (Task 03) — no Create / Update / Delete
   // ─────────────────────────────────────────────────────
@@ -99,12 +112,7 @@ export class SalesOrderService {
     const where: Prisma.SalesOrderWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { customerName: { contains: query.search, mode: 'insensitive' } },
-        { customerPhone: { contains: query.search } },
-        { quotationCode: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchSalesOrderIds(query.search) };
     }
 
     if (query.customerId) {
@@ -259,12 +267,7 @@ export class SalesOrderService {
     // Cùng field/logic search với findAll() — Excel xuất đúng bộ lọc đang
     // xem trên trang, không phải 1 query độc lập.
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { customerName: { contains: query.search, mode: 'insensitive' } },
-        { customerPhone: { contains: query.search } },
-        { quotationCode: { contains: query.search, mode: 'insensitive' } },
-      ];
+      where.id = { in: await this.searchSalesOrderIds(query.search) };
     }
     if (query.deliveryFrom || query.deliveryTo) {
       where.expectedDeliveryDate = {

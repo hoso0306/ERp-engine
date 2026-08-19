@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import { CreateReturnDto } from './dto/create-return.dto';
 import { ReturnQueryDto } from './dto/return-query.dto';
 import { RecoveryInventoryQueryDto } from './dto/recovery-inventory-query.dto';
@@ -45,11 +46,16 @@ export class ReturnService {
     const where: Prisma.ReturnWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { salesOrderCode: { contains: query.search, mode: 'insensitive' } },
-        { customerName: { contains: query.search, mode: 'insensitive' } },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 3 field đang
+      // tìm (mã hoàn/mã ĐH/tên KH), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT id FROM returns WHERE ${unaccentLike(Prisma.sql`code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`sales_order_code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`customer_name`, query.search)}`,
+        ),
+      };
     }
     if (query.salesOrderId) {
       where.salesOrderId = query.salesOrderId;
@@ -316,17 +322,17 @@ export class ReturnService {
     const where: Prisma.RecoveryInventoryWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { productCode: { contains: query.search, mode: 'insensitive' } },
-        { productName: { contains: query.search, mode: 'insensitive' } },
-        {
-          createdFromReturnCode: {
-            contains: query.search,
-            mode: 'insensitive',
-          },
-        },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 4 field đang
+      // tìm (mã tồn/mã SP/tên SP/mã hoàn gốc), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT id FROM recovery_inventories WHERE ${unaccentLike(Prisma.sql`code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`product_code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`product_name`, query.search)}
+            OR ${unaccentLike(Prisma.sql`created_from_return_code`, query.search)}`,
+        ),
+      };
     }
 
     const validStatuses = Object.values(RecoveryInventoryStatus) as string[];

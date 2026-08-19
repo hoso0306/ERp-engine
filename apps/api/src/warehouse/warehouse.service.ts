@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
+import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import { CreateMaterialReceiptDto } from './dto/create-material-receipt.dto';
 import { MaterialReceiptQueryDto } from './dto/material-receipt-query.dto';
 import { WarehouseTransactionQueryDto } from './dto/warehouse-transaction-query.dto';
@@ -148,23 +149,22 @@ export class WarehouseService {
     const where: Prisma.MaterialReceiptWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        {
-          items: {
-            some: {
-              materialCode: { contains: query.search, mode: 'insensitive' },
-            },
-          },
-        },
-        {
-          items: {
-            some: {
-              materialName: { contains: query.search, mode: 'insensitive' },
-            },
-          },
-        },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 3 field đang
+      // tìm (mã phiếu/mã vật tư/tên vật tư trong các dòng phiếu), chỉ đổi
+      // cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT mr.id FROM material_receipts mr
+            WHERE ${unaccentLike(Prisma.sql`mr.code`, query.search)}
+              OR EXISTS (
+                SELECT 1 FROM material_receipt_items mri
+                WHERE mri.material_receipt_id = mr.id
+                  AND (${unaccentLike(Prisma.sql`mri.material_code`, query.search)}
+                    OR ${unaccentLike(Prisma.sql`mri.material_name`, query.search)})
+              )`,
+        ),
+      };
     }
 
     if (query.materialId) {
@@ -250,10 +250,15 @@ export class WarehouseService {
     const where: Prisma.MaterialWhereInput = {};
 
     if (query.search) {
-      where.OR = [
-        { code: { contains: query.search, mode: 'insensitive' } },
-        { name: { contains: query.search, mode: 'insensitive' } },
-      ];
+      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 2 field đang
+      // tìm (mã/tên), chỉ đổi cách so khớp.
+      where.id = {
+        in: await findMatchingIds(
+          this.prisma,
+          Prisma.sql`SELECT id FROM materials WHERE ${unaccentLike(Prisma.sql`code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`name`, query.search)}`,
+        ),
+      };
     }
 
     const [data, total] = await Promise.all([
