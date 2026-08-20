@@ -24,6 +24,9 @@ export default function QuotationsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +41,7 @@ export default function QuotationsPage() {
       if (dateFrom) params.set("createdFrom", dateFrom);
       if (dateTo) params.set("createdTo", dateTo);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: never[]; meta: typeof meta }>(`/quotations?${params}`);
       setQuotations(json.data);
@@ -48,7 +51,7 @@ export default function QuotationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, dateFrom, dateTo, page]);
+  }, [search, tab, dateFrom, dateTo, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchQuotations, search ? 300 : 0);
@@ -57,7 +60,7 @@ export default function QuotationsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, dateFrom, dateTo]);
+  }, [search, tab, dateFrom, dateTo, limit]);
 
   return (
     <div className="space-y-6">
@@ -98,7 +101,7 @@ export default function QuotationsPage() {
         />
       )}
       {!loading && !error && quotations.length > 0 && (
-        <QuotationTable quotations={quotations} meta={meta} onPageChange={setPage} />
+        <QuotationTable quotations={quotations} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
       )}
     </div>
   );

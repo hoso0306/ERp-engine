@@ -33,6 +33,9 @@ export default function CustomersPage() {
   const [groupId, setGroupId] = useState("all");
   const [routeId, setRouteId] = useState("all");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +43,8 @@ export default function CustomersPage() {
   const [deleted, setDeleted] = useState([]);
   const [deletedMeta, setDeletedMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [deletedPage, setDeletedPage] = useState(1);
+  // Số dòng/trang riêng cho tab Đã xoá — mặc định giữ nguyên 10 như trước.
+  const [deletedLimit, setDeletedLimit] = useState(10);
   const [deletedLoading, setDeletedLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -68,7 +73,7 @@ export default function CustomersPage() {
       if (groupId !== "all") params.set("customerGroupId", groupId);
       if (routeId !== "all") params.set("deliveryRouteId", routeId);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: never[]; meta: typeof meta }>(`/customers?${params}`);
       setCustomers(json.data);
@@ -78,13 +83,13 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, groupId, routeId, page]);
+  }, [search, groupId, routeId, page, limit]);
 
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
     try {
       const json = await apiGet<{ data: never[]; meta: typeof deletedMeta }>(
-        `/customers/deleted?page=${deletedPage}&limit=10`,
+        `/customers/deleted?page=${deletedPage}&limit=${deletedLimit}`,
       );
       setDeleted(json.data);
       setDeletedMeta(json.meta);
@@ -93,7 +98,7 @@ export default function CustomersPage() {
     } finally {
       setDeletedLoading(false);
     }
-  }, [deletedPage]);
+  }, [deletedPage, deletedLimit]);
 
   useEffect(() => {
     apiGet<FilterOption[]>("/customers/groups").then(setGroups).catch(() => {});
@@ -107,7 +112,11 @@ export default function CustomersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, groupId, routeId]);
+  }, [search, groupId, routeId, limit]);
+
+  useEffect(() => {
+    setDeletedPage(1);
+  }, [deletedLimit]);
 
   useEffect(() => {
     if (tab === "deleted") fetchDeleted();
@@ -182,7 +191,7 @@ export default function CustomersPage() {
             <EmptyState title="Chưa có khách hàng" description="Chưa có khách hàng nào được tạo." />
           )}
           {!loading && !error && customers.length > 0 && (
-            <CustomerTable customers={customers} meta={meta} onPageChange={setPage} />
+            <CustomerTable customers={customers} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
           )}
         </TabsContent>
 
@@ -196,6 +205,7 @@ export default function CustomersPage() {
               customers={deleted}
               meta={deletedMeta}
               onPageChange={setDeletedPage}
+              onLimitChange={setDeletedLimit}
               onRestored={handleRestored}
             />
           )}

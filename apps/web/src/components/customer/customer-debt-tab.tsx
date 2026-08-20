@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loading, ErrorState, EmptyState, DateRangeFilter } from "@/components/shared";
+import { Loading, ErrorState, EmptyState, DateRangeFilter, Pagination } from "@/components/shared";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -10,8 +10,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/debt/risk-badge";
 import { PaymentStatusBadge } from "@/components/sales-order/payment-status-badge";
@@ -119,6 +117,9 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước, dùng chung cho cả 2 sub-tab (giống page).
+  const [limit, setLimit] = useState(10);
 
   const [receivables, setReceivables] = useState<ReceivableRow[]>([]);
   const [receivableMeta, setReceivableMeta] = useState<Meta>(EMPTY_META);
@@ -153,7 +154,7 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
       if (to) params.set("to", to);
       if (dateField === "dueDate") params.set("dateField", "dueDate");
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
       const json = await apiGet<{ data: ReceivableRow[]; meta: Meta }>(`/receivables?${params}`);
       setReceivables(json.data);
       setReceivableMeta(json.meta);
@@ -162,7 +163,7 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [customerId, from, to, dateField, page]);
+  }, [customerId, from, to, dateField, page, limit]);
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -173,7 +174,7 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
       const json = await apiGet<{ data: PaymentListRow[]; meta: Meta }>(`/payments?${params}`);
       setPayments(json.data);
       setPaymentMeta(json.meta);
@@ -182,11 +183,11 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [customerId, from, to, page]);
+  }, [customerId, from, to, page, limit]);
 
   useEffect(() => {
     setPage(1);
-  }, [subTab, from, to, dateField]);
+  }, [subTab, from, to, dateField, limit]);
 
   useEffect(() => {
     if (subTab === "progress") fetchProgress();
@@ -299,20 +300,13 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
                 Hiển thị {receivables.length + openingBalances.length} / {receivableMeta.total + openingBalances.length} mục
                 {openingBalances.length > 0 && ` (gồm ${openingBalances.length} Công nợ đầu kỳ)`}
               </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => p - 1)} disabled={receivableMeta.page <= 1}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm">{receivableMeta.page} / {receivableMeta.totalPages}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={receivableMeta.page >= receivableMeta.totalPages}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+              <Pagination
+                page={receivableMeta.page}
+                totalPages={receivableMeta.totalPages}
+                onPageChange={setPage}
+                limit={limit}
+                onLimitChange={setLimit}
+              />
             </div>
           </div>
         )
@@ -323,6 +317,7 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
           rows={payments}
           meta={paymentMeta}
           onPageChange={setPage}
+          onLimitChange={setLimit}
           onReversed={fetchPayments}
           showCustomer={false}
         />

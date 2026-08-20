@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Pagination } from "@/components/shared";
 
 interface MaterialReceiptItemRow {
   id: string;
@@ -34,9 +33,12 @@ interface MaterialReceiptTableProps {
   receipts: MaterialReceiptRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
 }
 
-export function MaterialReceiptTable({ receipts, meta, onPageChange }: MaterialReceiptTableProps) {
+export function MaterialReceiptTable({ receipts, meta, onPageChange, onLimitChange }: MaterialReceiptTableProps) {
   const router = useRouter();
 
   return (
@@ -88,15 +90,13 @@ export function MaterialReceiptTable({ receipts, meta, onPageChange }: MaterialR
         <p className="text-sm text-muted-foreground">
           Hiển thị {receipts.length} / {meta.total} phiếu nhập
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">{meta.page} / {meta.totalPages}</span>
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
     </div>
   );

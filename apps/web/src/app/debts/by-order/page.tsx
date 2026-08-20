@@ -42,6 +42,9 @@ export default function DebtsByOrderPage() {
   const [dueTo, setDueTo] = useState("");
   const [sortBy, setSortBy] = useState<ReceivableSort>("default");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [allocateOpen, setAllocateOpen] = useState(false);
@@ -58,7 +61,7 @@ export default function DebtsByOrderPage() {
       if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
       if (sortBy !== "default") params.set("sortBy", sortBy);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: ReceivableRow[]; meta: typeof meta }>(`/receivables?${params}`);
       setReceivables(json.data);
@@ -68,7 +71,7 @@ export default function DebtsByOrderPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, risk, paymentStatus, sortBy, page]);
+  }, [search, tab, risk, paymentStatus, sortBy, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchReceivables, search ? 300 : 0);
@@ -77,7 +80,7 @@ export default function DebtsByOrderPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, risk, paymentStatus, sortBy]);
+  }, [search, tab, risk, paymentStatus, sortBy, limit]);
 
   // BE chưa hỗ trợ filter theo hạn thanh toán (ReceivableQueryDto không có
   // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern với
@@ -142,7 +145,7 @@ export default function DebtsByOrderPage() {
         />
       )}
       {!loading && !error && filteredReceivables.length > 0 && (
-        <ReceivableTable receivables={filteredReceivables} meta={meta} onPageChange={setPage} />
+        <ReceivableTable receivables={filteredReceivables} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
       )}
 
       <AllocatePaymentDialog

@@ -40,12 +40,17 @@ export default function ProductsPage() {
   // Mặc định A-Z — lọc thủ công cho phép đổi sang "sản phẩm mới tạo".
   const [sortBy, setSortBy] = useState<ProductSort>("name_asc");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [deleted, setDeleted] = useState<any[]>([]);
   const [deletedMeta, setDeletedMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [deletedPage, setDeletedPage] = useState(1);
+  // Số dòng/trang riêng cho tab Đã xoá — mặc định giữ nguyên 10 như trước.
+  const [deletedLimit, setDeletedLimit] = useState(10);
   const [deletedLoading, setDeletedLoading] = useState(false);
 
   const fetchProducts = useCallback(async () => {
@@ -59,7 +64,7 @@ export default function ProductsPage() {
       if (productionCenterId !== "all") params.set("productionCenterId", productionCenterId);
       params.set("sortBy", sortBy);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: any[]; meta: typeof meta }>(`/products?${params}`);
       setProducts(json.data);
@@ -69,14 +74,14 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, productTypeId, productionCenterId, sortBy, page]);
+  }, [search, status, productTypeId, productionCenterId, sortBy, page, limit]);
 
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
     try {
       const params = new URLSearchParams();
       params.set("page", String(deletedPage));
-      params.set("limit", "10");
+      params.set("limit", String(deletedLimit));
       const json = await apiGet<{ data: any[]; meta: typeof deletedMeta }>(
         `/products/deleted?${params}`,
       );
@@ -87,7 +92,7 @@ export default function ProductsPage() {
     } finally {
       setDeletedLoading(false);
     }
-  }, [deletedPage]);
+  }, [deletedPage, deletedLimit]);
 
   useEffect(() => {
     apiGet<ProductType[]>("/product-types").then(setProductTypes).catch(() => {});
@@ -101,7 +106,11 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, productTypeId, productionCenterId, sortBy]);
+  }, [search, status, productTypeId, productionCenterId, sortBy, limit]);
+
+  useEffect(() => {
+    setDeletedPage(1);
+  }, [deletedLimit]);
 
   useEffect(() => {
     if (tab === "deleted") {
@@ -163,7 +172,7 @@ export default function ProductsPage() {
               />
             )}
             {!loading && !error && products.length > 0 && (
-              <ProductTable products={products} meta={meta} onPageChange={setPage} />
+              <ProductTable products={products} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
             )}
           </TabsContent>
         ))}
@@ -181,6 +190,7 @@ export default function ProductsPage() {
               products={deleted}
               meta={deletedMeta}
               onPageChange={setDeletedPage}
+              onLimitChange={setDeletedLimit}
               onRestored={handleRestored}
             />
           )}

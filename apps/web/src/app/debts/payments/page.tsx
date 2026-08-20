@@ -24,6 +24,9 @@ export default function DebtsPaymentsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +38,7 @@ export default function DebtsPaymentsPage() {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
       const json = await apiGet<{ data: PaymentListRow[]; meta: Meta }>(`/payments?${params}`);
       setPayments(json.data);
       setMeta(json.meta);
@@ -44,7 +47,7 @@ export default function DebtsPaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, page]);
+  }, [from, to, page, limit]);
 
   useEffect(() => {
     fetchPayments();
@@ -52,7 +55,7 @@ export default function DebtsPaymentsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [from, to]);
+  }, [from, to, limit]);
 
   return (
     <div className="space-y-6">
@@ -73,7 +76,7 @@ export default function DebtsPaymentsPage() {
         />
       )}
       {!loading && !error && payments.length > 0 && (
-        <PaymentListTable rows={payments} meta={meta} onPageChange={setPage} onReversed={fetchPayments} showCustomer />
+        <PaymentListTable rows={payments} meta={meta} onPageChange={setPage} onLimitChange={setLimit} onReversed={fetchPayments} showCustomer />
       )}
     </div>
   );

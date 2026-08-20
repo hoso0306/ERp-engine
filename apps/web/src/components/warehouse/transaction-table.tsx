@@ -5,8 +5,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Pagination } from "@/components/shared";
 import { useAuth } from "@/context/auth-context";
 
 interface WarehouseTransactionRow {
@@ -33,6 +32,9 @@ interface TransactionTableProps {
   transactions: WarehouseTransactionRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
 }
 
 const TRANSACTION_TYPE_LABEL: Record<string, string> = {
@@ -40,7 +42,7 @@ const TRANSACTION_TYPE_LABEL: Record<string, string> = {
   MATERIAL_ISSUE: "Xuất sản xuất",
 };
 
-export function TransactionTable({ transactions, meta, onPageChange }: TransactionTableProps) {
+export function TransactionTable({ transactions, meta, onPageChange, onLimitChange }: TransactionTableProps) {
   const { hasPermission } = useAuth();
 
   return (
@@ -103,15 +105,13 @@ export function TransactionTable({ transactions, meta, onPageChange }: Transacti
         <p className="text-sm text-muted-foreground">
           Hiển thị {transactions.length} / {meta.total} giao dịch
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">{meta.page} / {meta.totalPages}</span>
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
     </div>
   );

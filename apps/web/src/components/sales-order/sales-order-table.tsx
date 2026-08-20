@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Pagination } from "@/components/shared";
+import { AlertCircle } from "lucide-react";
 import { SalesOrderStatusBadge } from "./sales-order-status-badge";
 import { PaymentStatusBadge } from "./payment-status-badge";
 
@@ -33,6 +33,9 @@ interface SalesOrderTableProps {
   orders: SalesOrderRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
 }
 
 function formatMoney(amount: number) {
@@ -47,7 +50,7 @@ function isOverdue(expectedDeliveryDate: string | null, status: string): boolean
   return new Date(expectedDeliveryDate) < new Date(new Date().toDateString());
 }
 
-export function SalesOrderTable({ orders, meta, onPageChange }: SalesOrderTableProps) {
+export function SalesOrderTable({ orders, meta, onPageChange, onLimitChange }: SalesOrderTableProps) {
   const router = useRouter();
 
   return (
@@ -112,15 +115,13 @@ export function SalesOrderTable({ orders, meta, onPageChange }: SalesOrderTableP
         <p className="text-sm text-muted-foreground">
           Hiển thị {orders.length} / {meta.total} đơn hàng
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">{meta.page} / {meta.totalPages}</span>
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
     </div>
   );

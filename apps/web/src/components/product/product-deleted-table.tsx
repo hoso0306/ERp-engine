@@ -10,8 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
-import { ConfirmDialog } from "@/components/shared";
+import { RotateCcw } from "lucide-react";
+import { ConfirmDialog, Pagination } from "@/components/shared";
 import { toast } from "sonner";
 import { apiPatch, ApiError } from "@/lib/api";
 
@@ -35,6 +35,9 @@ interface ProductDeletedTableProps {
   products: Product[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
   onRestored: () => void;
 }
 
@@ -42,6 +45,7 @@ export function ProductDeletedTable({
   products,
   meta,
   onPageChange,
+  onLimitChange,
   onRestored,
 }: ProductDeletedTableProps) {
   const [restoreTarget, setRestoreTarget] = useState<Product | null>(null);
@@ -105,27 +109,13 @@ export function ProductDeletedTable({
         <p className="text-sm text-muted-foreground">
           Hiển thị {products.length} / {meta.total} sản phẩm đã xoá
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(meta.page - 1)}
-            disabled={meta.page <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">
-            {meta.page} / {meta.totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(meta.page + 1)}
-            disabled={meta.page >= meta.totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
 
       <ConfirmDialog

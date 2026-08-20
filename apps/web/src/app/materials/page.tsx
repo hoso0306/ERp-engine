@@ -64,6 +64,9 @@ export default function MaterialsPage() {
   const [isRetailable, setIsRetailable] = useState("all");
   const [centers, setCenters] = useState<ProductionCenterOption[]>([]);
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 20 như trước (khác các trang khác dùng 10).
+  const [limit, setLimit] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -83,7 +86,7 @@ export default function MaterialsPage() {
       if (centerId !== "all") params.set("productionCenterId", centerId);
       if (isRetailable !== "all") params.set("isRetailable", isRetailable);
       params.set("page", String(page));
-      params.set("limit", "20");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: any[]; meta: typeof meta }>(`/materials?${params}`);
       setMaterials(json.data);
@@ -93,7 +96,7 @@ export default function MaterialsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, isActive, centerId, isRetailable, page]);
+  }, [search, isActive, centerId, isRetailable, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchMaterials, search ? 300 : 0);
@@ -102,7 +105,7 @@ export default function MaterialsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, isActive, centerId, isRetailable]);
+  }, [search, isActive, centerId, isRetailable, limit]);
 
   function currentFilterParams() {
     const params = new URLSearchParams();
@@ -233,6 +236,7 @@ export default function MaterialsPage() {
           materials={materials}
           meta={meta}
           onPageChange={setPage}
+          onLimitChange={setLimit}
           onRefresh={fetchMaterials}
         />
       )}

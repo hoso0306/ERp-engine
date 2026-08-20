@@ -66,6 +66,9 @@ export default function WarehousePage() {
   const [receiptDateFrom, setReceiptDateFrom] = useState("");
   const [receiptDateTo, setReceiptDateTo] = useState("");
   const [receiptPage, setReceiptPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [receiptLimit, setReceiptLimit] = useState(10);
   const [receiptLoading, setReceiptLoading] = useState(true);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
@@ -77,6 +80,9 @@ export default function WarehousePage() {
   const [transactionDateFrom, setTransactionDateFrom] = useState("");
   const [transactionDateTo, setTransactionDateTo] = useState("");
   const [transactionPage, setTransactionPage] = useState(1);
+  // Số dòng/trang riêng cho tab Lịch sử giao dịch — mặc định giữ nguyên 10
+  // như trước.
+  const [transactionLimit, setTransactionLimit] = useState(10);
   const [transactionLoading, setTransactionLoading] = useState(true);
   const [transactionError, setTransactionError] = useState<string | null>(null);
 
@@ -84,6 +90,8 @@ export default function WarehousePage() {
   const [stockMeta, setStockMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [stockSearch, setStockSearch] = useState("");
   const [stockPage, setStockPage] = useState(1);
+  // Số dòng/trang riêng cho tab Tồn kho — mặc định giữ nguyên 20 như trước.
+  const [stockLimit, setStockLimit] = useState(20);
   const [stockLoading, setStockLoading] = useState(true);
   const [stockError, setStockError] = useState<string | null>(null);
 
@@ -94,7 +102,7 @@ export default function WarehousePage() {
       const params = new URLSearchParams();
       if (stockSearch) params.set("search", stockSearch);
       params.set("page", String(stockPage));
-      params.set("limit", "20");
+      params.set("limit", String(stockLimit));
       const json = await apiGet<{ data: MaterialStockRow[]; meta: typeof stockMeta }>(`/warehouse/stock?${params}`);
       setStock(json.data);
       setStockMeta(json.meta);
@@ -103,7 +111,7 @@ export default function WarehousePage() {
     } finally {
       setStockLoading(false);
     }
-  }, [stockSearch, stockPage]);
+  }, [stockSearch, stockPage, stockLimit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchStock, stockSearch ? 300 : 0);
@@ -112,7 +120,7 @@ export default function WarehousePage() {
 
   useEffect(() => {
     setStockPage(1);
-  }, [stockSearch]);
+  }, [stockSearch, stockLimit]);
 
   const fetchReceipts = useCallback(async () => {
     setReceiptLoading(true);
@@ -121,7 +129,7 @@ export default function WarehousePage() {
       const params = new URLSearchParams();
       if (receiptSearch) params.set("search", receiptSearch);
       params.set("page", String(receiptPage));
-      params.set("limit", "10");
+      params.set("limit", String(receiptLimit));
       const json = await apiGet<{ data: MaterialReceiptRow[]; meta: typeof receiptMeta }>(`/material-receipts?${params}`);
       setReceipts(json.data);
       setReceiptMeta(json.meta);
@@ -130,7 +138,7 @@ export default function WarehousePage() {
     } finally {
       setReceiptLoading(false);
     }
-  }, [receiptSearch, receiptPage]);
+  }, [receiptSearch, receiptPage, receiptLimit]);
 
   useEffect(() => {
     if (tab !== "receipts") return;
@@ -140,7 +148,7 @@ export default function WarehousePage() {
 
   useEffect(() => {
     setReceiptPage(1);
-  }, [receiptSearch]);
+  }, [receiptSearch, receiptLimit]);
 
   // BE chưa hỗ trợ filter theo ngày (MaterialReceiptQueryDto không có field
   // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
@@ -162,7 +170,7 @@ export default function WarehousePage() {
       if (transactionMaterial) params.set("materialId", transactionMaterial.id);
       if (transactionType !== "all") params.set("transactionType", transactionType);
       params.set("page", String(transactionPage));
-      params.set("limit", "10");
+      params.set("limit", String(transactionLimit));
       const json = await apiGet<{ data: WarehouseTransactionRow[]; meta: typeof transactionMeta }>(`/warehouse/transactions?${params}`);
       setTransactions(json.data);
       setTransactionMeta(json.meta);
@@ -171,7 +179,7 @@ export default function WarehousePage() {
     } finally {
       setTransactionLoading(false);
     }
-  }, [transactionMaterial, transactionType, transactionPage]);
+  }, [transactionMaterial, transactionType, transactionPage, transactionLimit]);
 
   useEffect(() => {
     if (tab !== "transactions") return;
@@ -180,7 +188,7 @@ export default function WarehousePage() {
 
   useEffect(() => {
     setTransactionPage(1);
-  }, [transactionMaterial, transactionType]);
+  }, [transactionMaterial, transactionType, transactionLimit]);
 
   // BE chưa hỗ trợ filter theo ngày (WarehouseTransactionQueryDto không có
   // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
@@ -222,7 +230,7 @@ export default function WarehousePage() {
             <EmptyState title="Không có vật tư" description="Không có vật tư nào khớp tìm kiếm." />
           )}
           {!stockLoading && !stockError && stock.length > 0 && (
-            <StockTable materials={stock} meta={stockMeta} onPageChange={setStockPage} />
+            <StockTable materials={stock} meta={stockMeta} onPageChange={setStockPage} onLimitChange={setStockLimit} />
           )}
         </TabsContent>
 
@@ -265,7 +273,7 @@ export default function WarehousePage() {
             />
           )}
           {!receiptLoading && !receiptError && filteredReceipts.length > 0 && (
-            <MaterialReceiptTable receipts={filteredReceipts} meta={receiptMeta} onPageChange={setReceiptPage} />
+            <MaterialReceiptTable receipts={filteredReceipts} meta={receiptMeta} onPageChange={setReceiptPage} onLimitChange={setReceiptLimit} />
           )}
         </TabsContent>
 
@@ -299,7 +307,7 @@ export default function WarehousePage() {
             <EmptyState title="Không có giao dịch" description="Không có giao dịch kho nào khớp bộ lọc." />
           )}
           {!transactionLoading && !transactionError && filteredTransactions.length > 0 && (
-            <TransactionTable transactions={filteredTransactions} meta={transactionMeta} onPageChange={setTransactionPage} />
+            <TransactionTable transactions={filteredTransactions} meta={transactionMeta} onPageChange={setTransactionPage} onLimitChange={setTransactionLimit} />
           )}
         </TabsContent>
       </Tabs>

@@ -46,6 +46,9 @@ export default function OrdersPage() {
   const [ownerId, setOwnerId] = useState("all");
   const [owners, setOwners] = useState<SalesOrderOwnerOption[]>([]);
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +73,7 @@ export default function OrdersPage() {
       if (deliveryFrom) params.set("deliveryFrom", deliveryFrom);
       if (deliveryTo) params.set("deliveryTo", deliveryTo);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: SalesOrderRow[]; meta: typeof meta }>(`/sales-orders?${params}`);
       setOrders(json.data);
@@ -80,7 +83,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, ownerId, user, createdFrom, createdTo, deliveryFrom, deliveryTo, page]);
+  }, [search, tab, ownerId, user, createdFrom, createdTo, deliveryFrom, deliveryTo, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchOrders, search ? 300 : 0);
@@ -89,7 +92,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, ownerId, createdFrom, createdTo, deliveryFrom, deliveryTo]);
+  }, [search, tab, ownerId, createdFrom, createdTo, deliveryFrom, deliveryTo, limit]);
 
   return (
     <div className="space-y-6">
@@ -140,7 +143,7 @@ export default function OrdersPage() {
         />
       )}
       {!loading && !error && orders.length > 0 && (
-        <SalesOrderTable orders={orders} meta={meta} onPageChange={setPage} />
+        <SalesOrderTable orders={orders} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
       )}
     </div>
   );

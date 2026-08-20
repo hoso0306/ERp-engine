@@ -4,9 +4,8 @@ import { useRouter } from "next/navigation";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Pagination } from "@/components/shared";
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 
 interface ProductionOrderRow {
@@ -37,6 +36,9 @@ interface ProductionTableProps {
   orders: ProductionOrderRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
   // In hàng loạt (009-in-phieu-san-xuat.md Việc 6) — chọn nhiều dòng để in
   // gộp nhiều phiếu A5. Optional để không phá vỡ chỗ khác đang dùng bảng này
   // mà không cần tính năng chọn.
@@ -49,6 +51,7 @@ export function ProductionTable({
   orders,
   meta,
   onPageChange,
+  onLimitChange,
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
@@ -123,15 +126,13 @@ export function ProductionTable({
         <p className="text-sm text-muted-foreground">
           Hiển thị {orders.length} / {meta.total} phiếu sản xuất
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">{meta.page} / {meta.totalPages}</span>
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
     </div>
   );

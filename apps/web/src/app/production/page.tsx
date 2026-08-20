@@ -58,6 +58,9 @@ function ProductionPageContent() {
   const [deadlineFrom, setDeadlineFrom] = useState("");
   const [deadlineTo, setDeadlineTo] = useState("");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // In hàng loạt (009-in-phieu-san-xuat.md Việc 6).
@@ -77,7 +80,7 @@ function ProductionPageContent() {
       if (deadlineFrom) params.set("deliveryFrom", deadlineFrom);
       if (deadlineTo) params.set("deliveryTo", deadlineTo);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: ProductionOrderRow[]; meta: typeof meta }>(`/production-orders?${params}`);
       setOrders(json.data);
@@ -87,7 +90,7 @@ function ProductionPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, productionCenterId, ownerId, user, deadlineFrom, deadlineTo, page]);
+  }, [search, tab, productionCenterId, ownerId, user, deadlineFrom, deadlineTo, page, limit]);
 
   useEffect(() => {
     apiGet<ProductionCenter[]>("/production-centers").then(setProductionCenters).catch(() => {});
@@ -134,7 +137,7 @@ function ProductionPageContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, productionCenterId, ownerId, deadlineFrom, deadlineTo]);
+  }, [search, tab, productionCenterId, ownerId, deadlineFrom, deadlineTo, limit]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -227,6 +230,7 @@ function ProductionPageContent() {
           orders={filteredOrders}
           meta={meta}
           onPageChange={setPage}
+          onLimitChange={setLimit}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onToggleSelectAll={toggleSelectAll}

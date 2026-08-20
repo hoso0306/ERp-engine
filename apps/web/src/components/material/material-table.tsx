@@ -30,8 +30,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ConfirmDialog } from "@/components/shared";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ConfirmDialog, Pagination } from "@/components/shared";
+import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPatch, ApiError } from "@/lib/api";
 
@@ -70,6 +70,9 @@ interface MaterialTableProps {
   materials: Material[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
   // Bật/tắt "Cho phép bán lẻ" ngay trong bảng (chốt 28/07/2026) — sau khi đổi
   // thành công gọi lại để load lại danh sách.
   onRefresh: () => void;
@@ -330,7 +333,7 @@ function ProductionCenterQuickEdit({
   );
 }
 
-export function MaterialTable({ materials, meta, onPageChange, onRefresh }: MaterialTableProps) {
+export function MaterialTable({ materials, meta, onPageChange, onLimitChange, onRefresh }: MaterialTableProps) {
   const router = useRouter();
   const [enableTarget, setEnableTarget] = useState<Material | null>(null);
   const [disableTarget, setDisableTarget] = useState<Material | null>(null);
@@ -440,27 +443,13 @@ export function MaterialTable({ materials, meta, onPageChange, onRefresh }: Mate
         <p className="text-sm text-muted-foreground">
           Hiển thị {materials.length} / {meta.total} vật tư
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(meta.page - 1)}
-            disabled={meta.page <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">
-            {meta.page} / {meta.totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(meta.page + 1)}
-            disabled={meta.page >= meta.totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
 
       <RetailEnableDialog

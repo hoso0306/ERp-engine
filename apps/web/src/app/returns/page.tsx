@@ -44,6 +44,9 @@ function ReturnsPageContent() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước, riêng cho tab Phiếu hoàn.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +58,9 @@ function ReturnsPageContent() {
   const [recoveryDateTo, setRecoveryDateTo] = useState("");
   const [recoverySortBy, setRecoverySortBy] = useState("default");
   const [recoveryPage, setRecoveryPage] = useState(1);
+  // Số dòng/trang riêng cho tab Kho thu hồi (Pagination dùng chung, chốt
+  // 20/08/2026) — mặc định giữ nguyên 10 như trước.
+  const [recoveryLimit, setRecoveryLimit] = useState(10);
   const [recoveryLoading, setRecoveryLoading] = useState(true);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
@@ -86,7 +92,7 @@ function ReturnsPageContent() {
       if (search) params.set("search", search);
       if (status !== "all") params.set("status", status);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: ReturnRow[]; meta: typeof meta }>(`/returns?${params}`);
       setReturns(json.data);
@@ -96,7 +102,7 @@ function ReturnsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, status, page]);
+  }, [search, status, page, limit]);
 
   useEffect(() => {
     if (tab !== "returns") return;
@@ -106,7 +112,7 @@ function ReturnsPageContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status]);
+  }, [search, status, limit]);
 
   // BE chưa hỗ trợ filter theo ngày hoàn (ReturnQueryDto không có field này) —
   // lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
@@ -129,7 +135,7 @@ function ReturnsPageContent() {
       if (recoveryStatus !== "all") params.set("status", recoveryStatus);
       if (recoverySortBy !== "default") params.set("sortBy", recoverySortBy);
       params.set("page", String(recoveryPage));
-      params.set("limit", "10");
+      params.set("limit", String(recoveryLimit));
 
       const json = await apiGet<{ data: RecoveryInventoryRow[]; meta: typeof recoveryMeta }>(`/recovery-inventory?${params}`);
       setRecoveryItems(json.data);
@@ -139,7 +145,7 @@ function ReturnsPageContent() {
     } finally {
       setRecoveryLoading(false);
     }
-  }, [recoverySearch, recoveryStatus, recoverySortBy, recoveryPage]);
+  }, [recoverySearch, recoveryStatus, recoverySortBy, recoveryPage, recoveryLimit]);
 
   useEffect(() => {
     if (tab !== "recovery") return;
@@ -149,7 +155,7 @@ function ReturnsPageContent() {
 
   useEffect(() => {
     setRecoveryPage(1);
-  }, [recoverySearch, recoveryStatus, recoverySortBy]);
+  }, [recoverySearch, recoveryStatus, recoverySortBy, recoveryLimit]);
 
   // BE chưa hỗ trợ filter theo ngày (RecoveryInventoryQueryDto không có field
   // này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern Đơn hàng.
@@ -237,6 +243,7 @@ function ReturnsPageContent() {
               returns={filteredReturns}
               meta={meta}
               onPageChange={setPage}
+              onLimitChange={setLimit}
               canViewOrder={hasPermission("sales-order.view")}
             />
           )}
@@ -293,6 +300,7 @@ function ReturnsPageContent() {
               items={filteredRecoveryItems}
               meta={recoveryMeta}
               onPageChange={setRecoveryPage}
+              onLimitChange={setRecoveryLimit}
               canMarkUsed={hasPermission("return.mark-used")}
               canDispose={hasPermission("return.dispose")}
               canUpdate={hasPermission("return.update")}

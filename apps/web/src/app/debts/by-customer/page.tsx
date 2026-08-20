@@ -44,6 +44,9 @@ function DebtsByCustomerPageContent() {
   const [tab, setTab] = useState<CustomerTab>("all");
   const [sortBy, setSortBy] = useState<CustomerSort>("remaining_desc");
   const [page, setPage] = useState(1);
+  // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
+  // nguyên 10 như trước.
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [allocateOpen, setAllocateOpen] = useState(false);
@@ -58,7 +61,7 @@ function DebtsByCustomerPageContent() {
       if (tab === "credit_exceeded") params.set("creditExceeded", "true");
       params.set("sortBy", sortBy);
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(limit));
 
       const json = await apiGet<{ data: CustomerDebtRow[]; meta: typeof meta }>(
         `/receivables/by-customer?${params}`,
@@ -70,7 +73,7 @@ function DebtsByCustomerPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, sortBy, page]);
+  }, [search, tab, sortBy, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchRows, search ? 300 : 0);
@@ -79,7 +82,7 @@ function DebtsByCustomerPageContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, sortBy]);
+  }, [search, tab, sortBy, limit]);
 
   // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — tile
   // "Quá hạn"/"Vượt hạn mức" đưa thẳng sang đúng tab tương ứng.
@@ -150,6 +153,7 @@ function DebtsByCustomerPageContent() {
           rows={rows}
           meta={meta}
           onPageChange={setPage}
+          onLimitChange={setLimit}
           onPaymentSaved={fetchRows}
         />
       )}

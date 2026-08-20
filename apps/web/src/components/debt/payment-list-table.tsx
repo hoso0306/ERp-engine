@@ -6,8 +6,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/shared";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ConfirmDialog, Pagination } from "@/components/shared";
 import { toast } from "sonner";
 import { apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -40,6 +39,9 @@ interface PaymentListTableProps {
   rows: PaymentListRow[];
   meta: Meta;
   onPageChange: (page: number) => void;
+  // Ô chọn số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — optional,
+  // không truyền thì giữ nguyên limit cố định như trước.
+  onLimitChange?: (limit: number) => void;
   onReversed?: () => void;
   // false ở tab "Phiếu thu" trong trang khách hàng (đã biết sẵn khách nào,
   // cột này thừa) — true ở trang /debts/payments (gộp mọi khách hàng).
@@ -59,6 +61,7 @@ export function PaymentListTable({
   rows,
   meta,
   onPageChange,
+  onLimitChange,
   onReversed,
   showCustomer = true,
 }: PaymentListTableProps) {
@@ -161,15 +164,13 @@ export function PaymentListTable({
         <p className="text-sm text-muted-foreground">
           Hiển thị {rows.length} / {meta.total} phiếu thu
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">{meta.page} / {meta.totalPages}</span>
-          <Button variant="outline" size="sm" onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          onPageChange={onPageChange}
+          limit={onLimitChange ? meta.limit : undefined}
+          onLimitChange={onLimitChange}
+        />
       </div>
 
       <ConfirmDialog
