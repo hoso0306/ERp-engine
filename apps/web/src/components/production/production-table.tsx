@@ -14,9 +14,16 @@ interface ProductionOrderRow {
   code: string;
   productionCenterName: string;
   status: string;
-  salesOrder: { id: string; code: string; customerName: string };
+  salesOrder: { id: string; code: string; customerName: string; ownerName: string | null };
   _count: { items: number };
   isPrinted: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+function fmtDate(d: string | null): string {
+  return d ? new Date(d).toLocaleDateString("vi-VN") : "—";
 }
 
 interface Meta {
@@ -69,6 +76,9 @@ export function ProductionTable({
               <TableHead>Xưởng</TableHead>
               <TableHead className="text-center">Số sản phẩm</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
+              <TableHead>Ngày tạo</TableHead>
+              <TableHead>Ngày bắt đầu SX</TableHead>
+              <TableHead>Người phụ trách</TableHead>
               <TableHead className="text-center">Đã in</TableHead>
             </TableRow>
           </TableHeader>
@@ -97,6 +107,9 @@ export function ProductionTable({
                 <TableCell className="text-center">
                   <ProductionOrderStatusBadge status={po.status} />
                 </TableCell>
+                <TableCell className="text-sm">{fmtDate(po.createdAt)}</TableCell>
+                <TableCell className="text-sm">{fmtDate(po.startedAt)}</TableCell>
+                <TableCell className="text-sm">{po.salesOrder.ownerName ?? "—"}</TableCell>
                 <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                   <Checkbox checked={po.isPrinted} disabled title={po.isPrinted ? "Đã in" : "Chưa in"} />
                 </TableCell>

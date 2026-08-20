@@ -2,26 +2,29 @@
 
 import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { PageHeader, Loading, ErrorState, EmptyState, todayISO, endOfDayBound } from "@/components/shared";
+import { PageHeader, Loading, ErrorState, EmptyState, endOfDayBound } from "@/components/shared";
 import {
   ProductionFilter,
   TAB_STATUS_PARAM,
   type ProductionOrderTab,
+  type ProductionOwnerOption,
 } from "@/components/production/production-filter";
 import { ProductionTable } from "@/components/production/production-table";
 import { Button } from "@/components/ui/button";
 import { FileDown } from "lucide-react";
 import { apiGet } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 interface ProductionOrderRow {
   id: string;
   code: string;
   productionCenterName: string;
   status: string;
-  salesOrder: { id: string; code: string; customerName: string };
+  salesOrder: { id: string; code: string; customerName: string; ownerName: string | null };
   _count: { items: number };
   isPrinted: boolean;
   createdAt: string;
+  startedAt: string | null;
   completedAt: string | null;
 }
 
@@ -33,18 +36,27 @@ interface ProductionCenter {
 
 function ProductionPageContent() {
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<ProductionOrderRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [productionCenters, setProductionCenters] = useState<ProductionCenter[]>([]);
   const [search, setSearch] = useState("");
-  // Mặc định "Tất cả" + Ngày tạo "Hôm nay" (rà soát bộ lọc, chốt 18/07/2026) —
-  // cùng thiết kế với Đơn hàng.
+  // Mặc định "Tất cả" trạng thái + "Tất cả" ngày tạo (đổi từ mặc định "Hôm
+  // nay", chốt 20/08/2026 — khác thiết kế ban đầu 18/07/2026).
   const [tab, setTab] = useState<ProductionOrderTab>("all");
   const [productionCenterId, setProductionCenterId] = useState("all");
-  const [dateFrom, setDateFrom] = useState(todayISO());
-  const [dateTo, setDateTo] = useState(todayISO());
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [completedFrom, setCompletedFrom] = useState("");
   const [completedTo, setCompletedTo] = useState("");
+  // Bộ lọc "Người phụ trách" / "Hạn hoàn thành" (chốt 20/08/2026) — cùng
+  // convention trang Đơn hàng, lọc ở BE (không lọc phía FE như dateFrom/
+  // completedFrom ở trên). "Hạn hoàn thành" dùng đúng
+  // SalesOrder.expectedDeliveryDate có sẵn.
+  const [ownerId, setOwnerId] = useState("all");
+  const [owners, setOwners] = useState<ProductionOwnerOption[]>([]);
+  const [deadlineFrom, setDeadlineFrom] = useState("");
+  const [deadlineTo, setDeadlineTo] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +72,10 @@ function ProductionPageContent() {
       const statusParam = TAB_STATUS_PARAM[tab];
       if (statusParam) params.set("status", statusParam);
       if (productionCenterId !== "all") params.set("productionCenterId", productionCenterId);
+      if (ownerId === "self" && user) params.set("ownerId", user.id);
+      else if (ownerId !== "all") params.set("ownerId", ownerId);
+      if (deadlineFrom) params.set("deliveryFrom", deadlineFrom);
+      if (deadlineTo) params.set("deliveryTo", deadlineTo);
       params.set("page", String(page));
       params.set("limit", "10");
 
@@ -71,10 +87,18 @@ function ProductionPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, productionCenterId, page]);
+  }, [search, tab, productionCenterId, ownerId, user, deadlineFrom, deadlineTo, page]);
 
   useEffect(() => {
     apiGet<ProductionCenter[]>("/production-centers").then(setProductionCenters).catch(() => {});
+  }, []);
+
+  // Danh sách "Người phụ trách" (chốt 20/08/2026) — tái dùng thẳng endpoint
+  // của module Đơn hàng, không tạo endpoint riêng cho Sản xuất. Role "Sản
+  // xuất" không có quyền sales-order.view nên có thể 403 ở đây — chấp nhận,
+  // .catch nuốt lỗi, dropdown chỉ còn "Tất cả"/"Của tôi", không chặn trang.
+  useEffect(() => {
+    apiGet<ProductionOwnerOption[]>("/sales-orders/export/owners").then(setOwners).catch(() => {});
   }, []);
 
   // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — đọc
@@ -110,7 +134,7 @@ function ProductionPageContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, productionCenterId]);
+  }, [search, tab, productionCenterId, ownerId, deadlineFrom, deadlineTo]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -172,6 +196,13 @@ function ProductionPageContent() {
         onCompletedFromChange={setCompletedFrom}
         completedTo={completedTo}
         onCompletedToChange={setCompletedTo}
+        ownerId={ownerId}
+        onOwnerIdChange={setOwnerId}
+        owners={owners}
+        deadlineFrom={deadlineFrom}
+        onDeadlineFromChange={setDeadlineFrom}
+        deadlineTo={deadlineTo}
+        onDeadlineToChange={setDeadlineTo}
       />
 
       {selectedIds.size > 0 && (

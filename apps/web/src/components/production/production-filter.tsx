@@ -25,6 +25,13 @@ interface ProductionCenterOption {
   name: string;
 }
 
+// Cùng shape với SalesOrderOwnerOption (sales-order-filter.tsx) — tái dùng
+// thẳng GET /sales-orders/export/owners, không tạo endpoint riêng.
+export interface ProductionOwnerOption {
+  id: string;
+  name: string;
+}
+
 interface ProductionFilterProps {
   search: string;
   onSearchChange: (v: string) => void;
@@ -41,6 +48,18 @@ interface ProductionFilterProps {
   onCompletedFromChange: (v: string) => void;
   completedTo: string;
   onCompletedToChange: (v: string) => void;
+  // "self" = của người đang đăng nhập, "all" = tất cả, hoặc userId cụ thể —
+  // cùng convention SalesOrderFilter.ownerId.
+  ownerId: string;
+  onOwnerIdChange: (v: string) => void;
+  owners: ProductionOwnerOption[];
+  // "Hạn hoàn thành" (chốt 20/08/2026) — dùng đúng SalesOrder.expectedDeliveryDate
+  // có sẵn (cùng field "Hạn giao hàng" ở trang Đơn hàng), không phải field
+  // riêng cho Phiếu SX.
+  deadlineFrom: string;
+  onDeadlineFromChange: (v: string) => void;
+  deadlineTo: string;
+  onDeadlineToChange: (v: string) => void;
 }
 
 export function ProductionFilter({
@@ -59,6 +78,13 @@ export function ProductionFilter({
   onCompletedFromChange,
   completedTo,
   onCompletedToChange,
+  ownerId,
+  onOwnerIdChange,
+  owners,
+  deadlineFrom,
+  onDeadlineFromChange,
+  deadlineTo,
+  onDeadlineToChange,
 }: ProductionFilterProps) {
   return (
     <div className="space-y-3">
@@ -93,6 +119,18 @@ export function ProductionFilter({
             ))}
           </SelectContent>
         </Select>
+        <Select value={ownerId} onValueChange={(v) => onOwnerIdChange(v ?? "all")}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Người phụ trách" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả nhân viên</SelectItem>
+            <SelectItem value="self">Của tôi</SelectItem>
+            {owners.map((o) => (
+              <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <DateRangeFilter
           label="Ngày tạo"
           dateFrom={dateFrom}
@@ -106,6 +144,13 @@ export function ProductionFilter({
           onDateFromChange={onCompletedFromChange}
           dateTo={completedTo}
           onDateToChange={onCompletedToChange}
+        />
+        <DateRangeFilter
+          label="Hạn hoàn thành"
+          dateFrom={deadlineFrom}
+          onDateFromChange={onDeadlineFromChange}
+          dateTo={deadlineTo}
+          onDateToChange={onDeadlineToChange}
         />
       </div>
     </div>

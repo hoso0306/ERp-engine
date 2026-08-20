@@ -93,6 +93,25 @@ export class ProductionOrderService {
       where.status = query.status as ProductionOrderStatus;
     }
 
+    // "Người phụ trách" / "Hạn hoàn thành" (chốt 20/08/2026) — cả 2 field đều
+    // nằm trên SalesOrder (ownerId, expectedDeliveryDate — không có bản riêng
+    // cho ProductionOrder), lọc qua relation salesOrder.
+    if (query.ownerId || query.deliveryFrom || query.deliveryTo) {
+      where.salesOrder = {
+        ...(query.ownerId && { ownerId: query.ownerId }),
+        ...((query.deliveryFrom || query.deliveryTo) && {
+          expectedDeliveryDate: {
+            ...(query.deliveryFrom && {
+              gte: new Date(`${query.deliveryFrom}T00:00:00`),
+            }),
+            ...(query.deliveryTo && {
+              lte: new Date(`${query.deliveryTo}T23:59:59.999`),
+            }),
+          },
+        }),
+      };
+    }
+
     const [data, total] = await Promise.all([
       this.prisma.productionOrder.findMany({
         where,
@@ -112,7 +131,10 @@ export class ProductionOrderService {
             },
           },
           salesOrder: {
-            select: { id: true, code: true, customerName: true },
+            // ownerName (tab Sản xuất, chốt 20/08/2026) — snapshot người tạo
+            // Báo giá tại Approve (xem SalesOrder.ownerId), hiện cột "Người
+            // phụ trách". Nullable với đơn tạo trước 05/07/2026.
+            select: { id: true, code: true, customerName: true, ownerName: true },
           },
         },
       }),
