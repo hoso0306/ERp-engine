@@ -122,7 +122,14 @@ const HEIGHT_PARAM_NAME = "chieucao";
 // biệt giá vốn không được lộ cho Xưởng sản xuất, nên không hiện trên phiếu.
 // "area" — biến phái sinh snapshot cho bản in Báo giá (BG000031, chốt
 // 11/08/2026), không phải thông số Xưởng cần — ẩn khỏi phiếu SX như cũ.
-const HIDDEN_PARAM_NAMES = ["dongia", "giavon", "area"];
+// "day" (Đáy) — chốt 20/08/2026, người dùng xác nhận xưởng không còn cần
+// phân biệt đáy nhôm/nhựa trên phiếu nữa. LƯU Ý: HIDDEN_PARAM_NAMES cũng là
+// khoá gộp dòng (groupKey() -> otherParamsText(), mẫu Xưởng) — ẩn "day" ở
+// đây đồng nghĩa 2 dòng cùng SP/kích thước nhưng khác đáy nhôm/nhựa sẽ GỘP
+// LÀM MỘT, cộng dồn số lượng (chấp nhận có chủ đích, đã cảnh báo và được
+// xác nhận — khác cách hiểu "chỉ ẩn hiển thị" thông thường của các tên khác
+// trong danh sách này).
+const HIDDEN_PARAM_NAMES = ["dongia", "giavon", "area", "day"];
 
 // Mái hiên di động (SP000115, Xưởng Bạt XW005) là sản phẩm DUY NHẤT trong
 // toàn hệ thống không có tham số "chieucao" (chỉ có "chieurong") — thay vào
