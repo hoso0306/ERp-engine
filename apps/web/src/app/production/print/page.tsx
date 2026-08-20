@@ -133,6 +133,9 @@ const HIDDEN_PARAM_NAMES = ["dongia", "giavon", "area"];
 // — xem quotation-workflow.service.ts groupBy productionCenterId).
 const MAI_HIEN_DI_DONG_PRODUCT_CODE = "SP000115";
 const MAI_HIEN_HEIGHT_OVERRIDE_PARAM_NAME = "khodua";
+// Cơ cấu lắp đặt chiếm bớt không gian nên Rộng xưởng cắt phải hẹp hơn Rộng
+// khách đặt — áp dụng không điều kiện, chốt 20/08/2026.
+const MAI_HIEN_WIDTH_DEDUCT_CM = 10;
 
 // [Bạt xếp] - Vải bạt (SP000110, Xưởng Bạt) cũng không có "chieucao" — dùng
 // "chieudai" (nhãn thật trong dữ liệu: "Chiều nước chảy") làm chiều thứ 2.
@@ -189,7 +192,7 @@ function paramValue(item: ProductionOrderItem, name: string): string {
 
 // chieurong/chieucao lưu đơn vị mét — deltaCm quy đổi ra mét trước khi cộng.
 // Giá trị không parse được số thì trả nguyên văn (không áp công thức).
-function batCuonAdjustDimension(raw: string, deltaCm: number): string {
+function adjustDimensionByCm(raw: string, deltaCm: number): string {
   const num = Number(raw.replace(",", "."));
   if (Number.isNaN(num)) return raw;
   return (num + deltaCm / 100).toString();
@@ -207,7 +210,12 @@ function renderWidthCell(item: ProductionOrderItem): ReactNode {
     if (isBatCuonMabatLuoi(item)) {
       deductCm += BAT_CUON_MABAT_LUOI_EXTRA_DEDUCT_CM;
     }
-    return formatDimension(batCuonAdjustDimension(paramValue(item, WIDTH_PARAM_NAME), -deductCm));
+    return formatDimension(adjustDimensionByCm(paramValue(item, WIDTH_PARAM_NAME), -deductCm));
+  }
+  if (item.productCode === MAI_HIEN_DI_DONG_PRODUCT_CODE) {
+    return formatDimension(
+      adjustDimensionByCm(paramValue(item, WIDTH_PARAM_NAME), -MAI_HIEN_WIDTH_DEDUCT_CM),
+    );
   }
   return formatDimension(paramValue(item, WIDTH_PARAM_NAME));
 }
@@ -227,7 +235,7 @@ function renderHeightCell(item: ProductionOrderItem): ReactNode {
   }
   if (item.productCode === BAT_CUON_PRODUCT_CODE) {
     const addCm = isBatCuonMabatLuoi(item) ? BAT_CUON_HEIGHT_ADD_CM_MABAT_LUOI : BAT_CUON_HEIGHT_ADD_CM_DEFAULT;
-    return formatDimension(batCuonAdjustDimension(paramValue(item, HEIGHT_PARAM_NAME), addCm));
+    return formatDimension(adjustDimensionByCm(paramValue(item, HEIGHT_PARAM_NAME), addCm));
   }
   return formatDimension(paramValue(item, HEIGHT_PARAM_NAME));
 }
