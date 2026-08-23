@@ -133,6 +133,9 @@ dist
 docker/nginx/certs/*
 !docker/nginx/certs/.gitkeep
 
+# DB backup/dump thủ công — chứa dữ liệu khách hàng thật, không commit.
+/backups/
+
 # yarn v3
 .pnp.*
 .yarn/*
@@ -146,3 +149,7 @@ docker/nginx/certs/*
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Script tra cứu/sửa dữ liệu tạm thời, chạy 1 lần rồi bỏ (không phải code app)
+apps/api/scratch-*.ts
+apps/api/*dump*.json
