@@ -221,16 +221,17 @@ export class ReturnService {
       }
     }
 
-    // Giá trị phiếu hoàn (đã gồm VAT) — snapshot 1 lần tại đây, xem comment
-    // Return.totalValue trong schema. Chỉ tham khảo, không tự động trừ Công nợ.
+    // Giá trị phiếu hoàn — finalPrice đã là giá VAT-inclusive kể từ "Tách
+    // ngược VAT" (chốt 16/08/2026, xem calcVatAmount trong
+    // quotation-workflow.service.ts), nên không cộng thêm VAT ở đây nữa.
+    // Snapshot 1 lần tại đây, xem comment Return.totalValue trong schema.
+    // Chỉ tham khảo, không tự động trừ Công nợ.
     let totalValue = 0;
     for (const item of dto.items) {
       const soItem = salesOrderItemMap.get(item.salesOrderItemId)!;
-      const lineSubtotal = Math.round(
+      totalValue += Math.round(
         Number(soItem.finalPrice) * item.returnedQuantity,
       );
-      const lineVat = Math.round((lineSubtotal * Number(soItem.vatRate)) / 100);
-      totalValue += lineSubtotal + lineVat;
     }
 
     return retryOnCodeConflict(() =>
