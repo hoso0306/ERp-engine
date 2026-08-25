@@ -708,12 +708,11 @@ function WorkshopOrderContent({
   // Sửa ghi chú CHỈ trên trang in — chỉnh cục bộ (state FE), không gọi API,
   // không đổi SalesOrderItem.note. Refresh lại trang là mất, đúng ý định "chỉ
   // sửa bản in đang xem, không ảnh hưởng gì tới đơn hàng".
-  // Gộp theo NHÓM giống cột "Tên sản phẩm" (key = id item đầu nhóm, rowSpan
-  // = số dòng trong nhóm) — 1 ô Ghi chú dùng chung cho cả nhóm sản phẩm đã
-  // gộp, không phải 1 ô/dòng như trước. Giá trị khởi tạo lấy note của item
-  // đầu nhóm (item.note của các dòng còn lại trong nhóm bị bỏ qua trên UI).
+  // KHÔNG gộp theo nhóm (khác cột "Tên sản phẩm") — chốt 25/08/2026, phát
+  // hiện ghi chú của các item không phải đầu nhóm bị ẩn mất khi gộp chung 1
+  // ô. Mỗi item có 1 ô Ghi chú riêng, key = id của chính item đó.
   const [noteOverrides, setNoteOverrides] = useState<Record<string, string>>(() =>
-    Object.fromEntries(groups.map((group) => [group.items[0].id, group.items[0].note ?? ""])),
+    Object.fromEntries(order.items.map((item) => [item.id, item.note ?? ""])),
   );
 
   // 5 thông số phụ kiện Vải bạt (VAI_BAT_HANDWRITE_FIELDS) — gõ trực tiếp
@@ -903,19 +902,12 @@ function WorkshopOrderContent({
                     <td style={tdBigStyle}>{renderWidthCell(item)}</td>
                     <td style={tdBigStyle}>{renderHeightCell(item)}</td>
                     <td style={tdBigStyle}>{Number(item.quantity)}</td>
-                    {itemIdx === 0 && (
-                      <td
-                        rowSpan={group.items.length}
-                        style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top" }}
-                      >
-                        <NoteCell
-                          value={noteOverrides[group.items[0].id] ?? ""}
-                          onChange={(value) =>
-                            setNoteOverrides((prev) => ({ ...prev, [group.items[0].id]: value }))
-                          }
-                        />
-                      </td>
-                    )}
+                    <td style={{ ...tdStyle, textAlign: "left", padding: 0, verticalAlign: "top" }}>
+                      <NoteCell
+                        value={noteOverrides[item.id] ?? ""}
+                        onChange={(value) => setNoteOverrides((prev) => ({ ...prev, [item.id]: value }))}
+                      />
+                    </td>
                   </tr>
                 );
               });
