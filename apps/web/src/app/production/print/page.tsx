@@ -185,11 +185,11 @@ const BAT_CUON_WIDTH_DEDUCT_CM_BY_LOAI: Record<string, number> = {
   tayquay: 10, // Tay quay
   motor: 5, // Motor
 };
-// Riêng Mã bạt lưới nhập khẩu K01/K01 mới: trừ thêm 5cm khỏi Rộng, CỘNG DỒN
+// Riêng Mã bạt lưới nhập khẩu K01/K01 mới: trừ thêm 2cm khỏi Rộng, CỘNG DỒN
 // với khoản trừ theo "loai" ở trên (không thay thế); và Cao cộng 15cm thay vì
 // 10cm mặc định (không phân biệt "loai" trong cả 2 trường hợp).
 const BAT_CUON_MABAT_LUOI_CODES = ["k01", "k01moi"];
-const BAT_CUON_MABAT_LUOI_EXTRA_DEDUCT_CM = 5;
+const BAT_CUON_MABAT_LUOI_EXTRA_DEDUCT_CM = 2;
 const BAT_CUON_HEIGHT_ADD_CM_DEFAULT = 10;
 const BAT_CUON_HEIGHT_ADD_CM_MABAT_LUOI = 15;
 
