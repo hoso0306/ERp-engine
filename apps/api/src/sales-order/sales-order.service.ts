@@ -76,6 +76,13 @@ const SALES_ORDER_INCLUDE = {
   // Task 01 (004-fe-don-hang.md) — expose id báo giá gốc để FE link chéo
   // Order → Quotation. Chỉ đọc thêm, không đổi Business Rule/Snapshot.
   quotation: { select: { id: true } },
+  // Khối "Đã hoàn" trên trang chi tiết + bản in (rà soát nghiệp vụ Return,
+  // 27/08/2026) — read-time join, KHÔNG sửa SalesOrder, chỉ đọc thêm để hiển
+  // thị sản phẩm/số lượng/giá trị đã hoàn của đơn này.
+  returns: {
+    include: { items: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
 } satisfies Prisma.SalesOrderInclude;
 
 @Injectable()
@@ -148,6 +155,8 @@ export class SalesOrderService {
     const validStatuses = Object.values(SalesOrderStatus) as string[];
     if (query.status && validStatuses.includes(query.status)) {
       where.status = query.status as SalesOrderStatus;
+    } else if (query.excludeStatus && validStatuses.includes(query.excludeStatus)) {
+      where.status = { not: query.excludeStatus as SalesOrderStatus };
     }
 
     const validPaymentStatuses = Object.values(PaymentStatus) as string[];
@@ -165,14 +174,22 @@ export class SalesOrderService {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          _count: { select: { items: true, productionOrders: true } },
+          _count: {
+            select: { items: true, productionOrders: true, returns: true },
+          },
         },
       }),
       this.prisma.salesOrder.count({ where }),
     ]);
 
     return {
-      data,
+      // Badge "Đơn có hàng hoàn" trên danh sách (rà soát nghiệp vụ Return,
+      // 27/08/2026) — Derived (EXISTS), không lưu DB, dùng chung cho cả
+      // trang /orders và tab "Đơn hàng" của Customer (cùng SalesOrderTable).
+      data: data.map((order) => ({
+        ...order,
+        hasReturn: order._count.returns > 0,
+      })),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }

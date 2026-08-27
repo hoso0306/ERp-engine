@@ -475,6 +475,46 @@ Chặn: hoàn tác một Payment `type = REVERSAL` (không cho reverse-of-revers
 
 ---
 
+# Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026 — xây mới, thay cho ghi chú kế hoạch V2 cũ)
+
+Giảm thẳng công nợ **không qua thu tiền thật** — dùng khi Return có phần "công ty chịu" (xem `return.md` mục "Phân bổ khách/công ty chịu"), hoặc điều chỉnh công nợ thủ công khác do kế toán chủ động thực hiện.
+
+```http
+POST /receivables/:id/manual-adjustment
+```
+
+Body: `{ amount, reason, returnCode?, returnId? }` — `returnCode`/`returnId` chỉ để truy vết/deep-link, không phải FK.
+
+```text
+Nhận amount + reason (bắt buộc)
+        ↓
+Validate: SalesOrder != CANCELLED, 0 < amount <= remainingAmount
+        ↓
+Receivable: totalAmount -= amount, remainingAmount -= amount (atomic decrement,
+            giữ nguyên CHECK remaining_amount >= 0 đã có)
+        ↓
+Tính lại SalesOrder.paymentStatus (paidAmount không đổi, totalAmount giảm có
+        thể khiến PARTIALLY_PAID -> PAID)
+        ↓
+Ghi SalesOrderTimeline (action DEBT_MANUAL_ADJUSTED, payload { amount, reason,
+        returnCode, returnId, oldTotalAmount, newTotalAmount,
+        oldRemainingAmount, newRemainingAmount, fromStatus, toStatus })
+```
+
+**Không tạo `Payment`/`PaymentAllocation`** — đây là điểm khác biệt cốt lõi với luồng thu tiền. Payment nghĩa là "tiền thật đã về" (xem mục "Dữ liệu quản lý" ở trên); Manual Adjustment là công ty tự nguyện giảm số tiền phải thu (vd bù cho lỗi sản xuất), không có dòng tiền nào chảy vào — nhờ vậy các báo cáo dòng tiền mặt ("Tiền đã thu hôm nay", Cash in report — đều chỉ đọc từ bảng `Payment`) không bị ảnh hưởng.
+
+**Đúng khuôn Manual Override (CLAUDE.md mục 5):** bắt buộc lý do, lưu người thực hiện + thời gian + giá trị cũ/mới — chỉ khác Manual Override "chuẩn" (`order.md`) ở chỗ đối tượng bị đổi là số liệu công nợ, không phải `SalesOrder.status`, nên dùng action Timeline riêng (`DEBT_MANUAL_ADJUSTED`) thay vì tái dùng `MANUAL_OVERRIDE`.
+
+**Hiển thị:** `GET /receivables/:id` include thêm `salesOrder.timeline` (lọc đúng action `DEBT_MANUAL_ADJUSTED`) — trang chi tiết Receivable có khối "Lịch sử điều chỉnh công nợ" riêng, cạnh "Lịch sử thu tiền" (allocations), để kế toán kiểm tra lại được.
+
+**2 nơi gọi API này:**
+- Tự động, ngay trong luồng tạo Return khi phần công ty chịu > 0 (FE gọi tuần tự sau `POST /returns`, không phải Return service gọi thẳng — xem `return.md`).
+- Thủ công, nút "Điều chỉnh giảm công nợ" trên trang chi tiết Return (dự phòng khi bước tự động lỗi/bỏ qua, hoặc cần điều chỉnh thêm sau này).
+
+Permission: `debt.manual-adjustment` (tách riêng khỏi `debt.create-payment` — bản chất khác nhau, không phải tiền thật).
+
+---
+
 # Payment Status
 
 ERP tự tính.
@@ -712,7 +752,6 @@ Nếu sau này cần:
 - Kế toán
 - Sổ cái
 - Hoàn tiền (Refund) khi Cancel đơn đã thu tiền
-- Điều chỉnh giảm công nợ thủ công (Manual Adjustment) — vd doanh nghiệp quyết định giảm nợ sau khi nhận hàng hoàn (xem `return.md`): giảm `Receivable.totalAmount`, bắt buộc lý do + người thực hiện + ghi Timeline, theo đúng khuôn Manual Override (CLAUDE.md mục 5)
 - Chặn bán hàng khi vượt hạn mức (Company Setting Debt Policy)
 - Báo cáo/đối soát Payment cắt ngang (theo ngày, theo phương thức thanh toán)
 
@@ -734,7 +773,8 @@ sẽ phát triển thành Accounting Module / Report Module (V2).
   - bỏ API `record-payment`
   - `cancel()` không chặn theo `Receivable.paidAmount` — nhưng phải trả về thông tin cọc đã thu để UI hiển thị cảnh báo xác nhận, và ghi `paidAmount` + refundNote vào Timeline payload
   - `deliver()` cần set thêm `Receivable.dueDate`
-- Dashboard
+- Dashboard — KPI "Doanh thu kế hoạch" nay còn phụ thuộc gián tiếp vào Return (qua Manual Adjustment làm giảm `remainingAmount`, không phải Dashboard đọc thẳng Return)
+- Return (rà soát nghiệp vụ Return, 27/08/2026) — gọi `POST /receivables/:id/manual-adjustment` (qua FE điều phối, không phải Return service gọi thẳng `DebtService`) khi tạo phiếu hoàn có phần công ty chịu — xem `return.md` mục "Phân bổ khách/công ty chịu"
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã thống nhất ở đây.
 

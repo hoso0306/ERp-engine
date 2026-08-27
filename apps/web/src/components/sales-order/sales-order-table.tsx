@@ -5,7 +5,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/shared";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Undo2 } from "lucide-react";
 import { SalesOrderStatusBadge } from "./sales-order-status-badge";
 import { PaymentStatusBadge } from "./payment-status-badge";
 
@@ -20,6 +20,9 @@ interface SalesOrderRow {
   totalProductionOrders: number;
   completedProductionOrders: number;
   expectedDeliveryDate: string | null;
+  // Badge cảnh báo "có hàng hoàn" (rà soát nghiệp vụ Return, 27/08/2026) —
+  // Derived (EXISTS), không lưu DB, BE tự tính ở GET /sales-orders.
+  hasReturn?: boolean;
 }
 
 interface Meta {
@@ -77,7 +80,19 @@ export function SalesOrderTable({ orders, meta, onPageChange, onLimitChange }: S
                   className="cursor-pointer"
                   onClick={() => router.push(`/orders/${o.id}`)}
                 >
-                  <TableCell className="font-mono text-xs font-medium">{o.code}</TableCell>
+                  <TableCell className="font-mono text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      {o.code}
+                      {o.hasReturn && (
+                        <span title="Đơn có hàng hoàn" className="inline-flex shrink-0">
+                          <Undo2
+                            className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400"
+                            aria-label="Đơn có hàng hoàn"
+                          />
+                        </span>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <div className="font-medium">{o.customerName}</div>
                     <div className="text-xs text-muted-foreground">{o.customerPhone}</div>

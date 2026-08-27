@@ -40,7 +40,11 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   ],
   production: ['view', 'start', 'complete'],
   warehouse: ['view', 'receipt'],
-  debt: ['view', 'create-payment'],
+  // 'manual-adjustment' (rà soát nghiệp vụ Return, 27/08/2026) — giảm thẳng
+  // Receivable.totalAmount/remainingAmount khi Return có phần công ty chịu,
+  // hoặc điều chỉnh công nợ thủ công khác. Tách riêng khỏi 'create-payment'
+  // vì bản chất khác nhau (không phải tiền thật đã về).
+  debt: ['view', 'create-payment', 'manual-adjustment'],
   // update — dùng riêng cho PUT /recovery-inventory/:id (Management, sửa
   // location/imageUrl/status thủ công), khác với Business Action dispose
   // (xem knowledge/modules/return.md mục "Management").

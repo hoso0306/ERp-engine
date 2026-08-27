@@ -1,8 +1,19 @@
-import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Res,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { DebtService } from './debt.service';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
 import { ReceivableByCustomerQueryDto } from './dto/receivable-by-customer-query.dto';
+import { ManualAdjustmentDto } from './dto/manual-adjustment.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequirePermission } from '../permission/require-permission.decorator';
@@ -131,6 +142,19 @@ export class ReceivableController {
   @RequirePermission('debt.view')
   findOne(@Param('id') id: string) {
     return this.debtService.findOneReceivable(id);
+  }
+
+  // Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026) — giảm thẳng
+  // công nợ, không tạo Payment thật. Dùng từ luồng tạo Return (phần công ty
+  // chịu) hoặc điều chỉnh thủ công riêng từ trang chi tiết Receivable.
+  @Post(':id/manual-adjustment')
+  @RequirePermission('debt.manual-adjustment')
+  manualAdjustment(
+    @Param('id') id: string,
+    @Body() dto: ManualAdjustmentDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    return this.debtService.manualAdjustment(id, dto, req.user?.userId ?? null);
   }
 
   // Dòng phụ bắt buộc theo convention "Excel & PDF Export" (report.md) — thời

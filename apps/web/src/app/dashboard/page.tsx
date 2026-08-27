@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/shared";
 import { SalesOverviewPanel } from "@/components/dashboard/sales-overview-panel";
+import { EmployeeRevenuePanel } from "@/components/dashboard/employee-revenue-panel";
 import { ProductionOverviewPanel } from "@/components/dashboard/production-overview-panel";
 import { DebtOverviewPanel } from "@/components/dashboard/debt-overview-panel";
 import { ReturnOverviewPanel } from "@/components/dashboard/return-overview-panel";
@@ -14,7 +15,10 @@ import { TodaySummaryBar } from "@/components/dashboard/today-summary-bar";
 // (GET /dashboard/today|alerts|sales|production|debt|returns), tự quản lý
 // filter/loading/error/permission-gating riêng, độc lập với các panel khác.
 // Trang này chỉ còn nhiệm vụ mount đúng thứ tự (Hôm nay → Cảnh báo → Kinh
-// doanh → Sản xuất → Tổng công nợ → Hàng hoàn).
+// doanh → Doanh số theo nhân viên → Sản xuất → Tổng công nợ → Hàng hoàn).
+// Doanh số theo nhân viên (rà soát nghiệp vụ Return, 27/08/2026) — khối mới
+// đặt ngay dưới Kinh doanh, filter riêng mặc định "Tháng này" (khác "Hôm
+// nay" của khối Kinh doanh).
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
@@ -27,6 +31,7 @@ export default function DashboardPage() {
         <TodaySummaryBar />
         <AlertsPanel />
         <SalesOverviewPanel />
+        <EmployeeRevenuePanel />
         <ProductionOverviewPanel />
         <DebtOverviewPanel />
         <ReturnOverviewPanel />

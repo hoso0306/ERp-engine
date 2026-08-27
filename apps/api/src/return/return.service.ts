@@ -28,6 +28,15 @@ const RETURN_INCLUDE = {
     include: { recoveryInventory: true },
     orderBy: { createdAt: 'asc' as const },
   },
+  // Nút dự phòng "Điều chỉnh giảm công nợ" trên trang chi tiết Return (rà
+  // soát nghiệp vụ Return, 27/08/2026) — cần receivableId để gọi
+  // POST /receivables/:id/manual-adjustment, và remainingAmount để FE giới
+  // hạn số tiền nhập trong dialog.
+  salesOrder: {
+    select: {
+      receivable: { select: { id: true, remainingAmount: true } },
+    },
+  },
 } satisfies Prisma.ReturnInclude;
 
 @Injectable()
@@ -151,9 +160,12 @@ export class ReturnService {
     if (!salesOrder) {
       throw new NotFoundException('Đơn hàng không tồn tại.');
     }
-    if (salesOrder.status !== SalesOrderStatus.DELIVERED) {
+    // Nới điều kiện (rà soát nghiệp vụ Return, 27/08/2026) — trước đây chỉ
+    // cho tạo khi đã DELIVERED, nay cho phép ở mọi trạng thái, chỉ chặn
+    // CANCELLED (đơn đã huỷ không có gì để trả).
+    if (salesOrder.status === SalesOrderStatus.CANCELLED) {
       throw new ForbiddenException(
-        `Chỉ có thể tạo phiếu trả hàng khi đơn hàng đã giao (DELIVERED). Trạng thái hiện tại: ${salesOrder.status}.`,
+        'Không thể tạo phiếu trả hàng cho đơn hàng đã huỷ.',
       );
     }
 
@@ -225,12 +237,28 @@ export class ReturnService {
     // ngược VAT" (chốt 16/08/2026, xem calcVatAmount trong
     // quotation-workflow.service.ts), nên không cộng thêm VAT ở đây nữa.
     // Snapshot 1 lần tại đây, xem comment Return.totalValue trong schema.
-    // Chỉ tham khảo, không tự động trừ Công nợ.
     let totalValue = 0;
     for (const item of dto.items) {
       const soItem = salesOrderItemMap.get(item.salesOrderItemId)!;
       totalValue += Math.round(
         Number(soItem.finalPrice) * item.returnedQuantity,
+      );
+    }
+
+    // Phân bổ khách/công ty chịu (rà soát nghiệp vụ Return, 27/08/2026).
+    // Mặc định khách chịu 100% nếu FE không truyền — an toàn, không tự ý
+    // giảm công nợ nếu kế toán không chủ động chỉnh.
+    const customerBorneAmount = dto.customerBorneAmount ?? totalValue;
+    if (customerBorneAmount < 0 || customerBorneAmount > totalValue) {
+      throw new BadRequestException(
+        `Số tiền khách chịu phải nằm trong khoảng 0 - ${totalValue}.`,
+      );
+    }
+    const companyBorneAmount = totalValue - customerBorneAmount;
+    const companyBorneReason = dto.companyBorneReason?.trim() || null;
+    if (companyBorneAmount > 0 && !companyBorneReason) {
+      throw new BadRequestException(
+        'Lý do công ty chịu chi phí là bắt buộc khi có phần công ty chịu.',
       );
     }
 
@@ -249,10 +277,16 @@ export class ReturnService {
             salesOrderCode: salesOrder.code,
             customerId: salesOrder.customerId,
             customerName: salesOrder.customerName,
+            // Snapshot phục vụ Dashboard "Doanh số theo nhân viên" — cả 2
+            // field, group theo ownerId (xem comment schema.prisma).
+            ownerId: salesOrder.ownerId,
+            ownerName: salesOrder.ownerName,
             returnDate: dto.returnDate ? new Date(dto.returnDate) : new Date(),
             receivedBy: dto.receivedBy?.trim() || null,
             note: dto.note?.trim() || null,
             totalValue,
+            customerBorneAmount,
+            companyBorneReason,
           },
         });
 
@@ -553,6 +587,62 @@ export class ReturnService {
           totalCount > 0 ? Math.round((g._count._all / totalCount) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  // Phần "công ty chịu" của Return = totalValue - customerBorneAmount (rà
+  // soát nghiệp vụ Return, 27/08/2026) — đây là số duy nhất Dashboard được
+  // phép trừ vào doanh thu/doanh số, KHÔNG phải totalValue thô (phần khách
+  // chịu công ty vẫn thu đủ tiền, không phải tổn thất).
+  async getTotalCompanyBorneValue(range?: { from?: Date; to?: Date }) {
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
+    const agg = await this.prisma.return.aggregate({
+      where: returnDateFilter ? { returnDate: returnDateFilter } : {},
+      _sum: { totalValue: true, customerBorneAmount: true },
+    });
+    return (
+      Number(agg._sum.totalValue ?? 0) -
+      Number(agg._sum.customerBorneAmount ?? 0)
+    );
+  }
+
+  // Dùng cho Dashboard "Doanh số theo nhân viên" — group theo ownerId (FK bất
+  // biến, cùng convention report.md C1 — xem comment schema.prisma), cùng
+  // công thức trừ phần công ty chịu ở trên. Chỉ trả về nhân viên có phát
+  // sinh Return trong khoảng lọc (group tự loại trừ nhân viên không có dòng
+  // nào khớp where). Return.ownerId là plain field (không @relation) nên
+  // Dashboard tự map ownerId -> ownerName từ chính kết quả group, không JOIN
+  // sang User.
+  async getCompanyBorneValueByOwner(range?: { from?: Date; to?: Date }) {
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
+    const where: Prisma.ReturnWhereInput = returnDateFilter
+      ? { returnDate: returnDateFilter }
+      : {};
+
+    const [grouped, names] = await Promise.all([
+      this.prisma.return.groupBy({
+        by: ['ownerId'],
+        where,
+        _sum: { totalValue: true, customerBorneAmount: true },
+      }),
+      this.prisma.return.findMany({
+        where,
+        distinct: ['ownerId'],
+        orderBy: { createdAt: 'desc' },
+        select: { ownerId: true, ownerName: true },
+      }),
+    ]);
+
+    const nameMap = new Map(names.map((n) => [n.ownerId, n.ownerName]));
+
+    return grouped
+      .filter((g) => g.ownerId)
+      .map((g) => ({
+        ownerId: g.ownerId as string,
+        ownerName: nameMap.get(g.ownerId) ?? null,
+        companyBorneValue:
+          Number(g._sum.totalValue ?? 0) -
+          Number(g._sum.customerBorneAmount ?? 0),
+      }));
   }
 
   async getReturnsByCustomer(range?: { from?: Date; to?: Date }, limit = 10) {

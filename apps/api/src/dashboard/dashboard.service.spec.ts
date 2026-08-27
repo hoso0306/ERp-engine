@@ -49,6 +49,10 @@ describe('DashboardService', () => {
         .mockResolvedValue({ over30Days: 0, over90Days: 0 }),
       getTopReturnReasons: jest.fn().mockResolvedValue([]),
       getReturnsByCustomer: jest.fn().mockResolvedValue([]),
+      // Rà soát nghiệp vụ Return (27/08/2026) — "Doanh thu kế hoạch" trừ
+      // phần công ty chịu của Return, xem getSalesDashboard().
+      getTotalCompanyBorneValue: jest.fn().mockResolvedValue(0),
+      getCompanyBorneValueByOwner: jest.fn().mockResolvedValue([]),
     };
     quotationService = {
       getPendingResponseQuotations: jest.fn().mockResolvedValue([]),
@@ -105,6 +109,17 @@ describe('DashboardService', () => {
     await service.getSalesDashboard(range);
 
     expect(salesOrderService.getDashboardSummary).toHaveBeenCalledWith(range);
+    expect(returnService.getTotalCompanyBorneValue).toHaveBeenCalledWith(range);
+  });
+
+  // Rà soát nghiệp vụ Return (27/08/2026) — "Doanh thu kế hoạch" trừ đúng
+  // phần công ty chịu của Return trong cùng khoảng lọc, không trừ toàn bộ
+  // Return.totalValue (phần khách chịu công ty vẫn thu đủ tiền).
+  it('getSalesDashboard() trừ phần công ty chịu của Return vào totalRevenue', async () => {
+    returnService.getTotalCompanyBorneValue.mockResolvedValueOnce(30);
+    const result = await service.getSalesDashboard();
+
+    expect(result.summary.totalRevenue).toBe(70);
   });
 
   // Cảnh báo tồn kho gỡ khỏi Dashboard cùng đợt gỡ khối Kho (chốt 18/07/2026,

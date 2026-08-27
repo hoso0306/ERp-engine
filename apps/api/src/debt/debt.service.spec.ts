@@ -892,6 +892,127 @@ describe('DebtService', () => {
     });
   });
 
+  // Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026) — giảm thẳng
+  // Receivable, không tạo Payment.
+  describe('manualAdjustment()', () => {
+    function makeReceivable(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'rec-1',
+        totalAmount: 1000000,
+        paidAmount: 700000,
+        remainingAmount: 300000,
+        salesOrder: {
+          id: 'so-1',
+          status: 'DELIVERED',
+          paymentStatus: 'PARTIALLY_PAID',
+        },
+        ...overrides,
+      };
+    }
+
+    it('rejects amount <= 0', async () => {
+      await expect(
+        service.manualAdjustment('rec-1', { amount: 0, reason: 'test' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects khi thiếu reason', async () => {
+      await expect(
+        service.manualAdjustment('rec-1', { amount: 100, reason: '  ' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects khi Receivable không tồn tại', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(null);
+      await expect(
+        service.manualAdjustment('rec-1', { amount: 100, reason: 'test' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects khi SalesOrder đã CANCELLED', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(
+        makeReceivable({ salesOrder: { id: 'so-1', status: 'CANCELLED', paymentStatus: 'UNPAID' } }),
+      );
+      await expect(
+        service.manualAdjustment('rec-1', { amount: 100, reason: 'test' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects khi amount vượt quá remainingAmount', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+      await expect(
+        service.manualAdjustment('rec-1', { amount: 500000, reason: 'test' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('giảm totalAmount/remainingAmount, ghi Timeline, KHÔNG tạo Payment', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+      // Giảm 300000 -> totalAmount 700000, paidAmount vẫn 700000 => PAID.
+      prisma.receivable.update.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 700000,
+        paidAmount: 700000,
+        remainingAmount: 0,
+      });
+      prisma.receivable.findUniqueOrThrow.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 700000,
+      });
+
+      await service.manualAdjustment('rec-1', {
+        amount: 300000,
+        reason: 'Lỗi sản xuất',
+        returnCode: 'RT000001',
+        returnId: 'ret-1',
+      });
+
+      expect(prisma.receivable.update).toHaveBeenCalledWith({
+        where: { id: 'rec-1' },
+        data: {
+          totalAmount: { decrement: 300000 },
+          remainingAmount: { decrement: 300000 },
+        },
+      });
+      expect(prisma.salesOrder.update).toHaveBeenCalledWith({
+        where: { id: 'so-1' },
+        data: { paymentStatus: 'PAID' },
+      });
+      expect(prisma.salesOrderTimeline.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            salesOrderId: 'so-1',
+            action: 'DEBT_MANUAL_ADJUSTED',
+            payload: expect.objectContaining({
+              amount: 300000,
+              reason: 'Lỗi sản xuất',
+              returnCode: 'RT000001',
+              returnId: 'ret-1',
+              fromStatus: 'PARTIALLY_PAID',
+              toStatus: 'PAID',
+            }),
+          }),
+        }),
+      );
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+      expect(prisma.paymentAllocation.create).not.toHaveBeenCalled();
+    });
+
+    it('không cập nhật SalesOrder.paymentStatus nếu không đổi', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+      prisma.receivable.update.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 900000,
+        paidAmount: 700000,
+        remainingAmount: 200000,
+      });
+      prisma.receivable.findUniqueOrThrow.mockResolvedValue({ id: 'rec-1' });
+
+      await service.manualAdjustment('rec-1', { amount: 100000, reason: 'test' });
+
+      expect(prisma.salesOrder.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findAllReceivables()', () => {
     it('always excludes Receivable của SalesOrder đã CANCELLED (công nợ đang mở)', async () => {
       prisma.receivable.findMany.mockResolvedValue([]);

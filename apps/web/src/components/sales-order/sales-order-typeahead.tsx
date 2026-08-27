@@ -16,15 +16,18 @@ interface SalesOrderTypeaheadProps {
   value: SalesOrderOption | null;
   onChange: (order: SalesOrderOption | null) => void;
   status?: string;
+  excludeStatus?: string;
   placeholder?: string;
 }
 
 const PAGE_SIZE = 20;
 
-// Gợi ý đơn hàng realtime — cùng pattern CustomerTypeahead/MaterialTypeahead,
-// mặc định chỉ gợi ý đơn `DELIVERED` (dùng cho luồng tạo phiếu hoàn).
+// Gợi ý đơn hàng realtime — cùng pattern CustomerTypeahead/MaterialTypeahead.
+// Mặc định loại CANCELLED (dùng cho luồng tạo phiếu hoàn — rà soát nghiệp vụ
+// Return 27/08/2026: nới điều kiện, cho phép chọn đơn ở mọi trạng thái trừ
+// đã huỷ, không còn giới hạn chỉ DELIVERED).
 // Cuộn gần đáy danh sách tự tải thêm trang tiếp theo (infinite scroll).
-export function SalesOrderTypeahead({ value, onChange, status = "DELIVERED", placeholder }: SalesOrderTypeaheadProps) {
+export function SalesOrderTypeahead({ value, onChange, status, excludeStatus = "CANCELLED", placeholder }: SalesOrderTypeaheadProps) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<SalesOrderOption[]>([]);
   const [open, setOpen] = useState(false);
@@ -55,6 +58,7 @@ export function SalesOrderTypeahead({ value, onChange, status = "DELIVERED", pla
         params.set("limit", String(PAGE_SIZE));
         params.set("page", "1");
         if (status) params.set("status", status);
+        if (!status && excludeStatus) params.set("excludeStatus", excludeStatus);
         const json = await apiGet<{ data: SalesOrderOption[]; meta?: { totalPages: number } }>(
           `/sales-orders?${params}`,
         );
@@ -70,7 +74,7 @@ export function SalesOrderTypeahead({ value, onChange, status = "DELIVERED", pla
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, open, status]);
+  }, [query, open, status, excludeStatus]);
 
   async function loadMore() {
     if (loading || loadingMore || page >= totalPages) return;
@@ -82,6 +86,7 @@ export function SalesOrderTypeahead({ value, onChange, status = "DELIVERED", pla
       params.set("limit", String(PAGE_SIZE));
       params.set("page", String(nextPage));
       if (status) params.set("status", status);
+      if (!status && excludeStatus) params.set("excludeStatus", excludeStatus);
       const json = await apiGet<{ data: SalesOrderOption[] }>(`/sales-orders?${params}`);
       setOptions((prev) => [...prev, ...(json.data ?? [])]);
       setPage(nextPage);

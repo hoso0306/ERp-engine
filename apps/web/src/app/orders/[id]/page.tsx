@@ -23,6 +23,7 @@ import { PaymentStatusBadge, PAYMENT_STATUS_LABEL } from "@/components/sales-ord
 import { ProductionOrderStatusBadge } from "@/components/sales-order/production-order-status-badge";
 import { SalesOrderItemTable } from "@/components/sales-order/sales-order-item-table";
 import { ReturnStatusBadge } from "@/components/return/return-status-badge";
+import { RETURN_REASON_LABEL } from "@/components/return/return-reason-label";
 import { DeliveryAddressDialog } from "@/components/sales-order/delivery-address-dialog";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -86,11 +87,23 @@ interface Receivable {
   dueDate: string | null;
 }
 
+interface ReturnItemRow {
+  id: string;
+  productName: string;
+  returnedQuantity: number;
+  unitPriceSnapshot: number;
+  reason: string;
+}
+
 interface ReturnRow {
   id: string;
   code: string;
   returnDate: string;
   status: string;
+  totalValue: number;
+  customerBorneAmount: number;
+  companyBorneReason: string | null;
+  items: ReturnItemRow[];
 }
 
 interface SalesOrderTimeline {
@@ -135,6 +148,7 @@ interface SalesOrder {
   productionOrders: ProductionOrder[];
   timeline: SalesOrderTimeline[];
   receivable: Receivable | null;
+  returns: ReturnRow[];
 }
 
 const TIMELINE_LABEL: Record<string, string> = {
@@ -145,6 +159,7 @@ const TIMELINE_LABEL: Record<string, string> = {
   DELIVERED: "Khách đã nhận",
   PAYMENT_STATUS_CHANGED: "Cập nhật thanh toán",
   MANUAL_OVERRIDE: "Điều chỉnh thủ công",
+  DEBT_MANUAL_ADJUSTED: "Điều chỉnh giảm công nợ",
   DELIVERY_ADDRESS_UPDATED: "Cập nhật địa chỉ giao hàng",
   CARRIER_INFO_UPDATED: "Cập nhật thông tin nhà xe",
   CANCELLED: "Huỷ đơn hàng",
@@ -177,8 +192,6 @@ export default function SalesOrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [returns, setReturns] = useState<ReturnRow[]>([]);
-
   const [shipping, setShipping] = useState(false);
   const [delivering, setDelivering] = useState(false);
   const [shipConfirmOpen, setShipConfirmOpen] = useState(false);
@@ -207,13 +220,6 @@ export default function SalesOrderDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
-
-  useEffect(() => {
-    if (!hasPermission("return.view")) return;
-    apiGet<{ data: ReturnRow[] }>(`/returns?salesOrderId=${id}&limit=50`)
-      .then((json) => setReturns(json.data))
-      .catch(() => setReturns([]));
-  }, [id, hasPermission]);
 
   async function handleShip() {
     setShipping(true);
@@ -537,11 +543,13 @@ export default function SalesOrderDetailPage() {
 
       <Separator />
 
-      {/* Hàng hoàn — chỉ đọc dữ liệu Return, không ảnh hưởng nghiệp vụ đơn hàng */}
+      {/* Hàng hoàn — chỉ đọc dữ liệu Return, không ảnh hưởng nghiệp vụ đơn hàng.
+          Nới điều kiện tạo (rà soát nghiệp vụ Return, 27/08/2026): cho phép
+          ở mọi trạng thái trừ CANCELLED, không còn giới hạn DELIVERED-only. */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">Hàng hoàn</h3>
-          {order.status === "DELIVERED" && hasPermission("return.create") && (
+          {order.status !== "CANCELLED" && hasPermission("return.create") && (
             <Button
               variant="outline"
               size="sm"
@@ -552,23 +560,46 @@ export default function SalesOrderDetailPage() {
             </Button>
           )}
         </div>
-        {returns.length === 0 ? (
+        {!hasPermission("return.view") ? null : order.returns.length === 0 ? (
           <p className="text-sm text-muted-foreground">Chưa có phiếu hoàn nào.</p>
         ) : (
           <div className="rounded-md border divide-y">
-            {returns.map((r) => (
-              <div key={r.id} className="p-4 flex items-center justify-between">
-                <div>
-                  {hasPermission("return.view") ? (
+            {order.returns.map((r) => (
+              <div key={r.id} className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
                     <Link href={`/returns/${r.id}`} className="font-mono text-sm font-medium text-primary underline underline-offset-2">
                       {r.code}
                     </Link>
-                  ) : (
-                    <span className="font-mono text-sm font-medium">{r.code}</span>
-                  )}
-                  <span className="text-sm text-muted-foreground"> — {new Date(r.returnDate).toLocaleDateString("vi-VN")}</span>
+                    <span className="text-sm text-muted-foreground"> — {new Date(r.returnDate).toLocaleDateString("vi-VN")}</span>
+                  </div>
+                  <ReturnStatusBadge status={r.status} />
                 </div>
-                <ReturnStatusBadge status={r.status} />
+                <div className="rounded-md border divide-y bg-muted/30">
+                  {r.items.map((it) => (
+                    <div key={it.id} className="px-3 py-2 flex items-center justify-between text-sm">
+                      <span>
+                        {it.productName} × {it.returnedQuantity}
+                        <span className="text-muted-foreground"> ({RETURN_REASON_LABEL[it.reason] ?? it.reason})</span>
+                      </span>
+                      <span className="font-mono">{formatMoney(it.returnedQuantity * it.unitPriceSnapshot)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+                  <span className="text-muted-foreground">
+                    Tổng giá trị hoàn: <span className="font-mono text-foreground">{formatMoney(r.totalValue)}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Khách chịu: <span className="font-mono text-foreground">{formatMoney(r.customerBorneAmount)}</span>
+                  </span>
+                  {r.totalValue - r.customerBorneAmount > 0 && (
+                    <span className="text-muted-foreground">
+                      Công ty chịu: <span className="font-mono text-foreground">{formatMoney(r.totalValue - r.customerBorneAmount)}</span>
+                      {r.companyBorneReason && <span> ({r.companyBorneReason})</span>}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

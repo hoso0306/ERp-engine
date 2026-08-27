@@ -147,9 +147,11 @@ describe('ReturnService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('rejects when SalesOrder is not DELIVERED', async () => {
+    // Nới điều kiện (rà soát nghiệp vụ Return, 27/08/2026) — trước đây chỉ
+    // cho tạo khi DELIVERED, nay cho phép ở mọi trạng thái, chỉ chặn CANCELLED.
+    it('rejects when SalesOrder is CANCELLED', async () => {
       prisma.salesOrder.findUnique.mockResolvedValue(
-        makeSalesOrder({ status: 'IN_PRODUCTION' }),
+        makeSalesOrder({ status: 'CANCELLED' }),
       );
       await expect(
         service.create({
@@ -159,6 +161,28 @@ describe('ReturnService', () => {
           ],
         }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('accepts when SalesOrder is IN_PRODUCTION (chưa DELIVERED)', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({ status: 'IN_PRODUCTION' }),
+      );
+      prisma.return.create.mockResolvedValue({ id: 'ret-1', code: 'RT000001' });
+      prisma.returnItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.return.findUniqueOrThrow.mockResolvedValue({
+        id: 'ret-1',
+        code: 'RT000001',
+        items: [],
+      });
+
+      await expect(
+        service.create({
+          salesOrderId: 'so-1',
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 1, reason: 'OTHER' },
+          ],
+        }),
+      ).resolves.toBeDefined();
     });
 
     it('rejects an invalid reason', async () => {
@@ -293,6 +317,94 @@ describe('ReturnService', () => {
             createdFromReturnCode: 'RT000001',
             quantity: 2,
             status: 'AVAILABLE',
+          }),
+        }),
+      );
+    });
+
+    // Phân bổ khách/công ty chịu (rà soát nghiệp vụ Return, 27/08/2026).
+    it('mặc định customerBorneAmount = totalValue (khách chịu 100%) khi không truyền, snapshot ownerId/ownerName', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(
+        makeSalesOrder({ ownerId: 'user-1', ownerName: 'Trần Sale' }),
+      );
+      prisma.return.create.mockResolvedValue({ id: 'ret-1', code: 'RT000001' });
+      prisma.returnItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.return.findUniqueOrThrow.mockResolvedValue({
+        id: 'ret-1',
+        code: 'RT000001',
+        items: [],
+      });
+
+      await service.create({
+        salesOrderId: 'so-1',
+        items: [
+          { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+        ],
+      });
+
+      expect(prisma.return.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            ownerId: 'user-1',
+            ownerName: 'Trần Sale',
+            totalValue: 2000000,
+            customerBorneAmount: 2000000,
+            companyBorneReason: null,
+          }),
+        }),
+      );
+    });
+
+    it('rejects customerBorneAmount vượt quá totalValue', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+      await expect(
+        service.create({
+          salesOrderId: 'so-1',
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+          ],
+          customerBorneAmount: 3000000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects khi công ty chịu > 0 nhưng không có companyBorneReason', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+      await expect(
+        service.create({
+          salesOrderId: 'so-1',
+          items: [
+            { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+          ],
+          customerBorneAmount: 500000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('chấp nhận customerBorneAmount tuỳ chỉnh kèm companyBorneReason', async () => {
+      prisma.salesOrder.findUnique.mockResolvedValue(makeSalesOrder());
+      prisma.return.create.mockResolvedValue({ id: 'ret-1', code: 'RT000001' });
+      prisma.returnItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.return.findUniqueOrThrow.mockResolvedValue({
+        id: 'ret-1',
+        code: 'RT000001',
+        items: [],
+      });
+
+      await service.create({
+        salesOrderId: 'so-1',
+        items: [
+          { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
+        ],
+        customerBorneAmount: 500000,
+        companyBorneReason: 'Lỗi sản xuất — cắt sai kích thước',
+      });
+
+      expect(prisma.return.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customerBorneAmount: 500000,
+            companyBorneReason: 'Lỗi sản xuất — cắt sai kích thước',
           }),
         }),
       );

@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { DashboardDebtQueryDto } from './dto/dashboard-debt-query.dto';
 import { DashboardOverviewQueryDto } from './dto/dashboard-overview-query.dto';
@@ -102,6 +109,30 @@ export class DashboardController {
     const allowed = await this.permissionKeys(req);
     if (!allowed.has('sales-order.view-cost')) return null;
     return this.dashboardService.getSalesDashboard(this.parseRange(query));
+  }
+
+  // Khối "Doanh số theo nhân viên" (rà soát nghiệp vụ Return, 27/08/2026) —
+  // đặt dưới khối Kinh doanh, bộ lọc riêng (mặc định "Tháng này" ở FE, luôn
+  // truyền from/to cụ thể — khác các route khác ở trên có thể bỏ trống).
+  // Đăng ký trước ':id'-style path không có ở đây nhưng vẫn đặt cùng nhóm
+  // 'sales' cho dễ theo dõi — NestJS khớp literal 'sales/by-employee' trước,
+  // không xung đột với 'sales'.
+  @Get('sales/by-employee')
+  @RequirePermission('dashboard.view')
+  async getSalesByEmployee(
+    @Query() query: DashboardOverviewQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const allowed = await this.permissionKeys(req);
+    if (!allowed.has('sales-order.view-cost')) return null;
+    const range = this.parseRange(query);
+    if (!range?.from || !range?.to) {
+      throw new BadRequestException('from và to là bắt buộc.');
+    }
+    return this.dashboardService.getEmployeeRevenueDashboard(
+      range.from,
+      range.to,
+    );
   }
 
   @Get('production')

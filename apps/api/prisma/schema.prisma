@@ -138,6 +138,12 @@ enum SalesOrderTimelineAction {
   // sử đã có (Timeline First — CLAUDE.md mục 6, không xoá/viết đè lịch sử).
   // Không còn code nào ghi giá trị này nữa.
   VAT_SETTLEMENT_UPDATED
+  // Manual Adjustment (rà soát nghiệp vụ Return 27/08/2026, debt.md mục
+  // "Manual Adjustment") — giảm thẳng Receivable.totalAmount/remainingAmount,
+  // không tạo Payment. Payload: { amount, reason, returnCode? }. Khác
+  // MANUAL_OVERRIDE (dành cho đổi SalesOrder.status) — action này không đổi
+  // status, chỉ đổi số liệu công nợ.
+  DEBT_MANUAL_ADJUSTED
 }
 
 // Enum riêng cho Production, không tái sử dụng SalesOrderTimelineActorType —
@@ -1714,13 +1720,34 @@ model Return {
   receivedBy      String?      @map("received_by")
   note            String?
 
-  // Giá trị phiếu hoàn — CHỈ THAM KHẢO, đã gồm VAT (Sprint 04 rà soát bộ lọc,
-  // chốt 18/07/2026). Snapshot 1 lần tại create(), tính từ tổng từng dòng:
+  // Snapshot từ SalesOrder.ownerId/ownerName tại thời điểm tạo Return — phục
+  // vụ Dashboard "Doanh số theo nhân viên". Group theo ownerId (FK bất biến,
+  // cùng convention report.md C1 "group theo ownerId, không group theo chuỗi
+  // tên tự do" — xem SalesOrderService.getRevenueByEmployee()), ownerName chỉ
+  // để hiển thị. Redundant reference thuần (không @relation) — Return không
+  // cần traverse sang User, chỉ cần ID để join với kết quả groupBy phía
+  // SalesOrder.
+  ownerId   String? @map("owner_id")
+  ownerName String? @map("owner_name")
+
+  // Giá trị phiếu hoàn, đã gồm VAT (Sprint 04 rà soát bộ lọc, chốt 18/07/2026).
+  // Snapshot 1 lần tại create(), tính từ tổng từng dòng:
   // round(ReturnItem.unitPriceSnapshot × returnedQuantity) + VAT tương ứng
-  // (ReturnItem.vatRate). Return KHÔNG tự động dùng số này để trừ Công nợ —
-  // kế toán tự đọc số này rồi qua module Công nợ tạo Điều chỉnh thủ công nếu
-  // quyết định giảm nợ cho khách (xem return.md mục Ghi chú).
+  // (ReturnItem.vatRate).
   totalValue Decimal @default(0) @map("total_value") @db.Decimal(15, 0)
+
+  // Phân bổ trách nhiệm (rà soát nghiệp vụ 27/08/2026) — nhập ngay lúc tạo
+  // Return, không đợi xử lý xong với khách:
+  // customerBorneAmount: số tiền khách chịu (0 <= customerBorneAmount <=
+  // totalValue). Mặc định FE đề xuất = totalValue (khách chịu 100%, an toàn
+  // — không tự ý giảm công nợ nếu kế toán không chủ động chỉnh).
+  // companyBorneReason: lý do công ty chịu phần còn lại (totalValue -
+  // customerBorneAmount) — bắt buộc nhập ở FE khi phần này > 0, NULL khi
+  // khách chịu 100%. Phần công ty chịu tự động kích hoạt Manual Adjustment
+  // giảm Receivable ngay lúc tạo Return (xem debt.md mục Manual Adjustment) —
+  // không tạo Payment thật, không ảnh hưởng báo cáo dòng tiền mặt.
+  customerBorneAmount Decimal @default(0) @map("customer_borne_amount") @db.Decimal(15, 0)
+  companyBorneReason  String? @map("company_borne_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

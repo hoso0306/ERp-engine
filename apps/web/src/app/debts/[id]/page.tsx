@@ -31,6 +31,20 @@ interface AllocationRow {
   };
 }
 
+// "Lịch sử điều chỉnh công nợ" (rà soát nghiệp vụ Return, 27/08/2026) — chỉ
+// action DEBT_MANUAL_ADJUSTED, đọc qua SalesOrder.timeline (BE đã lọc sẵn).
+interface AdjustmentTimelineRow {
+  id: string;
+  createdAt: string;
+  createdByName: string | null;
+  payload: {
+    amount: number;
+    reason: string;
+    returnCode: string | null;
+    returnId: string | null;
+  } | null;
+}
+
 interface Receivable {
   id: string;
   totalAmount: number;
@@ -47,6 +61,7 @@ interface Receivable {
     customerPhone: string;
     status: string;
     paymentStatus: string;
+    timeline: AdjustmentTimelineRow[];
   };
 }
 
@@ -156,6 +171,42 @@ export default function ReceivableDetailPage() {
         <h3 className="text-base font-semibold">Lịch sử thanh toán</h3>
         <PaymentTable allocations={receivable.allocations} onReversed={fetchReceivable} />
       </div>
+
+      {receivable.salesOrder.timeline.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold">Lịch sử điều chỉnh công nợ</h3>
+            <div className="rounded-md border divide-y">
+              {receivable.salesOrder.timeline.map((t) => (
+                <div key={t.id} className="p-4 space-y-1 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-semibold text-destructive">
+                      -{formatMoney(Number(t.payload?.amount ?? 0))}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(t.createdAt).toLocaleString("vi-VN")}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground">{t.payload?.reason}</p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {t.payload?.returnCode && (
+                      t.payload.returnId ? (
+                        <Link href={`/returns/${t.payload.returnId}`} className="text-primary underline underline-offset-2">
+                          Phiếu hoàn {t.payload.returnCode}
+                        </Link>
+                      ) : (
+                        <span>Phiếu hoàn {t.payload.returnCode}</span>
+                      )
+                    )}
+                    {t.createdByName && <span>Thực hiện: {t.createdByName}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <PaymentDialog
         open={paymentDialogOpen}

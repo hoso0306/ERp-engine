@@ -6,6 +6,12 @@ import Link from "next/link";
 import { PageHeader, Loading, ErrorState, ConfirmDialog } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ReturnStatusBadge } from "@/components/return/return-status-badge";
@@ -53,7 +59,10 @@ interface ReturnDetail {
   status: string;
   note: string | null;
   totalValue: number;
+  customerBorneAmount: number;
+  companyBorneReason: string | null;
   items: ReturnItem[];
+  salesOrder: { receivable: { id: string; remainingAmount: number } | null };
 }
 
 function formatMoney(n: number) {
@@ -69,6 +78,14 @@ export default function ReturnDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
+
+  // Nút dự phòng "Điều chỉnh giảm công nợ" (rà soát nghiệp vụ Return,
+  // 27/08/2026) — dùng khi bước tự động lúc tạo phiếu hoàn bị lỗi/bỏ qua,
+  // hoặc cần điều chỉnh thêm sau này.
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
 
   const fetchReturn = useCallback(async () => {
     setLoading(true);
@@ -98,11 +115,42 @@ export default function ReturnDetailPage() {
     }
   }
 
+  async function handleAdjust() {
+    if (!ret?.salesOrder.receivable) return;
+    const amount = Number(adjustAmount);
+    if (!amount || amount <= 0) {
+      toast.error("Số tiền điều chỉnh phải lớn hơn 0.");
+      return;
+    }
+    if (!adjustReason.trim()) {
+      toast.error("Vui lòng nhập lý do điều chỉnh.");
+      return;
+    }
+    setAdjusting(true);
+    try {
+      await apiPost(`/receivables/${ret.salesOrder.receivable.id}/manual-adjustment`, {
+        amount,
+        reason: adjustReason.trim(),
+        returnCode: ret.code,
+        returnId: ret.id,
+      });
+      toast.success("Đã giảm công nợ.");
+      setAdjustOpen(false);
+      fetchReturn();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
+    } finally {
+      setAdjusting(false);
+    }
+  }
+
   if (loading) return <Loading />;
   if (error || !ret) return <ErrorState description={error ?? "Không tìm thấy phiếu hoàn."} onRetry={fetchReturn} />;
 
   const canComplete = ret.status === "PROCESSING" && hasPermission("return.update");
   const canViewOrder = hasPermission("sales-order.view");
+  const companyBorneValue = Number(ret.totalValue) - Number(ret.customerBorneAmount);
+  const canAdjustDebt = !!ret.salesOrder.receivable && hasPermission("debt.manual-adjustment");
 
   return (
     <div className="space-y-6">
@@ -115,6 +163,18 @@ export default function ReturnDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
+            {canAdjustDebt && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAdjustAmount(companyBorneValue > 0 ? String(companyBorneValue) : "");
+                  setAdjustReason(ret.companyBorneReason ?? "");
+                  setAdjustOpen(true);
+                }}
+              >
+                Điều chỉnh giảm công nợ
+              </Button>
+            )}
             {canComplete && (
               <Button onClick={() => setCompleteConfirmOpen(true)} disabled={completing} className="bg-green-600 hover:bg-green-700">
                 <CheckCircle className="mr-2 h-4 w-4" />
@@ -157,6 +217,21 @@ export default function ReturnDetailPage() {
               <span className="ml-1 font-sans text-xs text-muted-foreground">(đã gồm VAT)</span>
             </span>
           </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-36 shrink-0">Khách chịu</span>
+            <span className="font-mono">{formatMoney(Number(ret.customerBorneAmount))}</span>
+          </div>
+          {companyBorneValue > 0 && (
+            <div className="flex gap-2 col-span-2">
+              <span className="text-muted-foreground w-36 shrink-0">Công ty chịu</span>
+              <span className="font-mono">
+                {formatMoney(companyBorneValue)}
+                {ret.companyBorneReason && (
+                  <span className="ml-2 font-sans text-xs text-muted-foreground">({ret.companyBorneReason})</span>
+                )}
+              </span>
+            </div>
+          )}
           {ret.receivedBy && (
             <div className="flex gap-2">
               <span className="text-muted-foreground w-36 shrink-0">Người nhận</span>
@@ -193,6 +268,50 @@ export default function ReturnDetailPage() {
         description="Chốt xong vụ việc này với khách? Không ảnh hưởng tài chính, không thể quay lại."
         onConfirm={handleComplete}
       />
+
+      <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Điều chỉnh giảm công nợ</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Giảm thẳng công nợ đơn {ret.salesOrderCode}, không tạo phiếu thu — không ảnh hưởng báo cáo dòng tiền mặt.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="adjust-amount">Số tiền *</Label>
+              <Input
+                id="adjust-amount"
+                type="number"
+                min="1"
+                max={ret.salesOrder.receivable?.remainingAmount}
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+              />
+              {ret.salesOrder.receivable && (
+                <p className="text-xs text-muted-foreground">
+                  Còn phải thu: {formatMoney(Number(ret.salesOrder.receivable.remainingAmount))}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="adjust-reason">Lý do *</Label>
+              <Textarea
+                id="adjust-reason"
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustOpen(false)}>Huỷ</Button>
+            <Button onClick={handleAdjust} disabled={adjusting}>
+              {adjusting ? "Đang lưu..." : "Xác nhận giảm công nợ"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

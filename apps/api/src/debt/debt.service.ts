@@ -20,6 +20,7 @@ import { SettingService } from '../setting/setting.service';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ManualAdjustmentDto } from './dto/manual-adjustment.dto';
 import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
 import { ReceivableByCustomerQueryDto } from './dto/receivable-by-customer-query.dto';
@@ -110,6 +111,15 @@ const RECEIVABLE_DETAIL_INCLUDE = {
       customerPhone: true,
       status: true,
       paymentStatus: true,
+      // "Lịch sử điều chỉnh công nợ" (rà soát nghiệp vụ Return, 27/08/2026) —
+      // chỉ đọc qua SalesOrder.timeline vì Receivable không có bảng Timeline
+      // riêng (xem debt.md mục "Timeline"). Lọc đúng action
+      // DEBT_MANUAL_ADJUSTED, ẩn các action khác (PAYMENT_STATUS_CHANGED,
+      // SHIPPED...) không liên quan tới trang chi tiết Receivable.
+      timeline: {
+        where: { action: SalesOrderTimelineAction.DEBT_MANUAL_ADJUSTED },
+        orderBy: { createdAt: 'asc' as const },
+      },
     },
   },
   // 023-cong-no-payment-allocation-fifo: lịch sử thu tiền của 1 đơn giờ đọc
@@ -846,6 +856,99 @@ export class DebtService {
         });
       }),
     );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026) — giảm thẳng
+  // Receivable.totalAmount/remainingAmount, KHÔNG tạo Payment (không phải
+  // tiền thật đã về, không được lẫn vào báo cáo dòng tiền mặt). Dùng khi
+  // Return có phần "công ty chịu" cần giảm công nợ cho khách, hoặc điều
+  // chỉnh thủ công khác — bắt buộc lý do, ghi Timeline (khuôn Manual
+  // Override — CLAUDE.md mục 5).
+  // ─────────────────────────────────────────────────────
+
+  async manualAdjustment(
+    receivableId: string,
+    dto: ManualAdjustmentDto,
+    userId?: string | null,
+  ) {
+    if (!dto.amount || dto.amount <= 0) {
+      throw new BadRequestException('Số tiền điều chỉnh phải lớn hơn 0.');
+    }
+    if (!dto.reason || !dto.reason.trim()) {
+      throw new BadRequestException('Lý do điều chỉnh công nợ là bắt buộc.');
+    }
+
+    const receivable = await this.prisma.receivable.findUnique({
+      where: { id: receivableId },
+      include: { salesOrder: { select: { id: true, status: true, paymentStatus: true } } },
+    });
+    if (!receivable) {
+      throw new NotFoundException('Công nợ không tồn tại.');
+    }
+    if (receivable.salesOrder.status === SalesOrderStatus.CANCELLED) {
+      throw new ForbiddenException(
+        'Không thể điều chỉnh công nợ của đơn hàng đã huỷ.',
+      );
+    }
+    if (dto.amount > Number(receivable.remainingAmount)) {
+      throw new BadRequestException(
+        `Số tiền điều chỉnh không được vượt quá số còn phải thu (${receivable.remainingAmount}).`,
+      );
+    }
+
+    const createdByName = await resolveActorName(this.prisma, userId);
+    const oldTotalAmount = Number(receivable.totalAmount);
+    const oldRemainingAmount = Number(receivable.remainingAmount);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.receivable.update({
+        where: { id: receivableId },
+        data: {
+          totalAmount: { decrement: dto.amount },
+          remainingAmount: { decrement: dto.amount },
+        },
+      });
+
+      const newPaymentStatus = this.computePaymentStatus(
+        Number(updated.paidAmount),
+        Number(updated.totalAmount),
+      );
+
+      if (newPaymentStatus !== receivable.salesOrder.paymentStatus) {
+        await tx.salesOrder.update({
+          where: { id: receivable.salesOrder.id },
+          data: { paymentStatus: newPaymentStatus },
+        });
+      }
+
+      await tx.salesOrderTimeline.create({
+        data: {
+          salesOrderId: receivable.salesOrder.id,
+          action: SalesOrderTimelineAction.DEBT_MANUAL_ADJUSTED,
+          actorType: SalesOrderTimelineActorType.USER,
+          payload: {
+            amount: dto.amount,
+            reason: dto.reason.trim(),
+            returnCode: dto.returnCode ?? null,
+            returnId: dto.returnId ?? null,
+            oldTotalAmount,
+            newTotalAmount: Number(updated.totalAmount),
+            oldRemainingAmount,
+            newRemainingAmount: Number(updated.remainingAmount),
+            fromStatus: receivable.salesOrder.paymentStatus,
+            toStatus: newPaymentStatus,
+          },
+          createdBy: userId ?? null,
+          createdByName,
+        },
+      });
+
+      return tx.receivable.findUniqueOrThrow({
+        where: { id: receivableId },
+        include: RECEIVABLE_DETAIL_INCLUDE,
+      });
+    });
   }
 
   // ─────────────────────────────────────────────────────

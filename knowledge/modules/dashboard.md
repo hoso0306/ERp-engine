@@ -120,9 +120,9 @@ Nguồn dữ liệu: `SalesOrderService`.
 
 Hiển thị (toàn bộ thời gian, không lọc theo bộ lọc đầu trang — chỉ bảng "Đơn hàng gần đây" lọc theo `createdAt`):
 
-- Tổng doanh thu kế hoạch (`SalesOrder.totalAmount`)
+- Tổng doanh thu kế hoạch — `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return)` trong khoảng lọc (rà soát nghiệp vụ Return, 27/08/2026: KHÔNG trừ toàn bộ `Return.totalValue`, chỉ trừ đúng phần công ty chịu — phần khách chịu công ty vẫn thu đủ tiền, không phải tổn thất. Gọi qua `ReturnService.getTotalCompanyBorneValue()`, đúng "Module Ownership"). Không đổi tên KPI, không thêm KPI "Doanh thu thuần" song song.
 - Tổng giá vốn kế hoạch (`SalesOrder.plannedCost`)
-- Tổng lợi nhuận kế hoạch (`SalesOrder.plannedProfit`)
+- Tổng lợi nhuận kế hoạch (`SalesOrder.plannedProfit`) — **không** trừ Return (ngoài phạm vi đã xác nhận 27/08/2026)
 - "Đơn đang SX" / "Đơn đã hoàn thành SX" / "Đã giao" (`COUNT(SalesOrder) GROUP BY status` — Aggregate đơn giản, được phép)
 
 Không tính lại từ `SalesOrderItem`.
@@ -130,6 +130,22 @@ Không tính lại từ `SalesOrderItem`.
 **Nhãn "Đơn đang SX"/"Đơn đã hoàn thành SX" (026-cai-tien-dashboard.md mục 1):** cố ý gọi khác với "Đang sản xuất"/"Đã hoàn thành" ở khối Production Overview bên dưới — hai số đếm 2 khái niệm khác nhau (đơn hàng vs phiếu sản xuất, 1 đơn có thể có nhiều phiếu), đặt sát nhau trên cùng trang nên cần nhãn phân biệt rõ để tránh Owner hiểu nhầm là cùng một số liệu.
 
 **Permission — `sales-order.view-cost` (không phải `sales-order.view`):** toàn bộ khối này ẩn nếu thiếu quyền `sales-order.view-cost` — dữ liệu tài chính nhạy cảm, xem mục "Permission" bên dưới.
+
+---
+
+## 1b. Doanh số theo nhân viên (rà soát nghiệp vụ Return, 27/08/2026 — khối mới)
+
+Nguồn dữ liệu: `SalesOrderService.getRevenueByEmployee()` (đã có sẵn, dùng chung với Report C1) + `ReturnService.getCompanyBorneValueByOwner()`.
+
+Đặt ngay dưới khối Sales Overview, **1 card riêng, bộ lọc riêng** (khác khối Sales Overview): mặc định **"Tháng này"**, sửa được theo ngày tuỳ ý — dùng `shared/date-range-filter.tsx` (preset `today/week/month/all/custom`), KHÔNG dùng `dashboard-range-filter.tsx` (chỉ có 4 preset ngắn Hôm nay/Hôm qua/7 ngày/Tất cả, không có "Tháng này" — xem comment trong file đó).
+
+Hiển thị mỗi dòng: nhân viên, số đơn, doanh số = `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return)` GROUP BY `ownerId` (FK bất biến, cùng convention report.md C1 "group theo ownerId, không group theo chuỗi tên tự do").
+
+**Chỉ hiện nhân viên có phát sinh doanh số trong khoảng lọc** — không liệt kê nhân viên không có `SalesOrder` nào rơi vào khoảng đó (tự nhiên loại trừ khi group theo `createdAt` trong range, không cần thêm logic ẩn/hiện riêng).
+
+Permission: `sales-order.view-cost` (giống Sales Overview — cùng loại dữ liệu tài chính nhạy cảm).
+
+Endpoint: `GET /dashboard/sales/by-employee?from=&to=` (bắt buộc `from`/`to`, khác các route Dashboard khác vốn cho phép bỏ trống).
 
 ---
 

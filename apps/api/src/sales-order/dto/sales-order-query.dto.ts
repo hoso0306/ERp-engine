@@ -1,6 +1,11 @@
 export class SalesOrderQueryDto {
   search?: string;
   status?: string;
+  // Lọc "khác trạng thái X" — dùng cho SalesOrderTypeahead khi tạo Return
+  // (rà soát nghiệp vụ Return, 27/08/2026): cho chọn đơn ở mọi trạng thái
+  // trừ CANCELLED, thay vì chỉ đúng 1 status như `status`. Bỏ qua nếu
+  // `status` đã được truyền (exact-match ưu tiên hơn).
+  excludeStatus?: string;
   paymentStatus?: string;
   customerId?: string;
   page?: string;

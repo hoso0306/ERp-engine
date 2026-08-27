@@ -78,12 +78,56 @@ export class DashboardService {
   // `recentOrders` không đổi — vẫn fetch không lọc, FE tự lọc client-side
   // theo đúng filter của khối (giữ nguyên cách làm cũ, không đổi).
   async getSalesDashboard(range?: { from?: Date; to?: Date }) {
-    const [summary, recentOrders] = await Promise.all([
-      this.salesOrderService.getDashboardSummary(range),
-      this.salesOrderService.getRecentOrders(),
+    const [summary, recentOrders, companyBorneReturnValue] =
+      await Promise.all([
+        this.salesOrderService.getDashboardSummary(range),
+        this.salesOrderService.getRecentOrders(),
+        // Rà soát nghiệp vụ Return (27/08/2026) — "Tổng doanh thu kế hoạch"
+        // trừ đúng phần công ty chịu của Return trong cùng khoảng lọc, KHÔNG
+        // trừ toàn bộ Return.totalValue (phần khách chịu công ty vẫn thu đủ
+        // tiền, không phải tổn thất doanh thu). Không sửa lợi nhuận kế hoạch
+        // — ngoài phạm vi đã xác nhận.
+        this.returnService.getTotalCompanyBorneValue(range),
+      ]);
+
+    return {
+      summary: {
+        ...summary,
+        totalRevenue: summary.totalRevenue - companyBorneReturnValue,
+      },
+      recentOrders,
+    };
+  }
+
+  // Khối mới "Doanh số theo nhân viên" (rà soát nghiệp vụ Return, 27/08/2026)
+  // — đặt dưới khối Kinh doanh, bộ lọc riêng (mặc định "Tháng này" ở FE,
+  // luôn truyền from/to cụ thể). Chỉ trả về nhân viên có phát sinh doanh số
+  // trong khoảng lọc (getRevenueByEmployee() chỉ nhóm theo ownerId có đơn
+  // trong range). Trừ đúng phần công ty chịu của Return cho từng nhân viên.
+  async getEmployeeRevenueDashboard(from: Date, to: Date) {
+    const [{ employees }, returnByOwner] = await Promise.all([
+      this.salesOrderService.getRevenueByEmployee(from, to),
+      this.returnService.getCompanyBorneValueByOwner({ from, to }),
     ]);
 
-    return { summary, recentOrders };
+    const returnByOwnerId = new Map(
+      returnByOwner.map((r) => [r.ownerId, r.companyBorneValue]),
+    );
+
+    return employees
+      .map((e) => {
+        const companyBorneValue = e.ownerId
+          ? (returnByOwnerId.get(e.ownerId) ?? 0)
+          : 0;
+        const netRevenue = e.revenue - companyBorneValue;
+        return {
+          ownerId: e.ownerId,
+          ownerName: e.ownerName,
+          orderCount: e.orderCount,
+          revenue: netRevenue,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
   }
 
   async getProductionDashboard(range?: { from?: Date; to?: Date }) {

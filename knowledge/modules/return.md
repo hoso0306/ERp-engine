@@ -6,13 +6,11 @@
 
 # Mục đích
 
-Quản lý toàn bộ hàng khách trả về sau khi đã giao hàng.
+Quản lý toàn bộ hàng khách trả.
 
-Return **không phải** module tài chính.
+**Cập nhật 27/08/2026 — đảo ngược một phần các khẳng định "không phải" bên dưới:** trước đây Return hoàn toàn tách biệt tài chính. Rà soát nghiệp vụ 27/08/2026 bổ sung: Return **có thể** kích hoạt giảm công nợ (qua Debt module) và **có** ảnh hưởng tới Dashboard doanh thu — nhưng CHỈ đúng phần "công ty chịu" của giá trị hoàn (xem mục "Phân bổ khách/công ty chịu"), không phải toàn bộ giá trị hoàn, và không tự sửa `SalesOrder`/`Payment`.
 
-Return **không phải** module hoàn tiền.
-
-Return **không phải** module điều chỉnh doanh thu.
+Return vẫn **không phải** module hoàn tiền (Refund) — không có tiền mặt thật chảy ra khi tạo Return.
 
 Module này giúp doanh nghiệp:
 
@@ -25,42 +23,36 @@ Module này giúp doanh nghiệp:
 
 # Vai trò trong ERP
 
-Return là một module độc lập.
-
-Module này **chỉ đọc** dữ liệu từ Sales Order.
+Return **đọc** dữ liệu từ Sales Order, và **có thể kích hoạt** Debt module (Manual Adjustment) khi tạo phiếu hoàn — nhưng không tự mình sở hữu logic tài chính, không tự đọc/ghi bảng của Debt.
 
 Không cập nhật ngược:
 
-- Sales Order
+- Sales Order (vẫn Immutable Document — `totalAmount`/`plannedProfit`... không đổi)
 - Production
 - Warehouse
-- Debt
-- Dashboard tài chính
+- Payment (Return không bao giờ tạo `Payment`, không có tiền mặt thật)
+
+**Có thể** kích hoạt (không tự sửa trực tiếp):
+
+- Debt (`Receivable.totalAmount`/`remainingAmount`) — qua `POST /receivables/:id/manual-adjustment`, chỉ khi phần "công ty chịu" > 0 (xem mục "Phân bổ khách/công ty chịu"). Return service gọi API này gián tiếp qua FE điều phối (2 lệnh gọi tuần tự), **không** import/gọi thẳng `DebtService`.
+- Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" — trừ đúng phần công ty chịu, tính ở tầng Dashboard (Aggregate đơn giản, không phải Return tự sửa số liệu).
 
 Ví dụ:
 
 ```text
 Sales Order
-
 20.000.000
-
-↓
-
-Khách trả 1 sản phẩm
-
-↓
-
-Return
-
-↓
-
-Sales Order vẫn giữ nguyên
-20.000.000
+        ↓
+Khách trả 1 sản phẩm — giá trị 2.000.000
+        ↓
+Return: khách chịu 1.500.000, công ty chịu 500.000 (lỗi sản xuất)
+        ↓
+Sales Order vẫn giữ nguyên 20.000.000 (Immutable Document)
+Receivable giảm 500.000 (Manual Adjustment tự động)
+Dashboard "Doanh thu kế hoạch" giảm 500.000 (không phải cả 2.000.000)
 ```
 
-Return chỉ phục vụ thống kê và quản lý tài sản thu hồi.
-
-**Nếu doanh nghiệp quyết định giảm công nợ cho khách sau khi nhận hàng hoàn** (khách sẽ không trả tiền phần đã hoàn), nghiệp vụ đó là **Điều chỉnh công nợ thủ công (Manual Adjustment) — thuộc Debt module** (V2, xem `debt.md` mục Ghi chú), do kế toán thực hiện có chủ đích, kèm lý do và người thực hiện. Return không tự động làm việc này, không gợi ý số tiền, không gọi sang Debt.
+Return vẫn chỉ phục vụ thống kê và quản lý tài sản thu hồi ở phần **không** liên quan phân bổ khách/công ty chịu (lý do trả, kho thu hồi...).
 
 ---
 
@@ -161,6 +153,9 @@ customerId
 
 customerName
 
+ownerId         // snapshot từ SalesOrder.ownerId — group theo nhân viên (Dashboard)
+ownerName       // snapshot từ SalesOrder.ownerName — chỉ hiển thị
+
 returnDate
 
 receivedBy
@@ -168,6 +163,10 @@ receivedBy
 status          // ReturnStatus: PROCESSING | COMPLETED — xem "Trạng thái Return"
 
 note
+
+totalValue              // giá trị phiếu hoàn, đã gồm VAT
+customerBorneAmount     // số tiền khách chịu — xem "Phân bổ khách/công ty chịu"
+companyBorneReason      // lý do công ty chịu phần còn lại — NULL nếu khách chịu 100%
 
 createdAt
 
@@ -196,7 +195,31 @@ POST /returns/:id/complete
 - Chỉ chạy được khi `status = PROCESSING`. Workflow một chiều — không có Action quay lại `PROCESSING`, không có Cancel (phiếu tạo nhầm xử lý theo tiền lệ chung của dự án).
 - Ghi nhận người thực hiện + thời gian (V1 chưa có Timeline riêng cho Return — dùng `updatedAt` + `completedBy` nếu cần tối giản, hoặc bổ sung khi có nhu cầu thật).
 
-**Chỉ được tạo Return khi `SalesOrder.status = DELIVERED`** — khớp đúng với "Mục đích" (hàng trả về sau khi đã giao hàng). Không tạo Return cho đơn còn đang sản xuất/vận chuyển/chưa giao.
+**Được tạo Return ở mọi trạng thái `SalesOrder`, chỉ chặn `CANCELLED`** (rà soát nghiệp vụ Return, 27/08/2026 — đảo ngược quyết định cũ "chỉ tạo khi DELIVERED"). Doanh nghiệp có nhu cầu ghi nhận trả hàng/điều chỉnh ngay cả khi đơn còn đang sản xuất hoặc đang vận chuyển, không đợi tới lúc giao xong.
+
+---
+
+# Phân bổ khách/công ty chịu (rà soát nghiệp vụ Return, 27/08/2026)
+
+Ngay trong luồng tạo phiếu hoàn (không đợi xử lý xong với khách), ERP bắt kế toán xác nhận **giá trị hoàn được chia cho ai chịu**:
+
+```text
+Tổng giá trị phiếu hoàn (totalValue)
+        │
+        ├── Khách chịu (customerBorneAmount) — khách vẫn phải trả đủ phần này,
+        │     không ảnh hưởng công nợ/doanh thu
+        │
+        └── Công ty chịu (totalValue - customerBorneAmount) — công ty nhận
+              tổn thất phần này (vd lỗi sản xuất), TỰ ĐỘNG kích hoạt Manual
+              Adjustment giảm công nợ (xem debt.md), và bị trừ vào Dashboard
+              "Doanh thu kế hoạch"/"Doanh số theo nhân viên"
+```
+
+- **Mặc định `customerBorneAmount = totalValue`** (khách chịu 100%) nếu không truyền — an toàn, không tự ý tạo tổn thất cho công ty nếu kế toán không chủ động chỉnh.
+- **Bắt buộc `companyBorneReason`** khi phần công ty chịu > 0 (giải trình lý do, vd "Lỗi sản xuất — cắt sai kích thước"). Không bắt buộc khi khách chịu 100%.
+- Khi phần công ty chịu > 0, `POST /returns` **tự động** gọi tiếp `POST /receivables/:id/manual-adjustment` (Debt module) ngay trong luồng tạo — 2 lệnh gọi API tuần tự do FE điều phối, **Return service không gọi thẳng sang Debt service** (giữ ranh giới 2 module độc lập, đúng nguyên tắc "Return chỉ đọc SalesOrder").
+- Nếu bước giảm công nợ lỗi, Return vẫn được giữ nguyên (không rollback) — trang chi tiết Return có nút dự phòng **"Điều chỉnh giảm công nợ"** để làm lại thủ công.
+- Đây là **duy nhất một cơ chế** kích hoạt Manual Adjustment tự động — Manual Adjustment tự nó vẫn là hành động chung của Debt module (có thể gọi độc lập ngoài luồng Return nếu cần).
 
 ---
 
@@ -551,43 +574,44 @@ Không đánh giá khách hàng.
 # Business Rule
 
 - Một SalesOrder có thể có nhiều Return.
-- Chỉ tạo Return khi `SalesOrder.status = DELIVERED`.
-- Return có trạng thái xử lý `PROCESSING → COMPLETED` (một chiều, Action `complete`, chỉ chạy từ `PROCESSING`). Trạng thái này độc lập với `RecoveryInventoryStatus` và không ảnh hưởng tài chính.
+- Được tạo Return ở mọi trạng thái `SalesOrder`, chỉ chặn `CANCELLED` (rà soát nghiệp vụ Return, 27/08/2026 — đảo ngược "chỉ tạo khi DELIVERED").
+- Return có trạng thái xử lý `PROCESSING → COMPLETED` (một chiều, Action `complete`, chỉ chạy từ `PROCESSING`). Trạng thái này độc lập với `RecoveryInventoryStatus` và không ảnh hưởng tài chính (phần tài chính đã xử lý xong ngay lúc tạo, không đợi tới `complete`).
 - Một Return có nhiều ReturnItem.
 - Một ReturnItem chỉ thuộc đúng một SalesOrderItem.
 - Cho phép trả một phần số lượng (`returnedQuantity <= orderedQuantity`).
 - Tổng `returnedQuantity` của tất cả ReturnItem cùng một `salesOrderItemId` không được vượt `orderedQuantity` (validate cộng dồn qua nhiều Return).
 - Return chỉ Snapshot dữ liệu — không có `subtotalSnapshot`/`condition` (xem "Snapshot Rule").
-- Không cập nhật ngược SalesOrder.
+- Không cập nhật ngược SalesOrder — SalesOrder luôn giữ nguyên Immutable Document dù Return có phần công ty chịu hay không.
 - Recovery Inventory độc lập với Warehouse.
 - Sau khi tạo, RecoveryInventory chỉ sửa được `location`/`status` — không sửa lại dữ liệu Snapshot.
 - Không xoá RecoveryInventory — chỉ chuyển `status = DISPOSED`.
 - Action `mark-used`/`dispose` chỉ thực hiện được khi `status = AVAILABLE`.
-- Return không làm thay đổi doanh thu.
-- Return không làm thay đổi lợi nhuận.
-- Return không làm thay đổi công nợ. Giảm công nợ sau Return (nếu doanh nghiệp quyết định) thực hiện qua Manual Adjustment của Debt module (V2) — không thuộc Return.
-- Return không làm thay đổi Payment.
-- Return không làm thay đổi Dashboard tài chính.
+- `0 <= customerBorneAmount <= totalValue`; mặc định = `totalValue` nếu không truyền.
+- `companyBorneReason` bắt buộc khi `totalValue - customerBorneAmount > 0`.
+- Return không làm thay đổi Payment — không bao giờ tạo `Payment`/`PaymentAllocation`.
+- Phần công ty chịu (nếu > 0) **tự động** giảm công nợ qua Manual Adjustment (xem debt.md) và bị trừ vào Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" — phần khách chịu thì KHÔNG (xem mục "Phân bổ khách/công ty chịu").
+- Return không làm thay đổi lợi nhuận kế hoạch (`SalesOrder.plannedProfit`) — ngoài phạm vi đã xác nhận (27/08/2026).
 
 ---
 
 # Dashboard Rule
 
-Dashboard chỉ phục vụ thống kê vận hành.
+Dashboard chỉ phục vụ thống kê vận hành, TRỪ 2 điểm ngoại lệ đã xác nhận (27/08/2026) nằm ở **Dashboard chung** (không phải Dashboard riêng của Return, xem dưới):
 
-Bao gồm:
+- KPI "Doanh thu kế hoạch" (Sales Overview) trừ đúng phần công ty chịu của Return trong cùng khoảng lọc.
+- Khối "Doanh số theo nhân viên" (dưới khối Kinh doanh) cũng trừ theo cùng công thức, group theo nhân viên.
+
+Dashboard riêng của Return (mô tả bên dưới) vẫn thuần thống kê vận hành:
 
 - Return trong tháng
 - Tổng sản phẩm Return
-- Giá trị Return theo giá bán
+- Giá trị Return theo giá bán (vẫn là `totalValue` thô — không phân biệt khách/công ty chịu, đây là thống kê vận hành, khác KPI tài chính ở Dashboard chung)
 - Recovery Inventory hiện có
 - Top lý do Return
 
-Không tính vào:
+Không tính vào (Dashboard riêng của Return):
 
-- Doanh thu
 - Lợi nhuận
-- Công nợ
 - Giá vốn
 
 ---
