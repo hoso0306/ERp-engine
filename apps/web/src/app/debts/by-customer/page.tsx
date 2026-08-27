@@ -14,6 +14,7 @@ import { DebtDashboardPanel } from "@/components/debt/debt-dashboard-panel";
 import { DebtGroupSwitch } from "@/components/debt/debt-group-switch";
 import { ReceivableByCustomerTable } from "@/components/debt/receivable-by-customer-table";
 import { AllocatePaymentDialog } from "@/components/debt/allocate-payment-dialog";
+import { ReceivableExportButton } from "@/components/debt/receivable-export-button";
 import { apiGet } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -84,6 +85,17 @@ function DebtsByCustomerPageContent() {
     setPage(1);
   }, [search, tab, sortBy, limit]);
 
+  // Tham số cho "In PDF" — cùng bộ lọc với fetchRows (bỏ page/limit, in
+  // TOÀN BỘ khớp bộ lọc).
+  const buildExportParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (tab === "overdue") params.set("overdue", "true");
+    if (tab === "credit_exceeded") params.set("creditExceeded", "true");
+    params.set("sortBy", sortBy);
+    return params;
+  }, [search, tab, sortBy]);
+
   // Click-through từ Dashboard (026-cai-tien-dashboard.md mục 7) — tile
   // "Quá hạn"/"Vượt hạn mức" đưa thẳng sang đúng tab tương ứng.
   useEffect(() => {
@@ -99,12 +111,24 @@ function DebtsByCustomerPageContent() {
         title="Công nợ"
         description="Theo dõi công nợ phải thu, gộp theo từng khách hàng"
         actions={
-          hasPermission("debt.create-payment") && (
-            <Button onClick={() => setAllocateOpen(true)}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Ghi nhận thanh toán
-            </Button>
-          )
+          <div className="flex items-center gap-2">
+            <ReceivableExportButton
+              endpoint="/receivables/by-customer/export"
+              buildParams={buildExportParams}
+              format="xlsx"
+            />
+            <ReceivableExportButton
+              endpoint="/receivables/by-customer/export"
+              buildParams={buildExportParams}
+              format="pdf"
+            />
+            {hasPermission("debt.create-payment") && (
+              <Button onClick={() => setAllocateOpen(true)}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Ghi nhận thanh toán
+              </Button>
+            )}
+          </div>
         }
       />
 

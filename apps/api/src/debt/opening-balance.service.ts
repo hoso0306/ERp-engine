@@ -196,6 +196,24 @@ export class OpeningBalanceService {
     );
   }
 
+  // Chi tiết (không phải tổng) Công nợ đầu kỳ còn mở của nhiều khách hàng
+  // cùng lúc — phục vụ PDF "Công nợ theo khách hàng" (rà soát 27/08/2026),
+  // liệt kê từng dòng Công nợ đầu kỳ bên cạnh các đơn hàng, tránh N+1 query
+  // theo từng khách như findAllByCustomer().
+  async findOpenByCustomerIds(customerIds: string[]) {
+    return this.prisma.openingBalance.findMany({
+      where: { customerId: { in: customerIds }, remainingAmount: { gt: 0 } },
+      select: {
+        id: true,
+        customerId: true,
+        code: true,
+        remainingAmount: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async sumOpenForCustomer(customerId: string) {
     const agg = await this.prisma.openingBalance.aggregate({
       where: { customerId, remainingAmount: { gt: 0 } },

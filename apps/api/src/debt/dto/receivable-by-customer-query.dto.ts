@@ -8,4 +8,8 @@ export class ReceivableByCustomerQueryDto {
   creditExceeded?: string;
   page?: string;
   limit?: string;
+  // Định dạng file export (GET /receivables/by-customer/export) — 'pdf' |
+  // 'xlsx' (mặc định nếu không truyền), cùng convention report.md
+  // "Excel & PDF Export".
+  format?: string;
 }

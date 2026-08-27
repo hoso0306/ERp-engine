@@ -14,6 +14,7 @@ import { ReceivableTable } from "@/components/debt/receivable-table";
 import { DebtDashboardPanel } from "@/components/debt/debt-dashboard-panel";
 import { DebtGroupSwitch } from "@/components/debt/debt-group-switch";
 import { AllocatePaymentDialog } from "@/components/debt/allocate-payment-dialog";
+import { ReceivableExportButton } from "@/components/debt/receivable-export-button";
 import { apiGet } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -28,6 +29,7 @@ interface ReceivableRow {
     code: string;
     customerName: string;
     customerPhone: string;
+    ownerName: string | null;
   };
 }
 
@@ -96,6 +98,28 @@ export default function DebtsByOrderPage() {
     setPage(1);
   }, [search, tab, risk, paymentStatus, ownerId, sortBy, limit]);
 
+  // Tham số cho "In PDF" — cùng bộ lọc với fetchReceivables (bỏ page/limit,
+  // in TOÀN BỘ khớp bộ lọc). Riêng dueFrom/dueTo: BE có sẵn from/to+dateField
+  // (dùng cho tab Công nợ ở trang chi tiết khách hàng) nên tận dụng luôn cho
+  // PDF, dù bảng đang hiển thị vẫn đang lọc khoảng này ở phía FE.
+  const buildExportParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (tab === "overdue") params.set("overdue", "true");
+    if (tab === "credit_exceeded") params.set("creditExceeded", "true");
+    if (risk !== "all") params.set("risk", risk);
+    if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
+    if (ownerId === "self" && user) params.set("ownerId", user.id);
+    else if (ownerId !== "all") params.set("ownerId", ownerId);
+    if (sortBy !== "default") params.set("sortBy", sortBy);
+    if (dueFrom || dueTo) {
+      params.set("dateField", "dueDate");
+      if (dueFrom) params.set("from", dueFrom);
+      if (dueTo) params.set("to", dueTo);
+    }
+    return params;
+  }, [search, tab, risk, paymentStatus, ownerId, user, sortBy, dueFrom, dueTo]);
+
   // BE chưa hỗ trợ filter theo hạn thanh toán (ReceivableQueryDto không có
   // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern với
   // Ngày giao ở Đơn hàng.
@@ -116,12 +140,16 @@ export default function DebtsByOrderPage() {
         title="Công nợ"
         description="Theo dõi công nợ phải thu và ghi nhận thanh toán"
         actions={
-          hasPermission("debt.create-payment") && (
-            <Button onClick={() => setAllocateOpen(true)}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Ghi nhận thanh toán
-            </Button>
-          )
+          <div className="flex items-center gap-2">
+            <ReceivableExportButton endpoint="/receivables/export" buildParams={buildExportParams} format="xlsx" />
+            <ReceivableExportButton endpoint="/receivables/export" buildParams={buildExportParams} format="pdf" />
+            {hasPermission("debt.create-payment") && (
+              <Button onClick={() => setAllocateOpen(true)}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Ghi nhận thanh toán
+              </Button>
+            )}
+          </div>
         }
       />
 

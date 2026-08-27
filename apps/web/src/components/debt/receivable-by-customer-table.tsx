@@ -35,7 +35,7 @@ interface OpenOrderRow {
   paidAmount: number;
   remainingAmount: number;
   dueDate: string | null;
-  salesOrder: { code: string };
+  salesOrder: { code: string; ownerName: string | null };
 }
 
 // opening-balance.md — "Tổng còn phải thu" (totalRemaining) giờ cộng thêm
@@ -248,6 +248,7 @@ export function ReceivableByCustomerTable({
                                   <TableHead className="text-right">Đã thu</TableHead>
                                   <TableHead className="text-right">Còn lại</TableHead>
                                   <TableHead>Hạn thanh toán</TableHead>
+                                  <TableHead>Phụ trách</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -283,6 +284,11 @@ export function ReceivableByCustomerTable({
                                           </div>
                                         ) : (
                                           <span className="text-sm text-muted-foreground">—</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {o.salesOrder.ownerName ?? (
+                                          <span className="text-muted-foreground">—</span>
                                         )}
                                       </TableCell>
                                     </TableRow>

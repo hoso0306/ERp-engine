@@ -909,6 +909,33 @@ describe('DebtService', () => {
         }),
       );
     });
+
+    it('lọc theo ownerId khi query có truyền (bộ lọc "Người phụ trách", 27/08/2026)', async () => {
+      prisma.receivable.findMany.mockResolvedValue([]);
+      prisma.receivable.count.mockResolvedValue(0);
+
+      await service.findAllReceivables({ ownerId: 'user-1' });
+
+      expect(prisma.receivable.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            salesOrder: expect.objectContaining({
+              ownerId: 'user-1',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('không lọc theo ownerId khi query không truyền', async () => {
+      prisma.receivable.findMany.mockResolvedValue([]);
+      prisma.receivable.count.mockResolvedValue(0);
+
+      await service.findAllReceivables({});
+
+      const call = prisma.receivable.findMany.mock.calls[0][0];
+      expect(call.where.salesOrder).not.toHaveProperty('ownerId');
+    });
   });
 
   // opening-balance.md — 4 hàm dưới đây cộng thêm Công nợ đầu kỳ vào tổng

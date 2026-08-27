@@ -18,6 +18,7 @@ interface ReceivableRow {
     code: string;
     customerName: string;
     customerPhone: string;
+    ownerName: string | null;
   };
 }
 
@@ -56,6 +57,7 @@ export function ReceivableTable({ receivables, meta, onPageChange, onLimitChange
               <TableHead className="text-right">Đã thu</TableHead>
               <TableHead className="text-right">Còn lại</TableHead>
               <TableHead>Hạn thanh toán</TableHead>
+              <TableHead>Phụ trách</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -90,6 +92,11 @@ export function ReceivableTable({ receivables, meta, onPageChange, onLimitChange
                       </div>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {r.salesOrder.ownerName ?? (
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                 </TableRow>

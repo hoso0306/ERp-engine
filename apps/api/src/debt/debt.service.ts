@@ -27,6 +27,22 @@ import { PaymentQueryDto } from './dto/payment-query.dto';
 import { OpeningBalanceService } from './opening-balance.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { buildSeries, type ReportGroupBy } from '../shared/report-range';
+import type { PdfGroupedColumn, PdfCell } from '../shared/pdf/pdf.service';
+import type {
+  GroupedExcelColumn,
+  ExcelExportGroup,
+} from '../shared/excel/excel.service';
+
+// 1 dòng nợ (đơn hàng hoặc Công nợ đầu kỳ) trong bản export "Theo khách hàng"
+// — dùng chung cho cả PDF (computeCustomerDebtLines) và Excel.
+interface DebtLine {
+  code: string;
+  amount: number;
+  date: Date;
+  // Người phụ trách đơn hàng (SalesOrder.ownerName) — null cho dòng Công nợ
+  // đầu kỳ (không có khái niệm người phụ trách).
+  ownerName: string | null;
+}
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -63,6 +79,9 @@ const RECEIVABLE_LIST_INCLUDE = {
       customerPhone: true,
       status: true,
       paymentStatus: true,
+      // Cột "Phụ trách" (rà soát tab Công nợ, 27/08/2026) — snapshot tên
+      // trên SalesOrder, không JOIN sang User.
+      ownerName: true,
     },
   },
 } satisfies Prisma.ReceivableInclude;
@@ -833,11 +852,13 @@ export class DebtService {
   // Read API (Task 07)
   // ─────────────────────────────────────────────────────
 
-  async findAllReceivables(query: ReceivableQueryDto) {
-    const page = Math.max(1, parseInt(query.page || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
-    const skip = (page - 1) * limit;
-
+  // Tách khỏi findAllReceivables() để dùng lại cho export PDF (buildReceivablesExport)
+  // — export in TOÀN BỘ kết quả khớp bộ lọc (không phân trang), cùng where/orderBy,
+  // tránh lệch số liệu giữa danh sách xem trên trang và bản in.
+  private async buildReceivableFilter(query: ReceivableQueryDto): Promise<{
+    where: Prisma.ReceivableWhereInput;
+    orderBy: Prisma.ReceivableOrderByWithRelationInput;
+  }> {
     const where: Prisma.ReceivableWhereInput = {};
     // Danh sách Công nợ chỉ hiển thị công nợ "đang mở" — cùng rule đã áp dụng
     // ở mọi method đọc khác (notCancelledFilter()). Trước đây thiếu điều kiện
@@ -931,6 +952,16 @@ export class DebtService {
           ? { dueDate: 'asc' }
           : { createdAt: 'desc' };
 
+    return { where, orderBy };
+  }
+
+  async findAllReceivables(query: ReceivableQueryDto) {
+    const page = Math.max(1, parseInt(query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
+    const skip = (page - 1) * limit;
+
+    const { where, orderBy } = await this.buildReceivableFilter(query);
+
     const [data, total] = await Promise.all([
       this.prisma.receivable.findMany({
         where,
@@ -954,16 +985,105 @@ export class DebtService {
     };
   }
 
+  // Dữ liệu dùng chung cho export "Theo đơn hàng" — cả PDF (buildReceivablesExport)
+  // và Excel (buildReceivablesExcelExport) đều xuất phát từ đúng 1 nguồn này,
+  // chỉ khác cách trình bày (bảng pdfmake vs sheet ExcelJS).
+  private async fetchReceivablesForExport(query: ReceivableQueryDto) {
+    const { where, orderBy } = await this.buildReceivableFilter(query);
+
+    const data = await this.prisma.receivable.findMany({
+      where,
+      orderBy,
+      include: RECEIVABLE_LIST_INCLUDE,
+    });
+
+    return data.map((r, index) => ({
+      stt: index + 1,
+      code: r.salesOrder.code,
+      customerName: r.salesOrder.customerName,
+      customerPhone: r.salesOrder.customerPhone,
+      totalAmount: Number(r.totalAmount),
+      paidAmount: Number(r.paidAmount),
+      remainingAmount: Number(r.remainingAmount),
+      createdAt: r.createdAt.toLocaleDateString('vi-VN'),
+      dueDate: r.dueDate ? r.dueDate.toLocaleDateString('vi-VN') : '',
+      ownerName: r.salesOrder.ownerName ?? '',
+    }));
+  }
+
+  // Bản in PDF "Theo đơn hàng" (rà soát tab Công nợ, 27/08/2026) — CÙNG
+  // where/orderBy với findAllReceivables() (qua buildReceivableFilter()),
+  // khác ở chỗ lấy TOÀN BỘ kết quả khớp bộ lọc, không phân trang — in đúng
+  // những gì người dùng đang lọc trên trang, không chỉ trang hiện tại.
+  async buildReceivablesExport(query: ReceivableQueryDto) {
+    const rows = await this.fetchReceivablesForExport(query);
+
+    return {
+      title: 'Công nợ theo đơn hàng',
+      columns: [
+        { header: 'STT', key: 'stt', width: 30, align: 'right' as const },
+        { header: 'Mã đơn', key: 'code', width: 70 },
+        { header: 'Khách hàng', key: 'customerName', width: '*' as const },
+        { header: 'SĐT', key: 'customerPhone', width: 75 },
+        {
+          header: 'Tổng tiền',
+          key: 'totalAmount',
+          width: 75,
+          align: 'right' as const,
+        },
+        {
+          header: 'Đã thu',
+          key: 'paidAmount',
+          width: 75,
+          align: 'right' as const,
+        },
+        {
+          header: 'Còn lại',
+          key: 'remainingAmount',
+          width: 75,
+          align: 'right' as const,
+        },
+        { header: 'Ngày phát sinh', key: 'createdAt', width: 70 },
+        { header: 'Hạn thanh toán', key: 'dueDate', width: 70 },
+        { header: 'Phụ trách', key: 'ownerName', width: 90 },
+      ],
+      rows,
+    };
+  }
+
+  // Bản Excel "Theo đơn hàng" (rà soát 27/08/2026) — CÙNG nguồn dữ liệu với
+  // buildReceivablesExport() (qua fetchReceivablesForExport), khác cột
+  // (numFmt/width kiểu Excel) — không tính lại, không lệch với bản PDF.
+  async buildReceivablesExcelExport(query: ReceivableQueryDto) {
+    const rows = await this.fetchReceivablesForExport(query);
+
+    return {
+      columns: [
+        { header: 'STT', key: 'stt', width: 6 },
+        { header: 'Mã đơn', key: 'code', width: 14 },
+        { header: 'Khách hàng', key: 'customerName', width: 24 },
+        { header: 'SĐT', key: 'customerPhone', width: 14, numFmt: '@' },
+        { header: 'Tổng tiền', key: 'totalAmount', width: 16 },
+        { header: 'Đã thu', key: 'paidAmount', width: 16 },
+        { header: 'Còn lại', key: 'remainingAmount', width: 16 },
+        { header: 'Ngày phát sinh', key: 'createdAt', width: 14 },
+        { header: 'Hạn thanh toán', key: 'dueDate', width: 14 },
+        { header: 'Phụ trách', key: 'ownerName', width: 18 },
+      ],
+      rows,
+    };
+  }
+
   // Trang "Theo khách hàng" (rà soát tab Công nợ, chốt 26/07/2026) — gộp
   // Receivable theo customerId, cùng công thức SUM(remainingAmount) GROUP BY
   // customerId đã dùng cho getCreditExceededByCustomer()/getTopDebtors(),
   // không phát minh cách tính mới. Chỉ tính đơn còn nợ (remainingAmount > 0)
   // — khớp định nghĩa "Đơn còn nợ" hiển thị trên UI, khác findAllReceivables()
   // (liệt kê cả đơn đã PAID).
-  async findReceivablesByCustomer(query: ReceivableByCustomerQueryDto) {
-    const page = Math.max(1, parseInt(query.page || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
-
+  // Tách khỏi findReceivablesByCustomer() để dùng lại cho export PDF
+  // (buildReceivablesByCustomerExport) — trả về TOÀN BỘ rows đã lọc/sắp xếp,
+  // CHƯA phân trang, cùng công thức để export khớp đúng số liệu trên trang.
+  private async computeCustomerDebtRows(query: ReceivableByCustomerQueryDto) {
     let customerIdFilter: string[] | undefined;
     if (query.search) {
       // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 2 field đang
@@ -974,7 +1094,7 @@ export class DebtService {
           OR ${unaccentLike(Prisma.sql`phone`, query.search)}`,
       );
       if (customerIdFilter.length === 0) {
-        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+        return [];
       }
     }
 
@@ -1045,6 +1165,14 @@ export class DebtService {
         : b.totalRemaining - a.totalRemaining,
     );
 
+    return rows;
+  }
+
+  async findReceivablesByCustomer(query: ReceivableByCustomerQueryDto) {
+    const page = Math.max(1, parseInt(query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
+
+    const rows = await this.computeCustomerDebtRows(query);
     const total = rows.length;
     const start = (page - 1) * limit;
 
@@ -1052,6 +1180,223 @@ export class DebtService {
       data: rows.slice(start, start + limit),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  // Bản in PDF "Theo khách hàng" (rà soát 27/08/2026) — bảng gộp ô: mỗi
+  // khách hàng 1 nhóm (rowSpan các cột tổng hợp), xổ ra từng dòng đơn hàng
+  // CÒN NỢ + Công nợ đầu kỳ còn mở (nếu có) để khớp đúng "Tổng công nợ" —
+  // cùng nguồn/cùng bộ lọc với findReceivablesByCustomer() (qua
+  // computeCustomerDebtRows), không phân trang.
+  // Dữ liệu dùng chung cho export "Theo khách hàng" — cả PDF
+  // (buildReceivablesByCustomerExport) và Excel (buildReceivablesByCustomerExcelExport)
+  // đều xuất phát từ đúng 1 nguồn này (customerRows đã lọc/sắp xếp +
+  // linesByCustomer = từng đơn còn nợ/Công nợ đầu kỳ, sort createdAt asc),
+  // chỉ khác cách trình bày.
+  private async computeCustomerDebtLines(query: ReceivableByCustomerQueryDto) {
+    const customerRows = await this.computeCustomerDebtRows(query);
+
+    const linesByCustomer = new Map<string, DebtLine[]>();
+
+    if (customerRows.length === 0) {
+      return { customerRows, linesByCustomer };
+    }
+
+    const customerIds = customerRows.map((r) => r.customerId);
+    const [receivables, openingBalances] = await Promise.all([
+      this.prisma.receivable.findMany({
+        where: {
+          customerId: { in: customerIds },
+          remainingAmount: { gt: 0 },
+          ...this.notCancelledFilter(),
+        },
+        include: { salesOrder: { select: { code: true, ownerName: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.openingBalanceService.findOpenByCustomerIds(customerIds),
+    ]);
+
+    const pushLine = (customerId: string, line: DebtLine) => {
+      const list = linesByCustomer.get(customerId) ?? [];
+      list.push(line);
+      linesByCustomer.set(customerId, list);
+    };
+    for (const r of receivables) {
+      pushLine(r.customerId, {
+        code: r.salesOrder.code,
+        amount: Number(r.remainingAmount),
+        date: r.createdAt,
+        ownerName: r.salesOrder.ownerName,
+      });
+    }
+    for (const b of openingBalances) {
+      pushLine(b.customerId, {
+        code: b.code,
+        amount: Number(b.remainingAmount),
+        date: b.createdAt,
+        ownerName: null,
+      });
+    }
+    for (const lines of linesByCustomer.values()) {
+      lines.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+
+    return { customerRows, linesByCustomer };
+  }
+
+  async buildReceivablesByCustomerExport(query: ReceivableByCustomerQueryDto) {
+    const columns: PdfGroupedColumn[] = [
+      { header: 'STT', width: 28, align: 'right' },
+      { header: 'Khách hàng', width: '*' },
+      { header: 'SĐT', width: 70 },
+      { header: 'Tổng công nợ', width: 75, align: 'right' },
+      { header: 'Ngày nợ lâu nhất', width: 70 },
+      { header: 'Hạn mức nợ', width: 75, align: 'right' },
+      { header: 'Mã đơn', width: 65 },
+      { header: 'Số nợ đơn', width: 75, align: 'right' },
+      { header: 'Ngày phát sinh', width: 70 },
+      { header: 'Phụ trách', width: 90 },
+    ];
+
+    const { customerRows, linesByCustomer } =
+      await this.computeCustomerDebtLines(query);
+
+    if (customerRows.length === 0) {
+      return {
+        title: 'Công nợ theo khách hàng',
+        columns,
+        body: [] as PdfCell[][],
+      };
+    }
+
+    const body: PdfCell[][] = [];
+    customerRows.forEach((c, index) => {
+      const lines = linesByCustomer.get(c.customerId) ?? [];
+      // An toàn khi 1 khách lọt vào danh sách (còn totalRemaining > 0) nhưng
+      // không dò được dòng đơn/Công nợ đầu kỳ nào — không để rowSpan = 0.
+      const displayLines: DebtLine[] =
+        lines.length > 0
+          ? lines
+          : [
+              {
+                code: '—',
+                amount: 0,
+                date: null as unknown as Date,
+                ownerName: null,
+              },
+            ];
+      const rowSpan = displayLines.length;
+      const oldestDate = displayLines[0].date
+        ? displayLines[0].date.toLocaleDateString('vi-VN')
+        : '—';
+
+      displayLines.forEach((line, lineIndex) => {
+        if (lineIndex === 0) {
+          body.push([
+            { text: String(index + 1), rowSpan, align: 'right' },
+            { text: c.customerName, rowSpan },
+            { text: c.customerPhone, rowSpan },
+            {
+              text: new Intl.NumberFormat('vi-VN').format(c.totalRemaining),
+              rowSpan,
+              align: 'right',
+            },
+            { text: oldestDate, rowSpan },
+            {
+              text: new Intl.NumberFormat('vi-VN').format(c.debtLimit),
+              rowSpan,
+              align: 'right',
+            },
+            { text: line.code },
+            {
+              text: new Intl.NumberFormat('vi-VN').format(line.amount),
+              align: 'right',
+            },
+            { text: line.date ? line.date.toLocaleDateString('vi-VN') : '—' },
+            { text: line.ownerName ?? '—' },
+          ]);
+        } else {
+          body.push([
+            { text: '', covered: true },
+            { text: '', covered: true },
+            { text: '', covered: true },
+            { text: '', covered: true },
+            { text: '', covered: true },
+            { text: '', covered: true },
+            { text: line.code },
+            {
+              text: new Intl.NumberFormat('vi-VN').format(line.amount),
+              align: 'right',
+            },
+            { text: line.date ? line.date.toLocaleDateString('vi-VN') : '—' },
+            { text: line.ownerName ?? '—' },
+          ]);
+        }
+      });
+    });
+
+    return { title: 'Công nợ theo khách hàng', columns, body };
+  }
+
+  // Bản Excel "Theo khách hàng" (rà soát 27/08/2026) — CÙNG nguồn dữ liệu với
+  // buildReceivablesByCustomerExport() (qua computeCustomerDebtLines), dùng
+  // ExcelService.exportGrouped() có sẵn (merge cột nhóm qua N dòng item,
+  // đúng shape group.data/group.items) thay vì tự dựng cell như PDF.
+  async buildReceivablesByCustomerExcelExport(
+    query: ReceivableByCustomerQueryDto,
+  ) {
+    const groupColumns: GroupedExcelColumn[] = [
+      { header: 'STT', key: 'stt', width: 6 },
+      { header: 'Khách hàng', key: 'customerName', width: 24 },
+      { header: 'SĐT', key: 'customerPhone', width: 14, numFmt: '@' },
+      { header: 'Tổng công nợ', key: 'totalRemaining', width: 16 },
+      { header: 'Ngày nợ lâu nhất', key: 'oldestDate', width: 16 },
+      { header: 'Hạn mức nợ', key: 'debtLimit', width: 16 },
+    ];
+    const itemColumns: GroupedExcelColumn[] = [
+      { header: 'Mã đơn', key: 'code', width: 14 },
+      { header: 'Số nợ đơn', key: 'amount', width: 16 },
+      { header: 'Ngày phát sinh', key: 'date', width: 16 },
+      { header: 'Phụ trách', key: 'ownerName', width: 18 },
+    ];
+
+    const { customerRows, linesByCustomer } =
+      await this.computeCustomerDebtLines(query);
+
+    const groups: ExcelExportGroup[] = customerRows.map((c, index) => {
+      const lines = linesByCustomer.get(c.customerId) ?? [];
+      const displayLines: DebtLine[] =
+        lines.length > 0
+          ? lines
+          : [
+              {
+                code: '—',
+                amount: 0,
+                date: null as unknown as Date,
+                ownerName: null,
+              },
+            ];
+      const oldestDate = displayLines[0].date
+        ? displayLines[0].date.toLocaleDateString('vi-VN')
+        : '—';
+      return {
+        data: {
+          stt: index + 1,
+          customerName: c.customerName,
+          customerPhone: c.customerPhone,
+          totalRemaining: c.totalRemaining,
+          oldestDate,
+          debtLimit: c.debtLimit,
+        },
+        items: displayLines.map((line) => ({
+          code: line.code,
+          amount: line.amount,
+          date: line.date ? line.date.toLocaleDateString('vi-VN') : '—',
+          ownerName: line.ownerName ?? '—',
+        })),
+      };
+    });
+
+    return { groupColumns, itemColumns, groups };
   }
 
   async findOneReceivable(id: string) {
@@ -1581,7 +1926,9 @@ export class DebtService {
     const allocationFilter: Prisma.PaymentAllocationWhereInput = {};
     // Payment ADVANCE (và REVERSAL của nó) không có allocation nào — xác định
     // khách hàng qua customerId trực tiếp trên Payment thay vì qua allocation.
-    const advanceFilter: Prisma.PaymentWhereInput = { customerId: { not: null } };
+    const advanceFilter: Prisma.PaymentWhereInput = {
+      customerId: { not: null },
+    };
     if (query.customerId) {
       // Rà soát tab Công nợ (11/08/2026) — allocation giờ có thể trỏ tới
       // Receivable HOẶC OpeningBalance, cả 2 đều có customerId.

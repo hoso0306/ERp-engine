@@ -16,6 +16,9 @@ export class ReceivableQueryDto {
   // hàng" (rà soát 27/08/2026), cùng field/pattern với bộ lọc "Người phụ
   // trách" ở trang Đơn hàng (sales-order-query.dto.ts).
   ownerId?: string;
+  // Định dạng file export (GET /receivables/export) — 'pdf' | 'xlsx' (mặc
+  // định nếu không truyền), cùng convention report.md "Excel & PDF Export".
+  format?: string;
   // 'createdAt' (mặc định) | 'dueDate' — mốc ngày dùng để lọc from/to.
   dateField?: string;
   from?: string;
