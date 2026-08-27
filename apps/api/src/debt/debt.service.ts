@@ -868,6 +868,10 @@ export class DebtService {
       salesOrderWhere.paymentStatus = query.paymentStatus as PaymentStatus;
     }
 
+    if (query.ownerId) {
+      salesOrderWhere.ownerId = query.ownerId;
+    }
+
     where.salesOrder = salesOrderWhere;
 
     const now = new Date();

@@ -9,6 +9,7 @@ import {
   type ReceivableTab,
   type ReceivableSort,
 } from "@/components/debt/receivable-filter";
+import type { SalesOrderOwnerOption } from "@/components/sales-order/sales-order-filter";
 import { ReceivableTable } from "@/components/debt/receivable-table";
 import { DebtDashboardPanel } from "@/components/debt/debt-dashboard-panel";
 import { DebtGroupSwitch } from "@/components/debt/debt-group-switch";
@@ -31,7 +32,7 @@ interface ReceivableRow {
 }
 
 export default function DebtsByOrderPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [receivables, setReceivables] = useState<ReceivableRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
@@ -41,6 +42,11 @@ export default function DebtsByOrderPage() {
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [sortBy, setSortBy] = useState<ReceivableSort>("default");
+  // Bộ lọc "Người phụ trách" (rà soát 27/08/2026) — cùng field/pattern với
+  // trang Đơn hàng (SalesOrder.ownerId). Mặc định "all" để giữ đúng hành vi
+  // hiện có, không tự ý bó hẹp view của người dùng hiện tại.
+  const [ownerId, setOwnerId] = useState("all");
+  const [owners, setOwners] = useState<SalesOrderOwnerOption[]>([]);
   const [page, setPage] = useState(1);
   // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
   // nguyên 10 như trước.
@@ -48,6 +54,12 @@ export default function DebtsByOrderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [allocateOpen, setAllocateOpen] = useState(false);
+
+  useEffect(() => {
+    apiGet<SalesOrderOwnerOption[]>("/sales-orders/export/owners")
+      .then(setOwners)
+      .catch(() => {});
+  }, []);
 
   const fetchReceivables = useCallback(async () => {
     setLoading(true);
@@ -59,6 +71,8 @@ export default function DebtsByOrderPage() {
       if (tab === "credit_exceeded") params.set("creditExceeded", "true");
       if (risk !== "all") params.set("risk", risk);
       if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
+      if (ownerId === "self" && user) params.set("ownerId", user.id);
+      else if (ownerId !== "all") params.set("ownerId", ownerId);
       if (sortBy !== "default") params.set("sortBy", sortBy);
       params.set("page", String(page));
       params.set("limit", String(limit));
@@ -71,7 +85,7 @@ export default function DebtsByOrderPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, risk, paymentStatus, sortBy, page, limit]);
+  }, [search, tab, risk, paymentStatus, ownerId, user, sortBy, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchReceivables, search ? 300 : 0);
@@ -80,7 +94,7 @@ export default function DebtsByOrderPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, tab, risk, paymentStatus, sortBy, limit]);
+  }, [search, tab, risk, paymentStatus, ownerId, sortBy, limit]);
 
   // BE chưa hỗ trợ filter theo hạn thanh toán (ReceivableQueryDto không có
   // field này) — lọc phía FE trên trang dữ liệu hiện tại, cùng pattern với
@@ -130,6 +144,9 @@ export default function DebtsByOrderPage() {
         onDueToChange={setDueTo}
         sortBy={sortBy}
         onSortByChange={setSortBy}
+        ownerId={ownerId}
+        onOwnerIdChange={setOwnerId}
+        owners={owners}
       />
 
       {loading && <Loading />}

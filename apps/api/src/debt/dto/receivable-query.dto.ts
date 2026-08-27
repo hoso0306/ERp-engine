@@ -12,6 +12,10 @@ export class ReceivableQueryDto {
   // Tab "Công nợ" trong trang chi tiết khách hàng — lọc đúng 1 khách hàng,
   // liệt kê CẢ đơn đã thu đủ (khác findReceivablesByCustomer chỉ lấy đơn còn nợ).
   customerId?: string;
+  // Lọc theo người phụ trách đơn hàng (SalesOrder.ownerId) — tab "Theo đơn
+  // hàng" (rà soát 27/08/2026), cùng field/pattern với bộ lọc "Người phụ
+  // trách" ở trang Đơn hàng (sales-order-query.dto.ts).
+  ownerId?: string;
   // 'createdAt' (mặc định) | 'dueDate' — mốc ngày dùng để lọc from/to.
   dateField?: string;
   from?: string;
