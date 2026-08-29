@@ -40,6 +40,17 @@ Menu sẽ **tự ẩn/hiện theo quyền của từng người** — ví dụ n
 
 > **Lưu ý:** mục **Kho** hiện đang hiển thị "Đang phát triển" và chưa dùng được — xem giải thích ở [mục 7.2](#72-vì-sao-menu-kho-hiển-thị-đang-phát-triển).
 
+### 1.4. "Tài khoản của tôi" — trang cá nhân
+
+Ngay dưới mục **Cài đặt** ở menu bên trái có mục **"Tài khoản của tôi"** — ai đăng nhập cũng thấy được, không phân biệt vai trò hay quyền hạn (kể cả người không thấy được mục Cài đặt vẫn thấy mục này).
+
+Trang này hiển thị tên/email/số điện thoại của chính tài khoản đang đăng nhập, cùng 2 số liệu riêng của mình:
+
+- **Doanh số** — đã trừ đúng phần Công ty hỗ trợ hàng hoàn/giảm trừ công nợ, tự lọc theo khoảng ngày, bấm vào để xem thẳng danh sách đơn hàng của mình trong khoảng đó (không tính đơn đã huỷ).
+- **Tổng công nợ đang quản lý** — theo các đơn hàng của mình, tính tại thời điểm hiện tại.
+
+Nếu tài khoản có quyền xem số liệu kinh doanh (thường là Chủ doanh nghiệp/Quản trị hệ thống/Kế toán), trang còn hiện thêm **biểu đồ so sánh doanh số với các nhân viên khác** trong cùng kỳ, kèm huy hiệu xếp hạng và tỷ lệ tăng/giảm so với kỳ trước liền kề.
+
 ---
 
 ## 2. Dành cho Chủ doanh nghiệp
@@ -55,6 +66,7 @@ Các khối thông tin từ trên xuống:
 - **Hôm nay** — đơn mới, đơn đã giao xe, tiền đã thu trong ngày.
 - **Cảnh báo** — khách vượt hạn mức công nợ, đơn trễ giao, báo giá gửi khách lâu chưa phản hồi, phiếu sản xuất trễ hạn. Bấm vào từng dòng để xem danh sách chi tiết.
 - **Kinh doanh** — doanh thu/giá vốn/lợi nhuận kế hoạch, số đơn đang sản xuất/đã hoàn thành/đã giao. *(Khối này chỉ Chủ doanh nghiệp và Quản trị hệ thống xem được, vì là số liệu tài chính nhạy cảm.)*
+- **Doanh số theo nhân viên** — khối riêng, bộ lọc ngày độc lập (mặc định "Tháng này"), so sánh doanh số từng nhân viên kinh doanh đã phát sinh đơn trong kỳ. *(Cũng chỉ Chủ doanh nghiệp và Quản trị hệ thống xem được, cùng lý do như khối Kinh doanh ở trên — mỗi nhân viên xem số của riêng mình thì vào [mục 1.4](#14-tài-khoản-của-tôi--trang-cá-nhân).)*
 - **Sản xuất** — số phiếu theo từng trạng thái, tiến độ theo từng xưởng.
 - **Tổng công nợ** — tổng phải thu, đã thu, còn phải thu, quá hạn, vượt hạn mức, Top khách nợ nhiều nhất.
 - **Hàng hoàn** — số phiếu hoàn, giá trị hoàn, kho thu hồi còn tận dụng được, top lý do trả hàng.
@@ -132,6 +144,8 @@ Sau khi tạo, vào trang chi tiết khách hàng để xem đầy đủ thông 
 
 ![Chi tiết khách hàng](images/05-khach-hang-chi-tiet.png)
 
+Trong tab **"Đơn hàng"** ở trang chi tiết khách hàng có khối **"Tổng doanh số"** — lọc theo khoảng ngày bất kỳ, tính đúng trên toàn bộ đơn trong khoảng đó (không chỉ những đơn đang hiển thị trên trang hiện tại). Tab **"Công nợ"** có thêm mục con **"Lịch sử giảm trừ/công nợ đầu kỳ"** — liệt kê đầy đủ mọi khoản giảm trừ công nợ của khách này theo thời gian, dù là tự động sinh ra từ hàng hoàn hay giảm trừ thủ công (xem [mục 3.4](#34-công-nợ--thu-tiền-khách-hàng)), lẫn các khoản Công nợ đầu kỳ ([mục 3.6](#36-công-nợ-đầu-kỳ--quyết-toán-vat)).
+
 **Import/Export Excel:** ở trang danh sách có nút Import để nhập nhiều khách hàng cùng lúc từ file Excel (tải file mẫu, điền, tải lên — dòng nào lỗi sẽ được báo rõ, không làm hỏng các dòng còn lại) và Export để xuất danh sách theo bộ lọc đang xem.
 
 ### 3.2. Lập Báo giá
@@ -179,11 +193,11 @@ Sau khi Duyệt, báo giá chuyển sang **chỉ xem** (không sửa được n�
 
 ### 3.3. Theo dõi Đơn hàng
 
-Vào menu **Đơn hàng**, hoặc bấm "Xem đơn hàng" ngay từ báo giá đã duyệt.
+Vào menu **Đơn hàng**. Cột **"Tổng tiền"** trên danh sách đã tự trừ đi phần **Công ty hỗ trợ** của các phiếu hoàn thuộc đơn đó (nếu có) — đơn nào có hàng hoàn sẽ có thêm biểu tượng cảnh báo nhỏ trên dòng để dễ nhận ra. Bấm vào một đơn để xem chi tiết, hoặc bấm "Xem đơn hàng" ngay từ báo giá đã duyệt.
 
 ![Chi tiết đơn hàng](images/13-don-hang-chi-tiet.png)
 
-Trang chi tiết đơn hàng cho biết mọi thứ về đơn: sản phẩm, tiến độ sản xuất (bao nhiêu phiếu đã xong), địa chỉ giao hàng, tình hình công nợ, lịch sử hoạt động đầy đủ (Timeline). Đơn hàng là **chứng từ cố định** — sau khi tạo không sửa lại giá/sản phẩm được nữa (trừ địa chỉ giao hàng, có thể sửa qua nút **Sửa** ở khối "Địa chỉ giao hàng" bất cứ lúc nào).
+Trang chi tiết đơn hàng cho biết mọi thứ về đơn: sản phẩm, tiến độ sản xuất (bao nhiêu phiếu đã xong), địa chỉ giao hàng, tình hình công nợ, lịch sử hoạt động đầy đủ (Timeline). Đơn hàng là **chứng từ cố định** — sau khi tạo không sửa lại giá/sản phẩm/dòng "Tổng thanh toán" gốc được nữa (trừ địa chỉ giao hàng, có thể sửa qua nút **Sửa** ở khối "Địa chỉ giao hàng" bất cứ lúc nào). Nếu đơn có hàng hoàn, ngay bên dưới dòng "Tổng thanh toán" sẽ hiện thêm 2 dòng màu đỏ: **"Tổng giảm trừ hàng hoàn"** (phần Công ty hỗ trợ cộng dồn của các phiếu hoàn thuộc đơn) và **"Tổng giá trị đơn hàng"** (số thực nhận sau khi trừ) — dòng "Tổng thanh toán" gốc phía trên vẫn giữ nguyên, không bị sửa đè.
 
 Khi tất cả phiếu sản xuất của đơn đã hoàn thành, hệ thống **tự động** chuyển trạng thái đơn sang "Đã hoàn thành SX" — không cần thao tác gì thêm. Lúc này màn hình sẽ xuất hiện thêm 2 nút:
 
@@ -192,7 +206,7 @@ Khi tất cả phiếu sản xuất của đơn đã hoàn thành, hệ thống 
 
 ![Đơn hàng đã giao thành công](images/17-don-hang-da-giao.png)
 
-Sau khi **Khách đã nhận**, nếu sau này khách trả lại hàng, có thể bấm nút **Tạo phiếu hoàn** ngay tại đây — xem [mục 3.5](#35-xử-lý-hàng-hoàn).
+**Tạo phiếu hoàn:** bấm nút **Tạo phiếu hoàn** ngay tại trang chi tiết đơn — có thể tạo ở **bất kỳ trạng thái nào của đơn**, kể cả khi đơn chưa giao xong, không bắt buộc phải đợi tới sau "Khách đã nhận" (chỉ không tạo được khi đơn đã **Huỷ**). Xem chi tiết cách tạo và ảnh hưởng tới công nợ ở [mục 3.5](#35-xử-lý-hàng-hoàn).
 
 **Huỷ đơn hàng:** chỉ huỷ được khi chưa có phiếu sản xuất nào bắt đầu làm (còn "Chờ sản xuất"). Nếu đơn đã thu cọc, hệ thống sẽ cảnh báo và tự đóng công nợ khi huỷ — việc hoàn tiền cho khách xử lý ngoài hệ thống (chuyển khoản/tiền mặt trực tiếp), không tự động qua ERP.
 
@@ -219,15 +233,24 @@ Một vài lưu ý:
 - Nếu khách **trả tiền mặt và không lấy hoá đơn**, kế toán có thể bấm **"Đóng công nợ (không xuất hoá đơn)"** ngay tại trang chi tiết công nợ của đơn đó — hệ thống sẽ coi khoản VAT còn lại là không cần theo dõi nữa. Nếu sau này khách quay lại xin hoá đơn, xử lý qua **Quyết toán VAT** — xem [mục 3.6](#36-công-nợ-đầu-kỳ--quyết-toán-vat), không cần mở lại công nợ cũ.
 - Nếu lỡ ghi nhận nhầm một khoản thu, dùng chức năng **Hoàn tác (Reverse)** trên đúng phiếu thu đó — hệ thống không cho sửa/xoá trực tiếp một khoản thu đã ghi, mà tạo một bút toán đảo ngược để giữ đúng lịch sử.
 
+**Giảm trừ công nợ (không qua thu tiền thật):** ở trang chi tiết công nợ của một đơn hàng, có nút **Giảm trừ công nợ** — dùng khi cần giảm bớt số tiền khách còn nợ vì một lý do khác ngoài thu tiền (ví dụ thoả thuận giảm giá sau, xử lý khiếu nại...), **không tạo phiếu thu, không tính vào dòng tiền mặt đã thu**. Bấm vào, nhập số tiền và **bắt buộc nhập lý do** — hệ thống trừ thẳng vào số còn nợ và ghi lại đầy đủ trong khối "Lịch sử điều chỉnh công nợ" ngay bên dưới, không có nút xoá/sửa lại sau khi đã tạo. Toàn bộ các khoản giảm trừ này (kể cả phần tự động sinh ra khi tạo phiếu hoàn — xem [mục 3.5](#35-xử-lý-hàng-hoàn)) cũng xem lại được ở tab **"Lịch sử giảm trừ/công nợ đầu kỳ"** trên trang chi tiết Khách hàng.
+
 ### 3.5. Xử lý Hàng hoàn
 
-Vào menu **Hàng hoàn**, hoặc bấm **Tạo phiếu hoàn** ngay từ trang chi tiết đơn hàng đã giao.
+Vào menu **Hàng hoàn**, hoặc bấm **Tạo phiếu hoàn** ngay từ trang chi tiết đơn hàng — có thể tạo ở **bất kỳ trạng thái nào của đơn** (không bắt buộc đợi tới khi đơn đã giao xong), chỉ trừ đơn đã **Huỷ**.
 
 ![Form tạo phiếu hoàn](images/21-hang-hoan-tao-phieu.png)
 
-Tick chọn sản phẩm khách trả, nhập số lượng trả (có thể trả một phần, ví dụ đặt 5 chỉ trả lại 2), chọn lý do trả hàng, điền người nhận hàng trả, rồi bấm **Tạo phiếu hoàn**.
+Tick chọn sản phẩm khách trả, nhập số lượng trả (có thể trả một phần, ví dụ đặt 5 chỉ trả lại 2), chọn lý do trả hàng, điền người nhận hàng trả. Sau khi hệ thống tính ra **giá trị hàng trả**, phải phân bổ rõ giá trị này thành 2 phần:
+
+- **Phí khách** — phần khách vẫn phải chịu (ví dụ lỗi do khách chọn sai, hàng đã cắt theo yêu cầu riêng không dùng lại được). Có thể nhập theo **tỷ lệ %** hoặc nhập thẳng số tiền.
+- **Công ty hỗ trợ** — phần còn lại, xưởng chịu thay khách (tự tính = giá trị hàng trả − Phí khách). Khi phần này lớn hơn 0, hệ thống **bắt buộc nhập lý do**.
+
+Bấm **Tạo phiếu hoàn**.
 
 ![Chi tiết phiếu hoàn vừa tạo](images/22-hang-hoan-chi-tiet.png)
+
+Ngay khi tạo xong, nếu có phần **Công ty hỗ trợ**, hệ thống **tự động giảm công nợ tương ứng của khách** — không cần thao tác thêm, cũng không cần kế toán chủ động vào Công nợ chỉnh tay. (Trường hợp việc giảm trừ tự động không thực hiện được — ví dụ số còn nợ không đủ để trừ — màn hình sẽ cảnh báo và cho bấm **Giảm trừ công nợ** thủ công ngay tại đó.) Khoản giảm công nợ này xem lại được ở khối "Lịch sử điều chỉnh công nợ" trên trang chi tiết Công nợ, hoặc tab **"Lịch sử giảm trừ/công nợ đầu kỳ"** trên trang Khách hàng — xem [mục 3.4](#34-công-nợ--thu-tiền-khách-hàng).
 
 Sản phẩm nhận về sẽ tự động vào **Kho thu hồi** với trạng thái "Còn trong kho" — có thể đánh dấu **Đã sử dụng** (tận dụng cho đơn khác/cắt mẫu) hoặc **Đã thanh lý** khi không dùng được nữa.
 
@@ -235,7 +258,7 @@ Khi đã xử lý xong với khách (đồng ý đổi/trả, thoả thuận xon
 
 ![Danh sách phiếu hoàn](images/23-hang-hoan-danh-sach.png)
 
-**Lưu ý quan trọng:** Hàng hoàn **không tự động thay đổi doanh thu, lợi nhuận hay công nợ** của đơn hàng gốc. Đây chỉ là ghi nhận cho mục đích thống kê và quản lý kho thu hồi. Nếu muốn giảm công nợ cho khách vì hàng hoàn, kế toán phải chủ động điều chỉnh công nợ (tính năng nâng cao, liên hệ hỗ trợ nếu cần dùng đến).
+**Lưu ý quan trọng:** phiếu hoàn là **chứng từ cố định** — sau khi tạo không sửa lại được tỷ lệ "Phí khách"/"Công ty hỗ trợ" nữa, kể cả sau khi bấm "Hoàn tất xử lý". Nếu tình huống với khách thay đổi (thoả thuận lại phần chịu phí), báo kế toán **tạo thêm một khoản Giảm trừ công nợ riêng** ([mục 3.4](#34-công-nợ--thu-tiền-khách-hàng)) để bù chênh lệch, không sửa lại phiếu hoàn cũ. "Doanh thu" trên Dashboard/Báo cáo cũng đã tự trừ đúng phần Công ty hỗ trợ này, không cần cộng trừ tay.
 
 ### 3.6. Công nợ đầu kỳ & Quyết toán VAT
 

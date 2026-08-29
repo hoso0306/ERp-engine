@@ -30,6 +30,8 @@ describe('DebtService', () => {
   let service: DebtService;
   let prisma: {
     salesOrder: { findUnique: jest.Mock; update: jest.Mock };
+    return: { update: jest.Mock; findUniqueOrThrow: jest.Mock };
+    debtAdjustment: { create: jest.Mock };
     receivable: {
       update: jest.Mock;
       findMany: jest.Mock;
@@ -64,6 +66,13 @@ describe('DebtService', () => {
   beforeEach(async () => {
     prisma = {
       salesOrder: { findUnique: jest.fn(), update: jest.fn() },
+      return: {
+        update: jest.fn(),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ ownerId: 'owner-ret-1', ownerName: 'Nhân viên Return' }),
+      },
+      debtAdjustment: { create: jest.fn() },
       receivable: {
         update: jest.fn(),
         findMany: jest.fn(),
@@ -898,6 +907,7 @@ describe('DebtService', () => {
     function makeReceivable(overrides: Record<string, unknown> = {}) {
       return {
         id: 'rec-1',
+        customerId: 'cust-1',
         totalAmount: 1000000,
         paidAmount: 700000,
         remainingAmount: 300000,
@@ -905,6 +915,8 @@ describe('DebtService', () => {
           id: 'so-1',
           status: 'DELIVERED',
           paymentStatus: 'PARTIALLY_PAID',
+          ownerId: 'owner-so-1',
+          ownerName: 'Nhân viên A',
         },
         ...overrides,
       };
@@ -995,6 +1007,59 @@ describe('DebtService', () => {
       );
       expect(prisma.payment.create).not.toHaveBeenCalled();
       expect(prisma.paymentAllocation.create).not.toHaveBeenCalled();
+      // Ghi bản ghi giảm trừ vào DebtAdjustment (sửa 27/08/2026, thay cho lưu
+      // cộng dồn trực tiếp trên Return) — ownerId/ownerName copy từ Return
+      // (có returnId) chứ không phải từ SalesOrder.
+      expect(prisma.return.findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: 'ret-1' },
+        select: { ownerId: true, ownerName: true },
+      });
+      expect(prisma.debtAdjustment.create).toHaveBeenCalledWith({
+        data: {
+          receivableId: 'rec-1',
+          customerId: 'cust-1',
+          salesOrderId: 'so-1',
+          returnId: 'ret-1',
+          amount: 300000,
+          reason: 'Lỗi sản xuất',
+          ownerId: 'owner-ret-1',
+          ownerName: 'Nhân viên Return',
+          // Test không truyền userId -> resolveActorName trả về null.
+          createdBy: null,
+          createdByName: null,
+        },
+      });
+    });
+
+    it('điều chỉnh độc lập (không returnId) — ownerId lấy mặc định từ SalesOrder liên quan', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+      prisma.receivable.update.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 900000,
+        paidAmount: 700000,
+        remainingAmount: 200000,
+      });
+      prisma.receivable.findUniqueOrThrow.mockResolvedValue({ id: 'rec-1' });
+
+      await service.manualAdjustment('rec-1', { amount: 100000, reason: 'Giảm giá goodwill' });
+
+      // Không có returnId -> không cần tra cứu Return.
+      expect(prisma.return.findUniqueOrThrow).not.toHaveBeenCalled();
+      expect(prisma.debtAdjustment.create).toHaveBeenCalledWith({
+        data: {
+          receivableId: 'rec-1',
+          customerId: 'cust-1',
+          salesOrderId: 'so-1',
+          returnId: null,
+          amount: 100000,
+          reason: 'Giảm giá goodwill',
+          // Mặc định = salesperson của đơn hàng liên quan (chốt 27/08/2026).
+          ownerId: 'owner-so-1',
+          ownerName: 'Nhân viên A',
+          createdBy: null,
+          createdByName: null,
+        },
+      });
     });
 
     it('không cập nhật SalesOrder.paymentStatus nếu không đổi', async () => {
@@ -1184,6 +1249,34 @@ describe('DebtService', () => {
         overdueAmount: 1000000,
         overdueCount: 2,
       });
+    });
+  });
+
+  describe('getTotalRemainingByOwner()', () => {
+    it('SUM remainingAmount lọc theo ownerId, loại đơn CANCELLED', async () => {
+      prisma.receivable.aggregate.mockResolvedValue({
+        _sum: { remainingAmount: 2500000 },
+      });
+
+      const result = await service.getTotalRemainingByOwner('owner-1');
+
+      expect(prisma.receivable.aggregate).toHaveBeenCalledWith({
+        where: {
+          salesOrder: { status: { not: 'CANCELLED' }, ownerId: 'owner-1' },
+        },
+        _sum: { remainingAmount: true },
+      });
+      expect(result).toBe(2500000);
+    });
+
+    it('trả về 0 nếu nhân viên không có công nợ nào', async () => {
+      prisma.receivable.aggregate.mockResolvedValue({
+        _sum: { remainingAmount: null },
+      });
+
+      const result = await service.getTotalRemainingByOwner('owner-1');
+
+      expect(result).toBe(0);
     });
   });
 

@@ -1843,6 +1843,12 @@ export class QuotationWorkflowService {
               vatRate: Number(item.vatRate),
               vatAmount: Number(item.vatAmount),
               note: item.note,
+              // Snapshot cảnh báo giá + chi tiết phụ phí (bổ sung 27/08/2026)
+              // — để bản in Đơn hàng hiện được cùng cảnh báo/breakdown phụ
+              // phí như bản in Báo giá (trước đây Order chỉ có tổng
+              // surchargeAfterDiscount, không có từng dòng).
+              warnings: item.warnings ?? undefined,
+              applicableSurcharges: item.applicableSurcharges ?? undefined,
               materialRequirementVersionId,
               plannedCost: itemPlannedCost,
               displayOrder: item.displayOrder,
@@ -1923,6 +1929,8 @@ export class QuotationWorkflowService {
               vatRate: Number(item.vatRate),
               vatAmount: Number(item.vatAmount),
               note: item.note,
+              warnings: item.warnings ?? undefined,
+              applicableSurcharges: item.applicableSurcharges ?? undefined,
               plannedCost: itemPlannedCost,
               displayOrder: item.displayOrder,
             },

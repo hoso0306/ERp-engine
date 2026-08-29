@@ -135,6 +135,27 @@ export class DashboardController {
     );
   }
 
+  // Trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026) — CỐ Ý không
+  // gắn @RequirePermission: chỉ trả số của CHÍNH người gọi (userId lấy từ
+  // JWT, không nhận từ query), nên không cần sales-order.view-cost/debt.view
+  // như 2 route bên trên (những route đó lộ số của NGƯỜI KHÁC). Mọi
+  // role đã đăng nhập (AuthGuard ở class) đều xem được số của riêng mình.
+  @Get('me/summary')
+  async getMySummary(
+    @Query() query: DashboardOverviewQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new BadRequestException('Không xác định được người dùng.');
+    }
+    const range = this.parseRange(query);
+    if (!range?.from || !range?.to) {
+      throw new BadRequestException('from và to là bắt buộc.');
+    }
+    return this.dashboardService.getMySummary(userId, range.from, range.to);
+  }
+
   @Get('production')
   @RequirePermission('dashboard.view')
   async getProduction(

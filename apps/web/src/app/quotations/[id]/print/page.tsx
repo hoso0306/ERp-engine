@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { ExportQuotationMenu } from "@/components/quotation/export-quotation-menu";
+import { RETURN_REASON_LABEL } from "@/components/return/return-reason-label";
 
 interface ItemParam {
   name: string;
@@ -95,7 +96,35 @@ interface SalesOrderItem {
   vatRate: number;
   vatAmount: number;
   note: string | null;
+  // Snapshot từ QuotationItem.warnings tại Approve (bổ sung 27/08/2026) — để
+  // bản in Đơn hàng hiện cùng cảnh báo giá như bản in Báo giá.
+  warnings: string[] | null;
+  // Snapshot từ QuotationItem.applicableSurcharges tại Approve (bổ sung
+  // 27/08/2026, phát hiện qua BG000041/SO000034) — chi tiết từng dòng phụ
+  // phí, trước đây Order chỉ có tổng surchargeAfterDiscount.
+  applicableSurcharges: { label: string; amount: number; perArea: boolean }[] | null;
   parameters: ItemParam[];
+}
+
+// Khối "Đã hoàn" trên bản in (bổ sung 27/08/2026) — chỉ hiện khi in ở chế độ
+// Đơn hàng (isOrder) và đơn có ít nhất 1 Return.
+interface OrderReturnItem {
+  id: string;
+  salesOrderItemId: string;
+  productName: string;
+  returnedQuantity: number;
+  unitPriceSnapshot: number;
+  reason: string;
+}
+
+interface OrderReturn {
+  id: string;
+  code: string;
+  returnDate: string;
+  totalValue: number;
+  customerBorneAmount: number;
+  companyBorneReason: string | null;
+  items: OrderReturnItem[];
 }
 
 interface SalesOrder {
@@ -114,6 +143,7 @@ interface SalesOrder {
     remainingAmount: number;
     paidAmount: number;
   } | null;
+  returns: OrderReturn[];
 }
 
 interface Company {
@@ -416,8 +446,8 @@ export default function QuotationPrintPage() {
         vatRate: Number(i.vatRate),
         vatAmount: Number(i.vatAmount),
         note: i.note,
-        warnings: null,
-        applicableSurcharges: null,
+        warnings: i.warnings,
+        applicableSurcharges: i.applicableSurcharges,
       }))
     : quotation.items.map((i) => ({
         id: i.id,
@@ -440,11 +470,54 @@ export default function QuotationPrintPage() {
         applicableSurcharges: i.applicableSurcharges,
       }));
 
+  // Khối "Đã hoàn" (bổ sung 27/08/2026) — chỉ có ý nghĩa ở chế độ Đơn hàng.
+  const orderReturns = isOrder ? order!.returns : [];
+  const returnedSalesOrderItemIds = new Set(
+    orderReturns.flatMap((r) => r.items.map((it) => it.salesOrderItemId)),
+  );
+  // Số lượng đã hoàn theo từng dòng — hiện "ĐÃ HOÀN a/b SP" (a = đã hoàn,
+  // b = tổng đã đặt) dạng tem đè lên ô ghi chú của đúng dòng đó, không xoá
+  // nội dung cũ (rà soát UI 27/08/2026).
+  const returnedQuantityByItemId = new Map<string, number>();
+  // Phần Công ty hỗ trợ phân bổ về từng dòng sản phẩm (rà soát UI 27/08/2026)
+  // — 1 Return có thể gồm nhiều dòng, phân bổ theo tỷ trọng giá trị dòng
+  // (returnedQuantity × unitPriceSnapshot) trên tổng totalValue của ĐÚNG
+  // Return đó, cộng dồn nếu 1 dòng bị hoàn qua nhiều Return khác nhau.
+  const companyBorneByItemId = new Map<string, number>();
+  for (const r of orderReturns) {
+    const rCompanyBorne = Number(r.totalValue) - Number(r.customerBorneAmount);
+    const rTotalValue = Number(r.totalValue);
+    for (const it of r.items) {
+      returnedQuantityByItemId.set(
+        it.salesOrderItemId,
+        (returnedQuantityByItemId.get(it.salesOrderItemId) ?? 0) + Number(it.returnedQuantity),
+      );
+      if (rCompanyBorne > 0 && rTotalValue > 0) {
+        const lineValue = Number(it.returnedQuantity) * Number(it.unitPriceSnapshot);
+        const allocated = Math.round(rCompanyBorne * (lineValue / rTotalValue));
+        companyBorneByItemId.set(
+          it.salesOrderItemId,
+          (companyBorneByItemId.get(it.salesOrderItemId) ?? 0) + allocated,
+        );
+      }
+    }
+  }
+  // Phần công ty chịu — số duy nhất được phép trừ vào Tổng/công nợ hiển thị
+  // (rà soát nghiệp vụ Return, 27/08/2026: KHÔNG trừ toàn bộ giá trị hoàn,
+  // phần khách chịu khách vẫn phải trả đủ).
+  const companyBorneTotal = orderReturns.reduce(
+    (s, r) => s + (Number(r.totalValue) - Number(r.customerBorneAmount)),
+    0,
+  );
+
   // Order: tổng tiền đã snapshot sẵn (Derived Data hợp lệ — xem SalesOrder.grandTotal).
   // Quotation (chưa duyệt): chưa có field tổng nào lưu sẵn — tính tại FE từ items.
-  const totalAmount = isOrder
+  const totalAmountRaw = isOrder
     ? Number(order!.totalAmount)
     : items.reduce((s, i) => s + i.subtotal, 0);
+  // Cột TỔNG trừ thẳng phần công ty chịu của Return (rà soát 27/08/2026,
+  // phản hồi UI) — chỉ áp dụng ở chế độ Đơn hàng, Báo giá không có Return.
+  const totalAmount = totalAmountRaw - companyBorneTotal;
   // Tổng SL/M2 hàng TỔNG — tính tại thời điểm hiển thị (Derived Data hợp lệ,
   // giống m2 từng dòng), chỉ cộng M2 các dòng có đủ Rộng/Cao.
   const totalQuantity = items.reduce((s, i) => s + i.quantity, 0);
@@ -458,16 +531,19 @@ export default function QuotationPrintPage() {
   const discountAmount = isOrder ? Number(order!.discountAmount) : Number(quotation.discountAmount ?? 0);
   const discountReason = isOrder ? order!.discountReason : quotation.discountReason;
   const shippingFee = isOrder ? Number(order!.shippingFee) : Number(quotation.shippingFee ?? 0);
-  // Tách ngược VAT (chốt 16/08/2026): subtotal/totalAmount đã gồm VAT sẵn,
-  // không cộng thêm nữa (khớp grandTotal đã sửa ở BE approve()).
-  const grandTotal = isOrder
-    ? Number(order!.grandTotal)
-    : totalAmount - discountAmount + shippingFee;
 
-  // Công nợ: "Đơn hàng hiện tại" = số còn phải thu của chính đơn này (đã trừ
-  // phần đã thanh toán, nếu có) khi đã duyệt; = grandTotal khi còn là Báo giá.
-  // "Nợ hiện có" = tổng công nợ khách (mọi đơn) TRỪ đơn đang in, tránh đếm 2 lần.
-  const currentOrderRemaining = isOrder && order!.receivable ? Number(order!.receivable.remainingAmount) : grandTotal;
+  // Khối "Tình hình công nợ" — dòng "Đơn hàng này"/"Báo giá này" lấy thẳng
+  // từ cột TỔNG đã trừ phần công ty chịu ở trên (rà soát 27/08/2026, phản
+  // hồi UI: "các số liệu đơn hàng này sẽ lấy ở cột Tổng") — không dùng
+  // grandTotal (snapshot gốc chưa trừ Return) cho dòng này nữa ở chế độ Đơn
+  // hàng. Báo giá vẫn dùng công thức cũ (không có Return).
+  const orderThisRowValue = isOrder ? totalAmount : totalAmount - discountAmount + shippingFee;
+
+  // Công nợ: "Đơn hàng hiện tại" = số còn phải thu THỰC TẾ của chính đơn này
+  // (đã trừ phần đã thanh toán + đã trừ Manual Adjustment nếu có, đọc thẳng
+  // Receivable — vẫn là nguồn đúng cho TỔNG PHẢI THANH TOÁN, khác với dòng
+  // hiển thị "Đơn hàng này" ở trên chỉ mang tính tham khảo theo cột TỔNG).
+  const currentOrderRemaining = isOrder && order!.receivable ? Number(order!.receivable.remainingAmount) : orderThisRowValue;
   const existingDebt = Math.max(0, debtTotalRemaining - (isOrder && order!.receivable ? currentOrderRemaining : 0));
   const totalToPay = existingDebt + currentOrderRemaining;
   const paidAmount = isOrder && order!.receivable ? Number(order!.receivable.paidAmount) : 0;
@@ -696,6 +772,12 @@ export default function QuotationPrintPage() {
                       !HIDDEN_PARAM_NAMES.includes(p.name),
                   );
                   const hasWarnings = !!item.warnings && item.warnings.length > 0;
+                  // Sản phẩm đã hoàn (bổ sung 27/08/2026, bỏ gạch ngang theo
+                  // phản hồi UI 27/08/2026) — chỉ còn 2 dấu hiệu: tem "ĐÃ HOÀN"
+                  // đè lên ô Chú thích + giá trị Công ty hỗ trợ màu đỏ cạnh
+                  // Thành Tiền. Không còn đổi màu/gạch các ô khác của dòng.
+                  const isReturned = returnedSalesOrderItemIds.has(item.id);
+                  const itemCompanyBorne = companyBorneByItemId.get(item.id) ?? 0;
 
                   return (
                     <tr key={item.id}>
@@ -764,30 +846,114 @@ export default function QuotationPrintPage() {
                           </div>
                         )}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmt(item.subtotal)} ₫</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>
+                        {fmt(item.subtotal)} ₫
+                        {/* Giá trị Công ty hỗ trợ của dòng này (bổ sung
+                            27/08/2026, theo phản hồi UI) — thẳng cột Thành
+                            Tiền, đỏ, có dấu "-" ở trước, cỡ chữ giống số Thành
+                            Tiền phía trên. */}
+                        {itemCompanyBorne > 0 && (
+                          <div style={{ color: DEBT_COLOR }}>-{fmt(itemCompanyBorne)} ₫</div>
+                        )}
+                      </td>
                       {/* Cột Chú thích — cảnh báo Validation Rule (WARN) + Ghi chú
                           người dùng, luôn theo TỪNG dòng (kể cả khi cột Sản
-                          phẩm đã gộp) vì đây là cột duy nhất Báo giá có để ghi chú. */}
-                      <td style={{ ...tdStyle, fontSize: 9, overflowWrap: "break-word" }}>
+                          phẩm đã gộp) vì đây là cột duy nhất Báo giá có để ghi chú.
+                          Tem "ĐÃ HOÀN a/b SP" (bổ sung 27/08/2026, sửa lại theo
+                          phản hồi UI 27/08/2026): ĐÈ LÊN nội dung cũ (overlay,
+                          không xoá) — cảnh báo/ghi chú gốc vẫn render bình
+                          thường bên dưới, tem phủ mờ lên trên. */}
+                      <td style={{ ...tdStyle, fontSize: 9, overflowWrap: "break-word", position: "relative" }}>
                         {hasWarnings && item.warnings!.map((w, i) => <div key={`w${i}`} style={{ color: "#b45309" }}>⚠ {w}</div>)}
                         {item.note && <div style={{ fontStyle: "italic", color: "var(--grey)" }}>Ghi chú: {item.note}</div>}
                         {!hasWarnings && !item.note && "—"}
+                        {isReturned && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              background: "rgba(255,255,255,0.82)",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                                color: "#b91c1c",
+                                border: "1.5px solid #b91c1c",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                transform: "rotate(-6deg)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ĐÃ HOÀN {returnedQuantityByItemId.get(item.id) ?? 0}/{item.quantity} SP
+                            </span>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
                 }),
               );
             })()}
+          </tbody>
+        </table>
 
-            {/* Dòng đệm tạo khoảng cách cho dễ nhìn trước dòng Tổng — không
-                viền, không nội dung. */}
-            <tr>
-              <td colSpan={9} style={{ border: "none", height: 10 }} />
-            </tr>
-            {/* Hàng Tổng — chữ "TỔNG" ở cột Sản phẩm, kèm tổng SL/M2; số liệu
-                Thành Tiền (đã bao gồm VAT) là tổng cộng nguyên trạng — không
-                trừ Giảm thêm cấp báo giá (số đó đã phản ánh trong khối Tình
-                hình công nợ bên dưới, dòng "Báo giá này"). */}
+        {/* Khối "Đã hoàn" (bổ sung 27/08/2026, đưa lên ngay dưới bảng sản phẩm
+            theo phản hồi UI) — chỉ hiện khi in ở chế độ Đơn hàng VÀ đơn có ít
+            nhất 1 phiếu hoàn. Liệt kê chi tiết từng dòng đã hoàn + phân bổ
+            Phí khách/Công ty hỗ trợ. Giá trị từng dòng đặt NGAY CẠNH tên sản
+            phẩm (bổ sung 27/08/2026, sửa theo phản hồi UI) — không dàn hàng
+            sang phải như trước. */}
+        {isOrder && orderReturns.length > 0 && (
+          <div style={{ marginTop: 8, marginBottom: 8, border: BORDER, borderRadius: 6, padding: "14px 18px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: DEBT_COLOR, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
+              Đã hoàn
+            </div>
+            {orderReturns.map((r) => (
+              <div key={r.id} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700 }}>
+                  {r.code} — {fmtDate(r.returnDate)}
+                </div>
+                {r.items.map((it) => (
+                  <div key={it.id} style={{ fontSize: 11, padding: "2px 0" }}>
+                    {it.productName} × {it.returnedQuantity}
+                    <span style={{ color: "var(--grey)" }}> ({RETURN_REASON_LABEL[it.reason] ?? it.reason})</span>
+                    {" — "}
+                    <span style={{ fontWeight: 700 }}>{fmt(it.returnedQuantity * it.unitPriceSnapshot)} ₫</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, marginTop: 2 }}>
+                  <span>Phí khách: {fmt(r.customerBorneAmount)} ₫</span>
+                  {Number(r.totalValue) - Number(r.customerBorneAmount) > 0 && (
+                    <span style={{ marginLeft: 12, color: DEBT_COLOR }}>
+                      Công ty hỗ trợ: {fmt(Number(r.totalValue) - Number(r.customerBorneAmount))} ₫
+                      {r.companyBorneReason && <span style={{ color: "var(--grey)" }}> ({r.companyBorneReason})</span>}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Hàng Tổng — tách khỏi bảng sản phẩm, đặt SAU khối "Đã hoàn" (bổ
+            sung 27/08/2026, sửa theo phản hồi UI — trước đó là hàng cuối
+            trong bảng). Dùng lại đúng colgroup phía trên để các cột thẳng
+            hàng. Thành Tiền (đã bao gồm VAT) là tổng cộng đã trừ phần Công ty
+            hỗ trợ (xem "totalAmount" — không trừ Giảm thêm cấp báo giá, số đó
+            đã phản ánh trong khối Tình hình công nợ bên dưới). */}
+        <table style={{ marginBottom: 4, tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 24 }} /><col style={{ width: 240 }} /><col style={{ width: 55 }} />
+            <col style={{ width: 55 }} /><col style={{ width: 32 }} /><col style={{ width: 50 }} />
+            <col style={{ width: 95 }} /><col style={{ width: 105 }} /><col style={{ width: 138 }} />
+          </colgroup>
+          <tbody>
             <tr>
               <td style={{ ...tdStyle, background: TOTAL_ROW_BG }} />
               <td style={{ ...tdStyle, textAlign: "center", fontWeight: 800, background: TOTAL_ROW_BG }}>TỔNG</td>
@@ -833,7 +999,7 @@ export default function QuotationPrintPage() {
             <tbody>
               <tr>
                 <td style={{ padding: "3px 0", fontSize: 12.5 }}>{isOrder ? "Đơn hàng này" : "Báo giá này (nếu xác nhận)"}</td>
-                <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(grandTotal)} ₫</td>
+                <td style={{ padding: "3px 0", fontSize: 13, fontWeight: 600, textAlign: "right" }}>{fmt(orderThisRowValue)} ₫</td>
               </tr>
               <tr>
                 <td style={{ padding: "3px 0", fontSize: 12.5 }}>Công nợ cũ (các đơn khác)</td>

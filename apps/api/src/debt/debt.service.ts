@@ -25,6 +25,7 @@ import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { ReceivableQueryDto } from './dto/receivable-query.dto';
 import { ReceivableByCustomerQueryDto } from './dto/receivable-by-customer-query.dto';
 import { PaymentQueryDto } from './dto/payment-query.dto';
+import { DebtAdjustmentHistoryQueryDto } from './dto/debt-adjustment-history-query.dto';
 import { OpeningBalanceService } from './opening-balance.service';
 import { resolveActorName } from '../shared/resolve-actor-name';
 import { buildSeries, type ReportGroupBy } from '../shared/report-range';
@@ -881,7 +882,19 @@ export class DebtService {
 
     const receivable = await this.prisma.receivable.findUnique({
       where: { id: receivableId },
-      include: { salesOrder: { select: { id: true, status: true, paymentStatus: true } } },
+      include: {
+        salesOrder: {
+          select: {
+            id: true,
+            status: true,
+            paymentStatus: true,
+            // Mặc định "người phụ trách" cho DebtAdjustment độc lập (không
+            // gắn Return) — xem comment ownerId bên dưới.
+            ownerId: true,
+            ownerName: true,
+          },
+        },
+      },
     });
     if (!receivable) {
       throw new NotFoundException('Công nợ không tồn tại.');
@@ -944,11 +957,203 @@ export class DebtService {
         },
       });
 
+      // Ghi bản ghi giảm trừ công nợ vào bảng DebtAdjustment (thay cho lưu
+      // cộng dồn trực tiếp trên Return, sửa 27/08/2026 — xem comment model
+      // DebtAdjustment trong schema.prisma) — nguồn dữ liệu gốc duy nhất cho
+      // Return.debtAdjustedAt/Amount/ByName (ReturnService tự SUM/query lại)
+      // và cho Dashboard phần giảm trừ độc lập.
+      // ownerId/ownerName = "người phụ trách" phục vụ Dashboard "Doanh số
+      // theo nhân viên" (KHÁC createdBy/createdByName = người bấm nút):
+      // - Gắn Return (dto.returnId): copy từ Return.ownerId/ownerName.
+      // - Độc lập (không gắn Return): mặc định copy từ SalesOrder.ownerId
+      //   (salesperson của đơn hàng liên quan) — chốt 27/08/2026, không cho
+      //   chọn thủ công ở FE.
+      let ownerId: string | null = receivable.salesOrder.ownerId ?? null;
+      let ownerName: string | null = receivable.salesOrder.ownerName ?? null;
+      if (dto.returnId) {
+        const relatedReturn = await tx.return.findUniqueOrThrow({
+          where: { id: dto.returnId },
+          select: { ownerId: true, ownerName: true },
+        });
+        ownerId = relatedReturn.ownerId;
+        ownerName = relatedReturn.ownerName;
+      }
+
+      await tx.debtAdjustment.create({
+        data: {
+          receivableId,
+          customerId: receivable.customerId,
+          salesOrderId: receivable.salesOrder.id,
+          returnId: dto.returnId ?? null,
+          amount: dto.amount,
+          reason: dto.reason.trim(),
+          ownerId,
+          ownerName,
+          createdBy: userId ?? null,
+          createdByName,
+        },
+      });
+
       return tx.receivable.findUniqueOrThrow({
         where: { id: receivableId },
         include: RECEIVABLE_DETAIL_INCLUDE,
       });
     });
+  }
+
+  private debtAdjustmentDateRangeFilter(
+    from?: Date,
+    to?: Date,
+  ): Prisma.DateTimeFilter | undefined {
+    if (!from && !to) return undefined;
+    const filter: Prisma.DateTimeFilter = {};
+    if (from) filter.gte = from;
+    if (to) filter.lte = to;
+    return filter;
+  }
+
+  // Dashboard "Doanh thu kế hoạch" — CHỈ tính phần giảm trừ ĐỘC LẬP
+  // (returnId = null). Phần giảm trừ gắn Return đã được
+  // ReturnService.getTotalCompanyBorneValue() tính riêng từ
+  // Return.totalValue - customerBorneAmount (độc lập với việc đã bấm giảm
+  // trừ công nợ hay chưa — hành vi cũ, giữ nguyên); cộng cả 2 nguồn sẽ bị
+  // trừ trùng phần Return-driven.
+  async getStandaloneAdjustmentTotal(range?: { from?: Date; to?: Date }) {
+    const dateFilter = this.debtAdjustmentDateRangeFilter(range?.from, range?.to);
+    const agg = await this.prisma.debtAdjustment.aggregate({
+      where: { returnId: null, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+      _sum: { amount: true },
+    });
+    return Number(agg._sum.amount ?? 0);
+  }
+
+  // Dashboard "Doanh số theo nhân viên" — cùng lý do chỉ lấy returnId = null
+  // như getStandaloneAdjustmentTotal() ở trên (tránh trùng phần Return-driven).
+  async getStandaloneAdjustmentByOwner(range?: { from?: Date; to?: Date }) {
+    const dateFilter = this.debtAdjustmentDateRangeFilter(range?.from, range?.to);
+    const where: Prisma.DebtAdjustmentWhereInput = {
+      returnId: null,
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
+    };
+
+    const [grouped, names] = await Promise.all([
+      this.prisma.debtAdjustment.groupBy({
+        by: ['ownerId'],
+        where,
+        _sum: { amount: true },
+      }),
+      this.prisma.debtAdjustment.findMany({
+        where,
+        distinct: ['ownerId'],
+        orderBy: { createdAt: 'desc' },
+        select: { ownerId: true, ownerName: true },
+      }),
+    ]);
+
+    const nameMap = new Map(names.map((n) => [n.ownerId, n.ownerName]));
+
+    return grouped
+      .filter((g) => g.ownerId)
+      .map((g) => ({
+        ownerId: g.ownerId as string,
+        ownerName: nameMap.get(g.ownerId) ?? null,
+        amount: Number(g._sum.amount ?? 0),
+      }));
+  }
+
+  // Tab "Lịch sử giảm trừ/công nợ đầu kỳ" (trang chi tiết khách hàng, rà
+  // soát nghiệp vụ 27/08/2026) — gộp 2 nguồn cùng thuộc domain Công nợ,
+  // sort theo createdAt desc, phân trang thủ công sau khi gộp (số dòng/khách
+  // thường nhỏ, không cần phân trang ở tầng SQL riêng từng nguồn):
+  // - DebtAdjustment (customerId match) — loại RETURN (có returnId) hoặc
+  //   MANUAL (không có).
+  // - OpeningBalanceTimeline action OPENING_BALANCE_CREATED, join qua
+  //   OpeningBalance.customerId — loại OPENING_BALANCE (tăng công nợ).
+  async getDebtAdjustmentHistoryByCustomer(
+    customerId: string,
+    query: DebtAdjustmentHistoryQueryDto,
+  ) {
+    const dateFilter = this.debtAdjustmentDateRangeFilter(
+      query.from ? new Date(query.from) : undefined,
+      query.to ? new Date(query.to) : undefined,
+    );
+    const page = Math.max(1, parseInt(query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
+
+    const [adjustments, openingBalanceEntries] = await Promise.all([
+      this.prisma.debtAdjustment.findMany({
+        where: { customerId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.openingBalanceTimeline.findMany({
+        where: {
+          action: OpeningBalanceTimelineAction.OPENING_BALANCE_CREATED,
+          openingBalance: { customerId },
+          ...(dateFilter ? { createdAt: dateFilter } : {}),
+        },
+        include: { openingBalance: { select: { code: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    // returnId là plain field (không @relation, xem comment model
+    // DebtAdjustment) — join thủ công sang Return để lấy code hiển thị.
+    const returnIds = [
+      ...new Set(adjustments.map((a) => a.returnId).filter((id): id is string => !!id)),
+    ];
+    const returns = returnIds.length
+      ? await this.prisma.return.findMany({
+          where: { id: { in: returnIds } },
+          select: { id: true, code: true },
+        })
+      : [];
+    const returnCodeMap = new Map(returns.map((r) => [r.id, r.code]));
+
+    type HistoryRow = {
+      id: string;
+      type: 'RETURN' | 'MANUAL' | 'OPENING_BALANCE';
+      amount: number;
+      reason: string | null;
+      returnId: string | null;
+      returnCode: string | null;
+      openingBalanceCode: string | null;
+      createdByName: string | null;
+      createdAt: Date;
+    };
+
+    const rows: HistoryRow[] = [
+      ...adjustments.map((a): HistoryRow => ({
+        id: a.id,
+        type: a.returnId ? 'RETURN' : 'MANUAL',
+        amount: -Number(a.amount),
+        reason: a.reason,
+        returnId: a.returnId,
+        returnCode: a.returnId ? returnCodeMap.get(a.returnId) ?? null : null,
+        openingBalanceCode: null,
+        createdByName: a.createdByName,
+        createdAt: a.createdAt,
+      })),
+      ...openingBalanceEntries.map((o): HistoryRow => ({
+        id: o.id,
+        type: 'OPENING_BALANCE',
+        amount: Number((o.payload as { amount?: number } | null)?.amount ?? 0),
+        reason: null,
+        returnId: null,
+        returnCode: null,
+        openingBalanceCode: o.openingBalance.code,
+        createdByName: o.createdByName,
+        createdAt: o.createdAt,
+      })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const total = rows.length;
+    const start = (page - 1) * limit;
+    const data = rows.slice(start, start + limit);
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    };
   }
 
   // ─────────────────────────────────────────────────────
@@ -1636,6 +1841,20 @@ export class DebtService {
     }
 
     return exceeded;
+  }
+
+  // "Tổng công nợ đang quản lý" — trang "Tài khoản của tôi" (rà soát nghiệp
+  // vụ 27/08/2026), tái dùng convention lọc ownerId đã có ở
+  // buildReceivableFilter()/notCancelledFilter(). Là số hiện tại (snapshot
+  // remainingAmount), không lọc theo ngày.
+  async getTotalRemainingByOwner(ownerId: string) {
+    const agg = await this.prisma.receivable.aggregate({
+      where: {
+        salesOrder: { status: { not: SalesOrderStatus.CANCELLED }, ownerId },
+      },
+      _sum: { remainingAmount: true },
+    });
+    return Number(agg._sum.remainingAmount ?? 0);
   }
 
   // ─────────────────────────────────────────────────────

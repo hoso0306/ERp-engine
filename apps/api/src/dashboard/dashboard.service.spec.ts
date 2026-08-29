@@ -19,6 +19,7 @@ describe('DashboardService', () => {
       getDashboardSummary: jest.fn().mockResolvedValue({ totalRevenue: 100 }),
       getRecentOrders: jest.fn().mockResolvedValue([{ code: 'SO000001' }]),
       getDelayedOrders: jest.fn().mockResolvedValue([]),
+      getRevenueByEmployee: jest.fn().mockResolvedValue({ employees: [] }),
       getTodaySummary: jest
         .fn()
         .mockResolvedValue({ newOrders: 3, shippedOrders: 2 }),
@@ -41,6 +42,12 @@ describe('DashboardService', () => {
       getReceivablesInRangeSummary: jest
         .fn()
         .mockResolvedValue({ newReceivableCount: 2, newReceivableAmount: 3000000, cashIn: { totalCashIn: 1500000 } }),
+      // Rà soát nghiệp vụ Debt Adjustment độc lập (27/08/2026) — "Doanh thu
+      // kế hoạch"/"Doanh số theo nhân viên" trừ thêm phần giảm trừ không gắn
+      // Return, xem getSalesDashboard()/getEmployeeRevenueDashboard().
+      getStandaloneAdjustmentTotal: jest.fn().mockResolvedValue(0),
+      getStandaloneAdjustmentByOwner: jest.fn().mockResolvedValue([]),
+      getTotalRemainingByOwner: jest.fn().mockResolvedValue(0),
     };
     returnService = {
       getDashboardSummary: jest.fn().mockResolvedValue({ returnsThisMonth: 0 }),
@@ -195,5 +202,41 @@ describe('DashboardService', () => {
     expect(returnService.getDashboardSummary).toHaveBeenCalledWith(range);
     expect(returnService.getTopReturnReasons).toHaveBeenCalledWith(range);
     expect(returnService.getReturnsByCustomer).toHaveBeenCalledWith(range);
+  });
+
+  describe('getMySummary() — trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026)', () => {
+    const range = { from: new Date('2026-08-01'), to: new Date('2026-08-31') };
+
+    it('lấy đúng dòng doanh số của userId + tổng công nợ đang quản lý', async () => {
+      salesOrderService.getRevenueByEmployee.mockResolvedValue({
+        employees: [
+          { ownerId: 'user-1', ownerName: 'Nhân viên A', orderCount: 3, revenue: 5000000 },
+          { ownerId: 'user-2', ownerName: 'Nhân viên B', orderCount: 1, revenue: 1000000 },
+        ],
+      });
+      returnService.getCompanyBorneValueByOwner.mockResolvedValue([]);
+      debtService.getStandaloneAdjustmentByOwner.mockResolvedValue([]);
+      debtService.getTotalRemainingByOwner.mockResolvedValue(2500000);
+
+      const result = await service.getMySummary('user-1', range.from, range.to);
+
+      expect(debtService.getTotalRemainingByOwner).toHaveBeenCalledWith('user-1');
+      expect(result).toEqual({
+        revenue: 5000000,
+        orderCount: 3,
+        totalRemainingDebt: 2500000,
+      });
+    });
+
+    it('trả về doanh số/số đơn = 0 nếu userId không phát sinh đơn nào trong kỳ (vẫn có công nợ)', async () => {
+      salesOrderService.getRevenueByEmployee.mockResolvedValue({ employees: [] });
+      returnService.getCompanyBorneValueByOwner.mockResolvedValue([]);
+      debtService.getStandaloneAdjustmentByOwner.mockResolvedValue([]);
+      debtService.getTotalRemainingByOwner.mockResolvedValue(300000);
+
+      const result = await service.getMySummary('user-1', range.from, range.to);
+
+      expect(result).toEqual({ revenue: 0, orderCount: 0, totalRemainingDebt: 300000 });
+    });
   });
 });

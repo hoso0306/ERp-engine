@@ -34,8 +34,8 @@ Không cập nhật ngược:
 
 **Có thể** kích hoạt (không tự sửa trực tiếp):
 
-- Debt (`Receivable.totalAmount`/`remainingAmount`) — qua `POST /receivables/:id/manual-adjustment`, chỉ khi phần "công ty chịu" > 0 (xem mục "Phân bổ khách/công ty chịu"). Return service gọi API này gián tiếp qua FE điều phối (2 lệnh gọi tuần tự), **không** import/gọi thẳng `DebtService`.
-- Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" — trừ đúng phần công ty chịu, tính ở tầng Dashboard (Aggregate đơn giản, không phải Return tự sửa số liệu).
+- Debt (`Receivable.totalAmount`/`remainingAmount`) — qua `POST /receivables/:id/manual-adjustment`, chỉ khi phần "Công ty hỗ trợ" > 0 (xem mục "Phân bổ Phí khách/Công ty hỗ trợ"). Đây là **hành động riêng, người dùng chủ động bấm nút "Giảm trừ công nợ"** sau khi tạo phiếu hoàn thành công (đảo ngược quyết định "tự động ngay lúc tạo" — chốt lại 27/08/2026) — Return service **không** import/gọi thẳng `DebtService`, chỉ FE điều hướng.
+- Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" — trừ đúng phần Công ty hỗ trợ, tính ở tầng Dashboard (Aggregate đơn giản, không phải Return tự sửa số liệu).
 
 Ví dụ:
 
@@ -45,14 +45,17 @@ Sales Order
         ↓
 Khách trả 1 sản phẩm — giá trị 2.000.000
         ↓
-Return: khách chịu 1.500.000, công ty chịu 500.000 (lỗi sản xuất)
+Return: Phí khách 1.500.000, Công ty hỗ trợ 500.000 (lỗi sản xuất)
         ↓
 Sales Order vẫn giữ nguyên 20.000.000 (Immutable Document)
-Receivable giảm 500.000 (Manual Adjustment tự động)
+        ↓
+Người dùng bấm "Giảm trừ công nợ" (không tự động)
+        ↓
+Receivable giảm 500.000 (Manual Adjustment)
 Dashboard "Doanh thu kế hoạch" giảm 500.000 (không phải cả 2.000.000)
 ```
 
-Return vẫn chỉ phục vụ thống kê và quản lý tài sản thu hồi ở phần **không** liên quan phân bổ khách/công ty chịu (lý do trả, kho thu hồi...).
+Return vẫn chỉ phục vụ thống kê và quản lý tài sản thu hồi ở phần **không** liên quan phân bổ Phí khách/Công ty hỗ trợ (lý do trả, kho thu hồi...).
 
 ---
 
@@ -165,8 +168,12 @@ status          // ReturnStatus: PROCESSING | COMPLETED — xem "Trạng thái R
 note
 
 totalValue              // giá trị phiếu hoàn, đã gồm VAT
-customerBorneAmount     // số tiền khách chịu — xem "Phân bổ khách/công ty chịu"
-companyBorneReason      // lý do công ty chịu phần còn lại — NULL nếu khách chịu 100%
+customerBorneAmount     // "Phí khách" — xem "Phân bổ Phí khách/Công ty hỗ trợ"
+companyBorneReason      // lý do "Công ty hỗ trợ" phần còn lại — NULL nếu Phí khách = 100%
+debtAdjustedAt          // KHÔNG lưu cột riêng (sửa 27/08/2026) — findOne() tự query lại
+                        // từ bảng DebtAdjustment (where returnId = id), trả về response
+                        // cùng tên field như trước. = thời điểm lần điều chỉnh gần nhất.
+debtAdjustedAmount      // Cùng cách tính — TỔNG đã giảm trừ, SUM(DebtAdjustment.amount) cộng dồn qua mọi lần.
 
 createdAt
 
@@ -199,27 +206,55 @@ POST /returns/:id/complete
 
 ---
 
-# Phân bổ khách/công ty chịu (rà soát nghiệp vụ Return, 27/08/2026)
+# Phân bổ Phí khách/Công ty hỗ trợ (rà soát nghiệp vụ Return, 27/08/2026; đổi luồng + thuật ngữ 27/08/2026)
 
-Ngay trong luồng tạo phiếu hoàn (không đợi xử lý xong với khách), ERP bắt kế toán xác nhận **giá trị hoàn được chia cho ai chịu**:
+Ngay trong luồng tạo phiếu hoàn (Bước 2 — không đợi xử lý xong với khách), ERP bắt kế toán xác nhận **giá trị hoàn được chia cho ai chịu**. Thuật ngữ hiển thị (FE): **"Phí khách"** = phần khách chịu, **"Công ty hỗ trợ"** = phần công ty chịu — field trong DB vẫn giữ tên cũ (`customerBorneAmount`/`companyBorneReason`), chỉ đổi nhãn hiển thị.
 
 ```text
 Tổng giá trị phiếu hoàn (totalValue)
         │
-        ├── Khách chịu (customerBorneAmount) — khách vẫn phải trả đủ phần này,
+        ├── Phí khách (customerBorneAmount) — khách vẫn phải trả đủ phần này,
         │     không ảnh hưởng công nợ/doanh thu
         │
-        └── Công ty chịu (totalValue - customerBorneAmount) — công ty nhận
-              tổn thất phần này (vd lỗi sản xuất), TỰ ĐỘNG kích hoạt Manual
-              Adjustment giảm công nợ (xem debt.md), và bị trừ vào Dashboard
+        └── Công ty hỗ trợ (totalValue - customerBorneAmount) — công ty nhận
+              tổn thất phần này (vd lỗi sản xuất), CÓ THỂ giảm công nợ qua
+              Manual Adjustment (xem debt.md), và bị trừ vào Dashboard
               "Doanh thu kế hoạch"/"Doanh số theo nhân viên"
 ```
 
-- **Mặc định `customerBorneAmount = totalValue`** (khách chịu 100%) nếu không truyền — an toàn, không tự ý tạo tổn thất cho công ty nếu kế toán không chủ động chỉnh.
-- **Bắt buộc `companyBorneReason`** khi phần công ty chịu > 0 (giải trình lý do, vd "Lỗi sản xuất — cắt sai kích thước"). Không bắt buộc khi khách chịu 100%.
-- Khi phần công ty chịu > 0, `POST /returns` **tự động** gọi tiếp `POST /receivables/:id/manual-adjustment` (Debt module) ngay trong luồng tạo — 2 lệnh gọi API tuần tự do FE điều phối, **Return service không gọi thẳng sang Debt service** (giữ ranh giới 2 module độc lập, đúng nguyên tắc "Return chỉ đọc SalesOrder").
-- Nếu bước giảm công nợ lỗi, Return vẫn được giữ nguyên (không rollback) — trang chi tiết Return có nút dự phòng **"Điều chỉnh giảm công nợ"** để làm lại thủ công.
-- Đây là **duy nhất một cơ chế** kích hoạt Manual Adjustment tự động — Manual Adjustment tự nó vẫn là hành động chung của Debt module (có thể gọi độc lập ngoài luồng Return nếu cần).
+- **Mặc định `customerBorneAmount = totalValue`** (Phí khách 100%) nếu không truyền — an toàn, không tự ý tạo tổn thất cho công ty nếu kế toán không chủ động chỉnh.
+- **Bắt buộc `companyBorneReason`** khi phần Công ty hỗ trợ > 0 (giải trình lý do, vd "Lỗi sản xuất — cắt sai kích thước"). Không bắt buộc khi Phí khách = 100%.
+
+**Giảm công nợ TỰ ĐỘNG ngay sau khi tạo, dùng đúng số liệu đã chốt ở Bước 2** (chốt lại lần cuối 27/08/2026 — trước đó từng thử "hành động riêng, người dùng tự bấm" rồi đổi lại, vì Bước 2 đã chốt amount/reason rồi nên bắt xác nhận thêm lần nữa là dư thừa):
+
+```text
+Tạo phiếu hoàn (POST /returns) — lưu Return + ReturnItem + RecoveryInventory
+        ↓ (chỉ khi Công ty hỗ trợ > 0)
+FE tự động gọi tiếp POST /receivables/:id/manual-adjustment (kèm returnId,
+amount = Công ty hỗ trợ, reason = companyBorneReason — đúng số liệu đã nhập
+ở Bước 2, KHÔNG hỏi lại)
+        ↓
+Thành công → 1 dialog duy nhất: "Đã tạo phiếu hoàn thành công. Đã giảm trừ
+công nợ Xđ cho đơn {code} của khách hàng {tên}."
+        ↓ (chỉ khi bước tự động ở trên LỖI)
+Dialog vẫn báo tạo Return thành công, kèm thêm nút "Giảm trừ công nợ" (qua
+DebtAdjustmentGate, biết chắc debtAdjustedAt=null) để thử lại thủ công
+```
+
+- Return service **không** gọi thẳng `DebtService` — vẫn là 2 lệnh gọi API tuần tự do FE điều phối, giữ ranh giới 2 module độc lập (đúng nguyên tắc "Return chỉ đọc SalesOrder"), chỉ khác là FE gọi NGAY không cần người dùng bấm thêm.
+- `DebtService.manualAdjustment()` ghi bản ghi mới vào bảng `DebtAdjustment` (kèm `returnId`) — Return **không tự lưu** field nào cả (sửa 27/08/2026, thay cho cách lưu cộng dồn trực tiếp trên Return trước đó — 2 nguồn dữ liệu dễ lệch nhau). `ReturnService.findOne()` tự SUM/query lại từ `DebtAdjustment` mỗi lần đọc, trả về response cùng tên field `debtAdjustedAt/Amount/ByName` như cũ. Xem chi tiết bảng `DebtAdjustment` ở `debt.md` mục "Manual Adjustment".
+- **Component `DebtAdjustmentGate`** (dùng chung, bọc ngoài `ManualAdjustmentDialog`) — mọi nơi có nút "Giảm trừ công nợ" (trang chi tiết Return, hoặc màn tạo khi bước tự động lỗi) đều qua gate này trước, tránh giảm trừ trùng cho cùng 1 Return:
+  - Nếu `debtAdjustedAt` đã có: cảnh báo *"Phiếu hoàn {code} đã có thông tin giảm công nợ, tổng cộng {amount} (lần gần nhất ngày {date}, tạo bởi {actor})."* — có nút "Vẫn tạo tiếp" nếu thật sự muốn giảm thêm lần nữa (vd điều chỉnh bổ sung).
+  - Nếu chưa có: xác nhận nhẹ *"Phiếu hoàn {code} CHƯA CÓ thông tin giảm công nợ."* — nút "Tạo".
+  - Cả 2 nhánh, bấm nút xác nhận mới thực sự mở `ManualAdjustmentDialog` (nhập/sửa amount+reason rồi mới gọi API).
+
+**Thể hiện trên bản in đơn hàng** (bổ sung 27/08/2026, chỉnh lại 2 lần theo phản hồi UI cùng ngày — `quotations/[id]/print/page.tsx`, dùng chung cho cả Báo giá lẫn Xác nhận đơn hàng, chỉ đổi hành vi khi in ở chế độ Đơn hàng):
+- **Không gạch ngang dòng sản phẩm đã hoàn** (đảo ngược thiết kế lần đầu — bỏ hẳn `textDecoration: line-through` và màu xám, mọi ô của dòng vẫn hiển thị bình thường như dòng chưa hoàn).
+- Ô "Chú thích" của dòng đã hoàn: nội dung cũ (cảnh báo giá/ghi chú) **vẫn render bình thường, không xoá** — tem "ĐÃ HOÀN a/b SP" (a = số lượng đã hoàn, b = tổng số lượng đã đặt) phủ **đè lên trên** dạng overlay (`position: absolute`, nền trắng mờ, chữ đỏ viền đỏ xoay nhẹ), không xoá nội dung bên dưới.
+- Cột "Thành Tiền": dòng đã hoàn hiện thêm 1 dòng phụ **màu đỏ, có dấu "−" ở trước**, cỡ chữ giống số Thành Tiền — là phần Công ty hỗ trợ phân bổ riêng cho đúng dòng sản phẩm này (1 Return có thể gồm nhiều dòng, phân bổ theo tỷ trọng giá trị dòng trên tổng `totalValue` của Return đó).
+- Khối "Đã hoàn" đặt **ngay dưới bảng danh sách sản phẩm** — chỉ hiện khi đơn có ≥1 Return. Mỗi dòng sản phẩm hoàn: giá trị đặt **ngay cạnh tên sản phẩm** (inline, không dàn hàng sang phải).
+- **Hàng TỔNG tách khỏi bảng sản phẩm, đặt SAU khối "Đã hoàn"** (không còn là hàng cuối trong `<table>` items) — dùng bảng riêng, cùng `colgroup` để thẳng cột. Giá trị TỔNG = `SUM(subtotal)` gốc **trừ thẳng** tổng phần Công ty hỗ trợ của mọi Return thuộc đơn.
+- Khối "Tình hình công nợ", dòng "Đơn hàng này" **lấy thẳng giá trị từ hàng TỔNG** ở trên (không dùng `SalesOrder.grandTotal` snapshot gốc nữa cho dòng này) — không có dòng "Giảm trừ do hoàn hàng" riêng (hàng TỔNG đã tự phản ánh). `TỔNG PHẢI THANH TOÁN` (số cuối) vẫn tính từ `Receivable.remainingAmount` thật, không đổi.
 
 ---
 
@@ -575,13 +610,13 @@ Không đánh giá khách hàng.
 
 - Một SalesOrder có thể có nhiều Return.
 - Được tạo Return ở mọi trạng thái `SalesOrder`, chỉ chặn `CANCELLED` (rà soát nghiệp vụ Return, 27/08/2026 — đảo ngược "chỉ tạo khi DELIVERED").
-- Return có trạng thái xử lý `PROCESSING → COMPLETED` (một chiều, Action `complete`, chỉ chạy từ `PROCESSING`). Trạng thái này độc lập với `RecoveryInventoryStatus` và không ảnh hưởng tài chính (phần tài chính đã xử lý xong ngay lúc tạo, không đợi tới `complete`).
+- Return có trạng thái xử lý `PROCESSING → COMPLETED` (một chiều, Action `complete`, chỉ chạy từ `PROCESSING`). Trạng thái này độc lập với `RecoveryInventoryStatus` và độc lập với việc đã "Giảm trừ công nợ" hay chưa (`debtAdjustedAt`) — 2 trạng thái tách biệt, không phụ thuộc nhau.
 - Một Return có nhiều ReturnItem.
 - Một ReturnItem chỉ thuộc đúng một SalesOrderItem.
 - Cho phép trả một phần số lượng (`returnedQuantity <= orderedQuantity`).
 - Tổng `returnedQuantity` của tất cả ReturnItem cùng một `salesOrderItemId` không được vượt `orderedQuantity` (validate cộng dồn qua nhiều Return).
 - Return chỉ Snapshot dữ liệu — không có `subtotalSnapshot`/`condition` (xem "Snapshot Rule").
-- Không cập nhật ngược SalesOrder — SalesOrder luôn giữ nguyên Immutable Document dù Return có phần công ty chịu hay không.
+- Không cập nhật ngược SalesOrder — SalesOrder luôn giữ nguyên Immutable Document dù Return có phần Công ty hỗ trợ hay không.
 - Recovery Inventory độc lập với Warehouse.
 - Sau khi tạo, RecoveryInventory chỉ sửa được `location`/`status` — không sửa lại dữ liệu Snapshot.
 - Không xoá RecoveryInventory — chỉ chuyển `status = DISPOSED`.
@@ -589,7 +624,7 @@ Không đánh giá khách hàng.
 - `0 <= customerBorneAmount <= totalValue`; mặc định = `totalValue` nếu không truyền.
 - `companyBorneReason` bắt buộc khi `totalValue - customerBorneAmount > 0`.
 - Return không làm thay đổi Payment — không bao giờ tạo `Payment`/`PaymentAllocation`.
-- Phần công ty chịu (nếu > 0) **tự động** giảm công nợ qua Manual Adjustment (xem debt.md) và bị trừ vào Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" — phần khách chịu thì KHÔNG (xem mục "Phân bổ khách/công ty chịu").
+- Phần Công ty hỗ trợ (nếu > 0) bị trừ vào Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" ngay cả khi CHƯA bấm "Giảm trừ công nợ" (2 việc độc lập — Dashboard tính runtime từ `totalValue - customerBorneAmount`, không phụ thuộc `debtAdjustedAt`). Giảm công nợ thật (Receivable) thì phải người dùng chủ động bấm (xem mục "Phân bổ Phí khách/Công ty hỗ trợ"). Phần Phí khách thì KHÔNG bị trừ ở đâu cả.
 - Return không làm thay đổi lợi nhuận kế hoạch (`SalesOrder.plannedProfit`) — ngoài phạm vi đã xác nhận (27/08/2026).
 
 ---
@@ -598,14 +633,15 @@ Không đánh giá khách hàng.
 
 Dashboard chỉ phục vụ thống kê vận hành, TRỪ 2 điểm ngoại lệ đã xác nhận (27/08/2026) nằm ở **Dashboard chung** (không phải Dashboard riêng của Return, xem dưới):
 
-- KPI "Doanh thu kế hoạch" (Sales Overview) trừ đúng phần công ty chịu của Return trong cùng khoảng lọc.
+- KPI "Doanh thu kế hoạch" (Sales Overview) trừ đúng phần Công ty hỗ trợ của Return trong cùng khoảng lọc — tính runtime từ `totalValue - customerBorneAmount`, **không** phụ thuộc đã bấm "Giảm trừ công nợ" (`debtAdjustedAt`) hay chưa. Cần lưu ý: có thể phát sinh chênh lệch tạm thời giữa số hiển thị ở đây và công nợ thực tế nếu kế toán chưa bấm giảm trừ.
 - Khối "Doanh số theo nhân viên" (dưới khối Kinh doanh) cũng trừ theo cùng công thức, group theo nhân viên.
+- Cùng công thức này mở rộng sang trang Đơn hàng (rà soát nghiệp vụ Return, 27/08/2026) — cột "Tổng tiền" ở danh sách Đơn hàng/tab "Đơn hàng" của Customer, và 2 dòng "Tổng giảm trừ hàng hoàn"/"Tổng giá trị đơn hàng" ở trang chi tiết đơn — đều là giá trị suy diễn để hiển thị (`netAmount`), KHÔNG ghi lại `SalesOrder.totalAmount` (vẫn giữ Immutable Document, xem `order.md` mục "Planned Financials"). Xem chi tiết `order.md`.
 
 Dashboard riêng của Return (mô tả bên dưới) vẫn thuần thống kê vận hành:
 
 - Return trong tháng
 - Tổng sản phẩm Return
-- Giá trị Return theo giá bán (vẫn là `totalValue` thô — không phân biệt khách/công ty chịu, đây là thống kê vận hành, khác KPI tài chính ở Dashboard chung)
+- Giá trị Return theo giá bán (vẫn là `totalValue` thô — không phân biệt Phí khách/Công ty hỗ trợ, đây là thống kê vận hành, khác KPI tài chính ở Dashboard chung)
 - Recovery Inventory hiện có
 - Top lý do Return
 

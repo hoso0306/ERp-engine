@@ -17,6 +17,11 @@ interface SalesOrderRow {
   status: string;
   paymentStatus: string;
   totalAmount: number;
+  // netAmount = totalAmount - phần Công ty hỗ trợ của các Return thuộc đơn
+  // (rà soát nghiệp vụ Return, 27/08/2026) — BE tự tính ở GET /sales-orders,
+  // không đổi totalAmount gốc (Immutable Document). Optional để tương thích
+  // ngược — fallback về totalAmount nếu BE cũ chưa trả field này.
+  netAmount?: number;
   totalProductionOrders: number;
   completedProductionOrders: number;
   expectedDeliveryDate: string | null;
@@ -98,7 +103,7 @@ export function SalesOrderTable({ orders, meta, onPageChange, onLimitChange }: S
                     <div className="text-xs text-muted-foreground">{o.customerPhone}</div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm">
-                    {formatMoney(Number(o.totalAmount))}
+                    {formatMoney(Number(o.netAmount ?? o.totalAmount))}
                   </TableCell>
                   <TableCell className="text-center text-sm">
                     {o.completedProductionOrders}/{o.totalProductionOrders}

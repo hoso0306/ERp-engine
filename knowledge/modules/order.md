@@ -232,6 +232,10 @@ Dashboard đọc trực tiếp 3 field này — không SUM lại từ items.
 
 Nếu V2 cần theo dõi thực tế thì thêm: `actualRevenue`, `actualCost`, `actualProfit`.
 
+**`netAmount` (rà soát nghiệp vụ Return, 27/08/2026 — CHỈ để hiển thị, không phải field DB):** `GET /sales-orders` (`findAll()`) trả kèm `netAmount = totalAmount − SUM(phần Công ty hỗ trợ của các Return thuộc đơn)`, tính runtime mỗi lần đọc — cùng công thức đã dùng ở Dashboard "Doanh thu kế hoạch" và bản in đơn hàng (xem `return.md`). `totalAmount` gốc **không đổi** — vẫn giữ nguyên "Immutable Document", `netAmount` chỉ là giá trị suy diễn để hiển thị đúng số thực tế còn lại trên danh sách Đơn hàng và tab "Đơn hàng" của Customer (cột "Tổng tiền" dùng `netAmount ?? totalAmount`). Trang chi tiết đơn hàng cũng hiện 2 dòng "Tổng giảm trừ hàng hoàn"/"Tổng giá trị đơn hàng" dưới "Tổng thanh toán" cùng logic này (`sales-order-item-table.tsx`, prop `returnDeductionTotal`).
+
+**`GET /sales-orders/revenue-summary?customerId=&from=&to=`** (mới, 27/08/2026) — "Tổng doanh số" ở tab "Đơn hàng" trang chi tiết khách hàng. Aggregate đúng TOÀN BỘ khoảng lọc ở DB (không giới hạn theo trang phân trang như bảng đơn hàng bên cạnh nó, vốn vẫn đang lọc ngày phía FE trên dữ liệu 1 trang). Loại đơn `CANCELLED`. Trả `{ totalRevenue }` = `SUM(SalesOrder.totalAmount trong kỳ, đã loại CANCELLED) − SUM(phần Công ty hỗ trợ của Return thuộc các đơn TẠO trong kỳ đó)` — lọc theo ngày TẠO đơn (không phải ngày hoàn), để khớp đúng ý nghĩa `netAmount` đã hiển thị theo từng đơn. `SalesOrderController` ghép kết quả từ `SalesOrderService.getTotalAmountForCustomer()` và `ReturnService.getTotalCompanyBorneValueForCustomerOrders()` — không service nào đọc thẳng bảng của module kia (SalesOrderModule import ReturnModule chỉ để Controller dùng `ReturnService`).
+
 ---
 
 # Production Progress

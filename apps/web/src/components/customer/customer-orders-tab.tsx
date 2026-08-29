@@ -13,6 +13,10 @@ interface SalesOrderRow {
   status: string;
   paymentStatus: string;
   totalAmount: number;
+  // netAmount = totalAmount đã trừ phần Công ty hỗ trợ của hàng hoàn (rà
+  // soát nghiệp vụ Return, 27/08/2026) — dùng để tính "Tổng doanh số" bên
+  // dưới, xem sales-order-table.tsx.
+  netAmount?: number;
   totalProductionOrders: number;
   completedProductionOrders: number;
   expectedDeliveryDate: string | null;
@@ -30,11 +34,17 @@ interface CustomerOrdersTabProps {
   customerId: string;
 }
 
+function formatMoney(amount: number) {
+  return new Intl.NumberFormat("vi-VN").format(amount) + " ₫";
+}
+
 // Tab "Đơn hàng" trong trang chi tiết khách hàng — toàn bộ đơn khách này từng
-// mua, tái dùng GET /sales-orders?customerId= (đã hỗ trợ sẵn) + SalesOrderTable
-// đang dùng ở trang /orders. BE sales-order chưa hỗ trợ filter theo ngày tạo
-// (SalesOrderQueryDto không có field này) nên lọc phía FE trên trang dữ liệu
-// hiện tại, cùng cách trang /orders đang làm.
+// mua, tái dùng GET /sales-orders?customerId= + SalesOrderTable đang dùng ở
+// trang /orders. Bảng vẫn lọc ngày phía FE trên trang dữ liệu hiện tại (chưa
+// đổi sang server-side filter — SalesOrderQueryDto thật ra đã hỗ trợ
+// createdFrom/createdTo, nhưng ngoài phạm vi đợt sửa 27/08/2026 này). Riêng
+// "Tổng doanh số" bên dưới KHÔNG bị giới hạn theo trang — gọi riêng GET
+// /sales-orders/revenue-summary (aggregate đúng toàn bộ khoảng lọc ở DB).
 export function CustomerOrdersTab({ customerId }: CustomerOrdersTabProps) {
   const [orders, setOrders] = useState<SalesOrderRow[]>([]);
   const [meta, setMeta] = useState<Meta>({ total: 0, page: 1, limit: 10, totalPages: 1 });
@@ -43,6 +53,10 @@ export function CustomerOrdersTab({ customerId }: CustomerOrdersTabProps) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // "Tổng doanh số" (rà soát nghiệp vụ Return, 27/08/2026) — tách riêng khỏi
+  // bảng phân trang, gọi GET /sales-orders/revenue-summary (aggregate đúng
+  // TOÀN BỘ khoảng lọc ở DB, không giới hạn theo trang đang xem như bảng).
+  const [totalRevenue, setTotalRevenue] = useState(0);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -76,9 +90,25 @@ export function CustomerOrdersTab({ customerId }: CustomerOrdersTabProps) {
     });
   }, [orders, createdFrom, createdTo]);
 
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("customerId", customerId);
+    if (createdFrom) params.set("from", createdFrom);
+    if (createdTo) params.set("to", createdTo);
+    apiGet<{ totalRevenue: number }>(`/sales-orders/revenue-summary?${params}`)
+      .then((json) => setTotalRevenue(json.totalRevenue))
+      .catch(() => setTotalRevenue(0));
+  }, [customerId, createdFrom, createdTo]);
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        {!loading && !error && (
+          <p className="text-sm">
+            <span className="text-muted-foreground">Tổng doanh số: </span>
+            <span className="font-mono font-semibold">{formatMoney(totalRevenue)}</span>
+          </p>
+        )}
         <DateRangeFilter
           label="Ngày tạo"
           dateFrom={createdFrom}

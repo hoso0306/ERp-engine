@@ -6,10 +6,11 @@ import Link from "next/link";
 import { PageHeader, Loading, ErrorState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { ArrowLeft, CreditCard, MinusCircle } from "lucide-react";
 import { RiskBadge } from "@/components/debt/risk-badge";
 import { PaymentTable } from "@/components/debt/payment-table";
 import { PaymentDialog } from "@/components/debt/payment-dialog";
+import { ManualAdjustmentDialog } from "@/components/return/manual-adjustment-dialog";
 import { apiGet, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
@@ -77,6 +78,7 @@ export default function ReceivableDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
 
   const fetchReceivable = useCallback(async () => {
     setLoading(true);
@@ -97,6 +99,11 @@ export default function ReceivableDetailPage() {
   if (error || !receivable) return <ErrorState description={error ?? "Không tìm thấy công nợ."} onRetry={fetchReceivable} />;
 
   const canPay = receivable.salesOrder.status !== "CANCELLED" && hasPermission("debt.create-payment");
+  // Giảm trừ công nợ ĐỘC LẬP (rà soát nghiệp vụ 27/08/2026) — lý do bất kỳ,
+  // không bắt buộc gắn Return. Mở thẳng ManualAdjustmentDialog, không qua
+  // DebtAdjustmentGate (gate đó chỉ dành cho tránh trùng lặp theo 1 Return
+  // cụ thể, không áp dụng ở đây).
+  const canAdjust = receivable.salesOrder.status !== "CANCELLED" && hasPermission("debt.manual-adjustment");
 
   return (
     <div className="space-y-6">
@@ -110,6 +117,12 @@ export default function ReceivableDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Quay lại
             </Button>
+            {canAdjust && (
+              <Button variant="outline" onClick={() => setAdjustDialogOpen(true)}>
+                <MinusCircle className="mr-2 h-4 w-4" />
+                Giảm trừ công nợ
+              </Button>
+            )}
             {canPay && (
               <Button onClick={() => setPaymentDialogOpen(true)}>
                 <CreditCard className="mr-2 h-4 w-4" />
@@ -212,6 +225,15 @@ export default function ReceivableDetailPage() {
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
         salesOrderId={receivable.salesOrder.id}
+        remainingAmount={Number(receivable.remainingAmount)}
+        onSaved={fetchReceivable}
+      />
+
+      <ManualAdjustmentDialog
+        open={adjustDialogOpen}
+        onOpenChange={setAdjustDialogOpen}
+        receivableId={receivable.id}
+        salesOrderCode={receivable.salesOrder.code}
         remainingAmount={Number(receivable.remainingAmount)}
         onSaved={fetchReceivable}
       />

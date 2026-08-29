@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SalesOrderService } from './sales-order.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingService } from '../setting/setting.service';
+import { PermissionService } from '../permission/permission.service';
 
 function makeSalesOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -76,6 +77,7 @@ describe('SalesOrderService — actor name snapshot', () => {
               .mockResolvedValue({ timezone: 'Asia/Ho_Chi_Minh' }),
           },
         },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -371,6 +373,7 @@ describe('SalesOrderService.getTodaySummary()', () => {
         SalesOrderService,
         { provide: PrismaService, useValue: prisma },
         { provide: SettingService, useValue: {} },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 
@@ -432,6 +435,7 @@ describe('SalesOrderService.getDashboardSummary()', () => {
         SalesOrderService,
         { provide: PrismaService, useValue: prisma },
         { provide: SettingService, useValue: {} },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
       ],
     }).compile();
 

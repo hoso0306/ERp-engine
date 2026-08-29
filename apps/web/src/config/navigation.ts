@@ -14,6 +14,7 @@ import {
   Ruler,
   Tag,
   Building2,
+  UserCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,6 +81,11 @@ export const navigation: NavGroup[] = [
     label: "Hệ thống",
     items: [
       { title: "Cài đặt", href: "/settings", icon: Settings, requiredPermission: "settings.view" },
+      // Trang cá nhân (rà soát nghiệp vụ 27/08/2026) — KHÔNG khai báo
+      // requiredPermission, cố ý luôn hiện cho MỌI người dùng đã đăng nhập
+      // (kể cả role không có settings.view như SALES — họ không thấy được
+      // "Cài đặt" ở trên nhưng vẫn phải thấy trang cá nhân của chính họ).
+      { title: "Tài khoản của tôi", href: "/settings/me", icon: UserCircle },
     ],
   },
 ];

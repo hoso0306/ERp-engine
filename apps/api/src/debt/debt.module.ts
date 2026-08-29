@@ -5,11 +5,17 @@ import { OpeningBalanceService } from './opening-balance.service';
 import { PaymentController } from './payment.controller';
 import { ReceivableController } from './receivable.controller';
 import { OpeningBalanceController } from './opening-balance.controller';
+import { DebtAdjustmentController } from './debt-adjustment.controller';
 import { PermissionModule } from '../permission/permission.module';
 
 @Module({
   imports: [SettingModule, PermissionModule],
-  controllers: [PaymentController, ReceivableController, OpeningBalanceController],
+  controllers: [
+    PaymentController,
+    ReceivableController,
+    OpeningBalanceController,
+    DebtAdjustmentController,
+  ],
   providers: [DebtService, OpeningBalanceService],
   exports: [DebtService, OpeningBalanceService],
 })

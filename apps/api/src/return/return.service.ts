@@ -103,7 +103,29 @@ export class ReturnService {
     if (!ret) {
       throw new NotFoundException('Phiếu trả hàng không tồn tại.');
     }
-    return ret;
+    return this.attachDebtAdjustmentSummary(ret);
+  }
+
+  // Return không tự lưu debtAdjustedAt/Amount/ByName nữa (sửa 27/08/2026) —
+  // SUM/query lại từ DebtAdjustment (nguồn gốc thật, xem comment model trong
+  // schema.prisma), trả về 3 field cùng tên như trước để FE không phải đổi.
+  // debtAdjustedAmount = tổng cộng dồn qua mọi lần, debtAdjustedAt/ByName =
+  // của lần gần nhất. NULL cả 3 nếu chưa từng giảm trừ.
+  private async attachDebtAdjustmentSummary<T extends { id: string }>(ret: T) {
+    const adjustments = await this.prisma.debtAdjustment.findMany({
+      where: { returnId: ret.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    const debtAdjustedAmount =
+      adjustments.length > 0
+        ? adjustments.reduce((sum, a) => sum + Number(a.amount), 0)
+        : null;
+    return {
+      ...ret,
+      debtAdjustedAt: adjustments[0]?.createdAt ?? null,
+      debtAdjustedAmount,
+      debtAdjustedByName: adjustments[0]?.createdByName ?? null,
+    };
   }
 
   // ─────────────────────────────────────────────────────
@@ -124,7 +146,7 @@ export class ReturnService {
 
     const completedByName = await resolveActorName(this.prisma, userId);
 
-    return this.prisma.return.update({
+    const updated = await this.prisma.return.update({
       where: { id },
       data: {
         status: ReturnStatus.COMPLETED,
@@ -134,6 +156,7 @@ export class ReturnService {
       },
       include: RETURN_INCLUDE,
     });
+    return this.attachDebtAdjustmentSummary(updated);
   }
 
   // ─────────────────────────────────────────────────────
@@ -593,6 +616,33 @@ export class ReturnService {
   // soát nghiệp vụ Return, 27/08/2026) — đây là số duy nhất Dashboard được
   // phép trừ vào doanh thu/doanh số, KHÔNG phải totalValue thô (phần khách
   // chịu công ty vẫn thu đủ tiền, không phải tổn thất).
+  // "Tổng doanh số" ở tab "Đơn hàng" trang chi tiết khách hàng (rà soát
+  // nghiệp vụ Return, 27/08/2026) — KHÁC getTotalCompanyBorneValue() ở trên:
+  // lọc theo ngày TẠO của SalesOrder (không phải returnDate), vì mục đích là
+  // khớp đúng SUM(netAmount) đã hiển thị trên bảng — 1 đơn tạo trong kỳ vẫn
+  // bị trừ đủ phần Công ty hỗ trợ dù Return của nó phát sinh sau đó (ngoài
+  // khoảng lọc), cùng công thức netAmount ở findAll()/getTotalAmountForCustomer().
+  async getTotalCompanyBorneValueForCustomerOrders(
+    customerId: string,
+    from: Date,
+    to: Date,
+  ) {
+    const agg = await this.prisma.return.aggregate({
+      where: {
+        customerId,
+        salesOrder: {
+          status: { not: SalesOrderStatus.CANCELLED },
+          createdAt: { gte: from, lte: to },
+        },
+      },
+      _sum: { totalValue: true, customerBorneAmount: true },
+    });
+    return (
+      Number(agg._sum.totalValue ?? 0) -
+      Number(agg._sum.customerBorneAmount ?? 0)
+    );
+  }
+
   async getTotalCompanyBorneValue(range?: { from?: Date; to?: Date }) {
     const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const agg = await this.prisma.return.aggregate({

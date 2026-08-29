@@ -49,6 +49,11 @@ interface SalesOrderItemTableProps {
   // Phí vận chuyển (chốt 27/07/2026) — hiện dòng riêng trước "Tổng thanh
   // toán" nếu có, không chịu VAT.
   shippingFee?: number;
+  // Tổng phần Công ty hỗ trợ của các Return thuộc đơn (rà soát nghiệp vụ
+  // Return, 27/08/2026) — hiện 2 dòng riêng dưới "Tổng thanh toán" nếu có,
+  // màu đỏ nhạt. Không đổi totalAmount/subtotal của từng dòng sản phẩm (giữ
+  // nguyên Immutable Document), chỉ trừ ở khối tổng cuối bảng.
+  returnDeductionTotal?: number;
 }
 
 function formatMoney(n: number) {
@@ -59,7 +64,12 @@ function formatNumber(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function SalesOrderItemTable({ items, discountAmount = 0, shippingFee = 0 }: SalesOrderItemTableProps) {
+export function SalesOrderItemTable({
+  items,
+  discountAmount = 0,
+  shippingFee = 0,
+  returnDeductionTotal = 0,
+}: SalesOrderItemTableProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function toggle(id: string) {
@@ -77,6 +87,8 @@ export function SalesOrderItemTable({ items, discountAmount = 0, shippingFee = 0
 
   const totalAmount = items.reduce((s, i) => s + Number(i.subtotal), 0);
   const totalVat = items.reduce((s, i) => s + Number(i.vatAmount ?? 0), 0);
+  const grandTotal = totalAmount - discountAmount + shippingFee;
+  const netGrandTotal = grandTotal - returnDeductionTotal;
 
   return (
     <div className="rounded-md border">
@@ -242,19 +254,61 @@ export function SalesOrderItemTable({ items, discountAmount = 0, shippingFee = 0
                   Tổng thanh toán
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold">
-                  {formatMoney(totalAmount - discountAmount + shippingFee)}
+                  {formatMoney(grandTotal)}
                 </TableCell>
               </TableRow>
+              {returnDeductionTotal > 0 && (
+                <>
+                  <TableRow className="bg-red-50 dark:bg-red-950/20">
+                    <TableCell colSpan={8} className="text-right text-sm text-red-600 dark:text-red-400">
+                      Tổng giảm trừ hàng hoàn
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-red-600 dark:text-red-400">
+                      −{formatMoney(returnDeductionTotal)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className="bg-red-50 dark:bg-red-950/20">
+                    <TableCell colSpan={8} className="text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                      Tổng giá trị đơn hàng
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-red-600 dark:text-red-400">
+                      {formatMoney(netGrandTotal)}
+                    </TableCell>
+                  </TableRow>
+                </>
+              )}
             </>
           ) : (
-            <TableRow className="bg-muted/50">
-              <TableCell colSpan={8} className="text-right text-sm font-medium">
-                Tổng cộng
-              </TableCell>
-              <TableCell className="text-right font-mono font-bold">
-                {formatMoney(totalAmount)}
-              </TableCell>
-            </TableRow>
+            <>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={8} className="text-right text-sm font-medium">
+                  Tổng cộng
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold">
+                  {formatMoney(totalAmount)}
+                </TableCell>
+              </TableRow>
+              {returnDeductionTotal > 0 && (
+                <>
+                  <TableRow className="bg-red-50 dark:bg-red-950/20">
+                    <TableCell colSpan={8} className="text-right text-sm text-red-600 dark:text-red-400">
+                      Tổng giảm trừ hàng hoàn
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-red-600 dark:text-red-400">
+                      −{formatMoney(returnDeductionTotal)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className="bg-red-50 dark:bg-red-950/20">
+                    <TableCell colSpan={8} className="text-right text-sm font-semibold text-red-600 dark:text-red-400">
+                      Tổng giá trị đơn hàng
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-red-600 dark:text-red-400">
+                      {formatMoney(netGrandTotal)}
+                    </TableCell>
+                  </TableRow>
+                </>
+              )}
+            </>
           )}
         </TableBody>
       </Table>

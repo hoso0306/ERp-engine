@@ -14,10 +14,14 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { ArrowLeft, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { SalesOrderTypeahead, type SalesOrderOption } from "@/components/sales-order/sales-order-typeahead";
 import { RETURN_REASON_LABEL } from "@/components/return/return-reason-label";
+import { DebtAdjustmentGate } from "@/components/return/debt-adjustment-gate";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
 interface Parameter {
@@ -89,6 +93,18 @@ function CreateReturnForm() {
   const [customerBornePercent, setCustomerBornePercent] = useState("100");
   const [customerBorneAmount, setCustomerBorneAmount] = useState("0");
   const [companyBorneReason, setCompanyBorneReason] = useState("");
+
+  // Sau khi tạo phiếu hoàn thành công (chốt lại luồng 27/08/2026): nếu có
+  // phần Công ty hỗ trợ, TỰ ĐỘNG gọi luôn Manual Adjustment bằng đúng số
+  // tiền/lý do đã xác nhận ở Bước 2 — không hỏi lại lần nữa. debtAdjusted
+  // ghi lại kết quả bước tự động này để quyết định hiện thông báo nào.
+  const [createdReturn, setCreatedReturn] = useState<{
+    id: string;
+    code: string;
+    companyBorneValue: number;
+    companyBorneReason: string;
+    debtAdjusted: boolean;
+  } | null>(null);
 
   const loadOrder = useCallback(async (orderId: string) => {
     setLoadingOrder(true);
@@ -229,35 +245,32 @@ function CreateReturnForm() {
         companyBorneReason: companyBorneValue > 0 ? companyBorneReason.trim() : undefined,
       });
 
-      // Phần công ty chịu > 0 -> tự động giảm công nợ luôn (gộp 1 lần bấm,
-      // rà soát nghiệp vụ Return 27/08/2026). Return service không gọi thẳng
-      // sang Debt service — đây là 2 lệnh gọi API tuần tự do FE điều phối,
-      // giữ ranh giới module độc lập.
-      if (companyBorneValue > 0) {
-        if (!order.receivable) {
-          toast.warning(
-            "Đã tạo phiếu hoàn nhưng đơn hàng chưa có công nợ để giảm — vào chi tiết phiếu hoàn để xử lý sau.",
-          );
-        } else {
-          try {
-            await apiPost(`/receivables/${order.receivable.id}/manual-adjustment`, {
-              amount: companyBorneValue,
-              reason: companyBorneReason.trim(),
-              returnCode: created.code,
-              returnId: created.id,
-            });
-          } catch (err) {
-            toast.warning(
-              `Đã tạo phiếu hoàn nhưng giảm công nợ thất bại (${
-                err instanceof ApiError ? err.message : "lỗi kết nối"
-              }) — dùng nút "Điều chỉnh giảm công nợ" trên trang chi tiết phiếu hoàn để thử lại.`,
-            );
-          }
+      // Phần Công ty hỗ trợ > 0 -> tự động giảm công nợ luôn bằng đúng số
+      // tiền/lý do đã xác nhận ở Bước 2 (chốt lại luồng 27/08/2026 — không
+      // hỏi lại lần nữa, tránh xác nhận trùng). Return service không gọi
+      // thẳng Debt service — đây là 2 lệnh gọi API tuần tự do FE điều phối.
+      let debtAdjusted = false;
+      if (companyBorneValue > 0 && order.receivable) {
+        try {
+          await apiPost(`/receivables/${order.receivable.id}/manual-adjustment`, {
+            amount: companyBorneValue,
+            reason: companyBorneReason.trim(),
+            returnCode: created.code,
+            returnId: created.id,
+          });
+          debtAdjusted = true;
+        } catch {
+          debtAdjusted = false;
         }
       }
 
-      toast.success("Đã tạo phiếu hoàn.");
-      router.push(`/returns/${created.id}`);
+      setCreatedReturn({
+        id: created.id,
+        code: created.code,
+        companyBorneValue,
+        companyBorneReason: companyBorneReason.trim(),
+        debtAdjusted,
+      });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi kết nối server.");
     } finally {
@@ -271,10 +284,24 @@ function CreateReturnForm() {
         title="Tạo phiếu hoàn"
         description="Ghi nhận hàng khách trả"
         actions={
-          <Button variant="outline" onClick={() => router.push("/returns")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Quay lại
-          </Button>
+          // "Quay lại" luôn nghĩa là lùi 1 cấp (rà soát UI 27/08/2026): ở Bước
+          // 2 thì về Bước 1 (chọn sản phẩm), ở Bước 1 thì thoát về danh sách
+          // phiếu hoàn. "Huỷ" chỉ hiện ở Bước 2 — thoát hẳn cả luồng, khác
+          // "Quay lại" (chỉ lùi 1 bước, không mất lựa chọn ở Bước 1).
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => (step === "confirm" ? setStep("select") : router.push("/returns"))}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Quay lại
+            </Button>
+            {step === "confirm" && (
+              <Button variant="outline" onClick={() => router.push("/returns")}>
+                Huỷ
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -446,7 +473,7 @@ function CreateReturnForm() {
 
           <div className="grid grid-cols-2 gap-4 max-w-2xl">
             <div className="space-y-2">
-              <Label htmlFor="customer-borne-percent">Tỷ lệ % khách chịu</Label>
+              <Label htmlFor="customer-borne-percent">Tỷ lệ % Phí khách</Label>
               <Input
                 id="customer-borne-percent"
                 type="number"
@@ -457,7 +484,7 @@ function CreateReturnForm() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customer-borne-amount">Số tiền khách chịu</Label>
+              <Label htmlFor="customer-borne-amount">Phí khách</Label>
               <Input
                 id="customer-borne-amount"
                 type="number"
@@ -468,12 +495,12 @@ function CreateReturnForm() {
               />
             </div>
             <div className="col-span-2 rounded-md border bg-muted/30 px-4 py-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Công ty chịu (tự tính)</span>
+              <span className="text-muted-foreground">Công ty hỗ trợ (tự tính)</span>
               <span className="font-mono font-semibold">{formatMoney(companyBorneValue)}</span>
             </div>
             {companyBorneValue > 0 && (
               <div className="space-y-2 col-span-2">
-                <Label htmlFor="company-borne-reason">Lý do công ty chịu chi phí *</Label>
+                <Label htmlFor="company-borne-reason">Lý do Công ty hỗ trợ *</Label>
                 <Textarea
                   id="company-borne-reason"
                   value={companyBorneReason}
@@ -485,16 +512,76 @@ function CreateReturnForm() {
             )}
           </div>
 
-          <div className="flex justify-between">
-            <Button variant="outline" onClick={() => setStep("select")}>
-              Quay lại
-            </Button>
+          {/* Bỏ nút "Quay lại chọn sản phẩm" riêng (rà soát UI 27/08/2026) —
+              header đã có "Quay lại" làm đúng việc này. */}
+          <div className="flex justify-end">
             <Button onClick={handleSubmit} disabled={submitting}>
               {submitting ? "Đang tạo..." : "Tạo phiếu hoàn"}
             </Button>
           </div>
         </>
       )}
+
+      {/* Xác nhận đã tạo thành công (chốt lại luồng 27/08/2026) — 1 thông báo
+          duy nhất, gộp cả kết quả giảm công nợ (đã tự động làm ở handleSubmit)
+          — không bắt xác nhận thêm lần nữa nếu đã thành công. Chỉ khi bước tự
+          động lỗi mới hiện thêm lối "Giảm trừ công nợ" (qua DebtAdjustmentGate,
+          biết chắc debtAdjustedAt=null vì vừa thử và lỗi). */}
+      <Dialog
+        open={!!createdReturn}
+        onOpenChange={(open) => {
+          if (!open && createdReturn) router.push(`/returns/${createdReturn.id}`);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CheckCircle className="h-5 w-5" />
+              Đã tạo phiếu hoàn thành công
+            </DialogTitle>
+          </DialogHeader>
+          {createdReturn && order && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Đã tạo phiếu hoàn {createdReturn.code} thành công.
+                {createdReturn.companyBorneValue > 0 && createdReturn.debtAdjusted && (
+                  ` Đã giảm trừ công nợ ${formatMoney(createdReturn.companyBorneValue)} cho đơn ${order.code} của khách hàng ${order.customerName}.`
+                )}
+              </p>
+              {createdReturn.companyBorneValue > 0 && !createdReturn.debtAdjusted && (
+                order.receivable ? (
+                  <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                    <p className="text-xs text-muted-foreground">
+                      Giảm trừ công nợ tự động không thành công — thử lại bên dưới.
+                    </p>
+                    <DebtAdjustmentGate
+                      returnCode={createdReturn.code}
+                      returnId={createdReturn.id}
+                      debtAdjustedAt={null}
+                      debtAdjustedAmount={null}
+                      debtAdjustedByName={null}
+                      receivableId={order.receivable.id}
+                      salesOrderCode={order.code}
+                      suggestedAmount={createdReturn.companyBorneValue}
+                      suggestedReason={createdReturn.companyBorneReason}
+                      onSaved={() => router.push(`/returns/${createdReturn.id}`)}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Đơn hàng chưa có công nợ để giảm — vào chi tiết phiếu hoàn để xử lý sau.
+                  </p>
+                )
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => router.push(`/returns/${createdReturn?.id}`)}>
+              Xem chi tiết phiếu hoàn
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

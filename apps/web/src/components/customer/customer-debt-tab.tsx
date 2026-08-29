@@ -14,9 +14,13 @@ import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/debt/risk-badge";
 import { PaymentStatusBadge } from "@/components/sales-order/payment-status-badge";
 import { PaymentListTable, type PaymentListRow } from "@/components/debt/payment-list-table";
+import {
+  DebtAdjustmentHistoryTable,
+  type DebtAdjustmentHistoryRow,
+} from "@/components/customer/debt-adjustment-history-table";
 import { apiGet } from "@/lib/api";
 
-type DebtSubTab = "progress" | "payments";
+type DebtSubTab = "progress" | "payments" | "adjustments";
 type DateField = "createdAt" | "dueDate";
 
 interface ProgressPayment {
@@ -126,6 +130,8 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
   const [openingBalances, setOpeningBalances] = useState<OpeningBalanceRow[]>([]);
   const [payments, setPayments] = useState<PaymentListRow[]>([]);
   const [paymentMeta, setPaymentMeta] = useState<Meta>(EMPTY_META);
+  const [adjustments, setAdjustments] = useState<DebtAdjustmentHistoryRow[]>([]);
+  const [adjustmentMeta, setAdjustmentMeta] = useState<Meta>(EMPTY_META);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -185,14 +191,36 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
     }
   }, [customerId, from, to, page, limit]);
 
+  const fetchAdjustments = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      const json = await apiGet<{ data: DebtAdjustmentHistoryRow[]; meta: Meta }>(
+        `/debt-adjustments/by-customer/${customerId}?${params}`,
+      );
+      setAdjustments(json.data);
+      setAdjustmentMeta(json.meta);
+    } catch {
+      setError("Không thể tải lịch sử giảm trừ/công nợ đầu kỳ.");
+    } finally {
+      setLoading(false);
+    }
+  }, [customerId, from, to, page, limit]);
+
   useEffect(() => {
     setPage(1);
   }, [subTab, from, to, dateField, limit]);
 
   useEffect(() => {
     if (subTab === "progress") fetchProgress();
-    else fetchPayments();
-  }, [subTab, fetchProgress, fetchPayments]);
+    else if (subTab === "payments") fetchPayments();
+    else fetchAdjustments();
+  }, [subTab, fetchProgress, fetchPayments, fetchAdjustments]);
 
   return (
     <div className="space-y-4">
@@ -201,6 +229,7 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
           <TabsList>
             <TabsTrigger value="progress">Tiến trình thanh toán</TabsTrigger>
             <TabsTrigger value="payments">Phiếu thu</TabsTrigger>
+            <TabsTrigger value="adjustments">Lịch sử giảm trừ/công nợ đầu kỳ</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -221,7 +250,14 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
       </div>
 
       {loading && <Loading />}
-      {error && <ErrorState description={error} onRetry={subTab === "progress" ? fetchProgress : fetchPayments} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={
+            subTab === "progress" ? fetchProgress : subTab === "payments" ? fetchPayments : fetchAdjustments
+          }
+        />
+      )}
 
       {!loading && !error && subTab === "progress" && (
         receivables.length === 0 && openingBalances.length === 0 ? (
@@ -320,6 +356,15 @@ export function CustomerDebtTab({ customerId }: CustomerDebtTabProps) {
           onLimitChange={setLimit}
           onReversed={fetchPayments}
           showCustomer={false}
+        />
+      )}
+
+      {!loading && !error && subTab === "adjustments" && (
+        <DebtAdjustmentHistoryTable
+          rows={adjustments}
+          meta={adjustmentMeta}
+          onPageChange={setPage}
+          onLimitChange={setLimit}
         />
       )}
     </div>

@@ -177,19 +177,37 @@ export class SalesOrderService {
           _count: {
             select: { items: true, productionOrders: true, returns: true },
           },
+          // netAmount (rà soát nghiệp vụ Return, 27/08/2026) — chỉ select 2
+          // field cần tính, không kéo cả Return record.
+          returns: { select: { totalValue: true, customerBorneAmount: true } },
         },
       }),
       this.prisma.salesOrder.count({ where }),
     ]);
 
     return {
-      // Badge "Đơn có hàng hoàn" trên danh sách (rà soát nghiệp vụ Return,
-      // 27/08/2026) — Derived (EXISTS), không lưu DB, dùng chung cho cả
-      // trang /orders và tab "Đơn hàng" của Customer (cùng SalesOrderTable).
-      data: data.map((order) => ({
-        ...order,
-        hasReturn: order._count.returns > 0,
-      })),
+      data: data.map((order) => {
+        // netAmount = totalAmount - SUM(phần Công ty hỗ trợ của các Return
+        // thuộc đơn) — CHỈ để hiển thị (danh sách /orders, tab "Đơn hàng"
+        // của Customer), KHÔNG ghi lại SalesOrder.totalAmount (giữ nguyên
+        // "Immutable Document" — return.md mục "Business Rule"). Cùng công
+        // thức đã dùng ở Dashboard "Doanh thu kế hoạch"/bản in đơn hàng —
+        // Phí khách (customerBorneAmount) khách vẫn phải trả, không trừ.
+        const companyBorneTotal = order.returns.reduce(
+          (sum, r) => sum + (Number(r.totalValue) - Number(r.customerBorneAmount)),
+          0,
+        );
+        const { returns, ...rest } = order;
+        return {
+          ...rest,
+          // Badge "Đơn có hàng hoàn" trên danh sách (rà soát nghiệp vụ
+          // Return, 27/08/2026) — Derived (EXISTS), không lưu DB, dùng chung
+          // cho cả trang /orders và tab "Đơn hàng" của Customer (cùng
+          // SalesOrderTable).
+          hasReturn: order._count.returns > 0,
+          netAmount: Number(order.totalAmount) - companyBorneTotal,
+        };
+      }),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -1313,6 +1331,19 @@ export class SalesOrderService {
   // C2 (phần Sales Order) — group theo customerId: tổng đơn, tổng doanh thu,
   // lần mua đầu/gần nhất. Khách mới trong kỳ do CustomerService cung cấp,
   // công nợ hiện tại do DebtService cung cấp — ReportService tự gộp.
+  // "Tổng doanh số" ở tab "Đơn hàng" trang chi tiết khách hàng (rà soát
+  // nghiệp vụ Return, 27/08/2026) — SUM(totalAmount) đúng khoảng lọc, loại
+  // CANCELLED (cùng reportRangeWhere()). Trả riêng, không kèm phần trừ Return
+  // — Controller ghép với ReturnService.getTotalCompanyBorneValueForCustomerOrders()
+  // để giữ ranh giới module (SalesOrderService không đọc bảng Return).
+  async getTotalAmountForCustomer(customerId: string, from: Date, to: Date) {
+    const agg = await this.prisma.salesOrder.aggregate({
+      where: { ...this.reportRangeWhere(from, to), customerId },
+      _sum: { totalAmount: true },
+    });
+    return Number(agg._sum.totalAmount ?? 0);
+  }
+
   async getRevenueByCustomer(from: Date, to: Date) {
     const where = this.reportRangeWhere(from, to);
 

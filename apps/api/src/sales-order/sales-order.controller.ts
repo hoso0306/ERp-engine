@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { SalesOrderService } from './sales-order.service';
+import { ReturnService } from '../return/return.service';
 import { SalesOrderQueryDto } from './dto/sales-order-query.dto';
 import { OverrideSalesOrderDto } from './dto/override-sales-order.dto';
 import { CancelSalesOrderDto } from './dto/cancel-sales-order.dto';
@@ -30,6 +31,7 @@ import { ExcelService } from '../shared/excel/excel.service';
 export class SalesOrderController {
   constructor(
     private readonly salesOrderService: SalesOrderService,
+    private readonly returnService: ReturnService,
     private readonly excelService: ExcelService,
   ) {}
 
@@ -40,6 +42,29 @@ export class SalesOrderController {
   @RequirePermission('sales-order.view')
   findAll(@Query() query: SalesOrderQueryDto) {
     return this.salesOrderService.findAll(query);
+  }
+
+  // "Tổng doanh số" tab "Đơn hàng" trang chi tiết khách hàng (rà soát nghiệp
+  // vụ Return, 27/08/2026) — thay cho SUM(netAmount) tính ở FE trên trang
+  // hiện tại (chỉ đúng trong phạm vi 1 trang phân trang), route này aggregate
+  // đúng TOÀN BỘ khoảng lọc ở DB. Đặt TRƯỚC @Get(':id') (cùng lý do route
+  // 'export' ở trên). Kết hợp SalesOrderService (doanh thu thô) +
+  // ReturnService (phần Công ty hỗ trợ cần trừ) ở tầng Controller, giữ ranh
+  // giới module — không service nào đọc thẳng bảng của module kia.
+  @Get('revenue-summary')
+  @RequirePermission('sales-order.view')
+  async getRevenueSummary(
+    @Query('customerId') customerId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    const fromDate = from ? new Date(`${from}T00:00:00`) : new Date(0);
+    const toDate = to ? new Date(`${to}T23:59:59.999`) : new Date(8640000000000000);
+    const [totalAmount, companyBorneTotal] = await Promise.all([
+      this.salesOrderService.getTotalAmountForCustomer(customerId, fromDate, toDate),
+      this.returnService.getTotalCompanyBorneValueForCustomerOrders(customerId, fromDate, toDate),
+    ]);
+    return { totalRevenue: totalAmount - companyBorneTotal };
   }
 
   // Dropdown "Người phụ trách" ở FE (bộ lọc trang + xuất Excel) — mở cho mọi

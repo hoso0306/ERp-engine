@@ -120,7 +120,7 @@ Nguồn dữ liệu: `SalesOrderService`.
 
 Hiển thị (toàn bộ thời gian, không lọc theo bộ lọc đầu trang — chỉ bảng "Đơn hàng gần đây" lọc theo `createdAt`):
 
-- Tổng doanh thu kế hoạch — `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return)` trong khoảng lọc (rà soát nghiệp vụ Return, 27/08/2026: KHÔNG trừ toàn bộ `Return.totalValue`, chỉ trừ đúng phần công ty chịu — phần khách chịu công ty vẫn thu đủ tiền, không phải tổn thất. Gọi qua `ReturnService.getTotalCompanyBorneValue()`, đúng "Module Ownership"). Không đổi tên KPI, không thêm KPI "Doanh thu thuần" song song.
+- Tổng doanh thu kế hoạch — `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return) − SUM(giảm trừ công nợ độc lập)` trong khoảng lọc (rà soát nghiệp vụ Return, 27/08/2026: KHÔNG trừ toàn bộ `Return.totalValue`, chỉ trừ đúng phần công ty chịu — phần khách chịu công ty vẫn thu đủ tiền, không phải tổn thất. Gọi qua `ReturnService.getTotalCompanyBorneValue()`, đúng "Module Ownership"). Mở rộng cùng ngày: cộng thêm `DebtService.getStandaloneAdjustmentTotal()` — phần giảm trừ công nợ **độc lập** (không gắn Return, nút "Giảm trừ công nợ" ở trang chi tiết Receivable, xem `debt.md` mục "Manual Adjustment") cũng là tổn thất doanh thu thật, chỉ lấy `returnId = null` để không trừ trùng với dòng trên. Không đổi tên KPI, không thêm KPI "Doanh thu thuần" song song.
 - Tổng giá vốn kế hoạch (`SalesOrder.plannedCost`)
 - Tổng lợi nhuận kế hoạch (`SalesOrder.plannedProfit`) — **không** trừ Return (ngoài phạm vi đã xác nhận 27/08/2026)
 - "Đơn đang SX" / "Đơn đã hoàn thành SX" / "Đã giao" (`COUNT(SalesOrder) GROUP BY status` — Aggregate đơn giản, được phép)
@@ -135,17 +135,33 @@ Không tính lại từ `SalesOrderItem`.
 
 ## 1b. Doanh số theo nhân viên (rà soát nghiệp vụ Return, 27/08/2026 — khối mới)
 
-Nguồn dữ liệu: `SalesOrderService.getRevenueByEmployee()` (đã có sẵn, dùng chung với Report C1) + `ReturnService.getCompanyBorneValueByOwner()`.
+Nguồn dữ liệu: `SalesOrderService.getRevenueByEmployee()` (đã có sẵn, dùng chung với Report C1) + `ReturnService.getCompanyBorneValueByOwner()` + `DebtService.getStandaloneAdjustmentByOwner()` (mở rộng 27/08/2026 — phần giảm trừ công nợ độc lập theo nhân viên, cùng lý do chỉ lấy `returnId = null` như KPI "Doanh thu kế hoạch" ở trên).
 
 Đặt ngay dưới khối Sales Overview, **1 card riêng, bộ lọc riêng** (khác khối Sales Overview): mặc định **"Tháng này"**, sửa được theo ngày tuỳ ý — dùng `shared/date-range-filter.tsx` (preset `today/week/month/all/custom`), KHÔNG dùng `dashboard-range-filter.tsx` (chỉ có 4 preset ngắn Hôm nay/Hôm qua/7 ngày/Tất cả, không có "Tháng này" — xem comment trong file đó).
 
-Hiển thị mỗi dòng: nhân viên, số đơn, doanh số = `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return)` GROUP BY `ownerId` (FK bất biến, cùng convention report.md C1 "group theo ownerId, không group theo chuỗi tên tự do").
+Hiển thị mỗi dòng: nhân viên, số đơn, doanh số = `SUM(SalesOrder.totalAmount) − SUM(phần công ty chịu của Return) − SUM(giảm trừ công nợ độc lập)` GROUP BY `ownerId` (FK bất biến, cùng convention report.md C1 "group theo ownerId, không group theo chuỗi tên tự do"). Với giảm trừ độc lập, `ownerId` = salesperson của `SalesOrder` liên quan (mặc định copy lúc tạo `DebtAdjustment`, xem `debt.md`), không phải người bấm nút.
 
 **Chỉ hiện nhân viên có phát sinh doanh số trong khoảng lọc** — không liệt kê nhân viên không có `SalesOrder` nào rơi vào khoảng đó (tự nhiên loại trừ khi group theo `createdAt` trong range, không cần thêm logic ẩn/hiện riêng).
 
 Permission: `sales-order.view-cost` (giống Sales Overview — cùng loại dữ liệu tài chính nhạy cảm).
 
 Endpoint: `GET /dashboard/sales/by-employee?from=&to=` (bắt buộc `from`/`to`, khác các route Dashboard khác vốn cho phép bỏ trống).
+
+---
+
+## 1c. Trang "Tài khoản của tôi" — số liệu cá nhân (rà soát nghiệp vụ 27/08/2026 — mới)
+
+Tab mới trong Settings (`/settings/me`, cạnh "Công ty"/"Người dùng"/"Vai trò"...) — dành cho **mọi người dùng đã đăng nhập**, không phân biệt role, hiển thị đúng doanh số + công nợ của CHÍNH họ (khác khối 1b ở trên vốn lộ số của MỌI nhân viên).
+
+Endpoint: `GET /dashboard/me/summary?from=&to=` — **KHÔNG có `@RequirePermission`** (cố ý, khác mọi route Dashboard khác luôn có `dashboard.view`) vì chỉ trả số của đúng `req.user.userId` lấy từ JWT, không nhận `ownerId` từ query nên không lộ số người khác — không cần `sales-order.view-cost`/`debt.view` như khối 1b/Debt Monitoring vốn cho xem số của người khác.
+
+`DashboardService.getMySummary(userId, from, to)`:
+- Doanh số + số đơn: tái dùng đúng `getEmployeeRevenueDashboard()` (khối 1b — đã trừ Công ty hỗ trợ + giảm trừ độc lập), chỉ lọc lấy đúng 1 dòng khớp `userId`.
+- Tổng công nợ đang quản lý: `DebtService.getTotalRemainingByOwner(userId)` — `SUM(Receivable.remainingAmount)` các đơn có `ownerId = userId`, loại `CANCELLED`. Là số **hiện tại** (snapshot), không lọc theo `from`/`to`.
+
+FE bấm vào "Doanh số của tôi" → điều hướng `/orders?ownerId=self&createdFrom=&createdTo=&excludeStatus=CANCELLED` (đề bài yêu cầu 5: loại đơn Đã huỷ) — `orders/page.tsx` đọc filter ban đầu từ URL qua `useSearchParams()` (bổ sung 27/08/2026, trước đó chỉ quản lý filter bằng React state thuần, không đọc URL).
+
+Riêng biểu đồ cột so sánh nhân viên đặt trên cùng trang (`EmployeeRevenueBarChart`, dùng `recharts`) vẫn gọi `GET /dashboard/sales/by-employee` (khối 1b) — giữ nguyên gate `sales-order.view-cost` vì đây là số của NGƯỜI KHÁC.
 
 ---
 

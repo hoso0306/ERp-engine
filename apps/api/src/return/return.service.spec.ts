@@ -67,6 +67,7 @@ describe('ReturnService', () => {
       groupBy: jest.Mock;
     };
     user: { findUnique: jest.Mock };
+    debtAdjustment: { findMany: jest.Mock };
     recoveryInventory: {
       create: jest.Mock;
       findUnique: jest.Mock;
@@ -103,6 +104,9 @@ describe('ReturnService', () => {
           .fn()
           .mockResolvedValue({ name: 'Nguyễn Văn An', email: 'an@acme.vn' }),
       },
+      // ReturnService.attachDebtAdjustmentSummary() query lại DebtAdjustment
+      // (sửa 27/08/2026) — mặc định rỗng, test riêng override khi cần.
+      debtAdjustment: { findMany: jest.fn().mockResolvedValue([]) },
       recoveryInventory: {
         create: jest.fn(),
         findUnique: jest.fn(),

@@ -282,6 +282,7 @@ model User {
   completedReturns         Return[]
   createdMaterialReceipts  MaterialReceipt[]
   openingBalanceTimelines  OpeningBalanceTimeline[]
+  debtAdjustments          DebtAdjustment[]
 
   @@index([roleId])
   @@map("users")
@@ -1196,6 +1197,20 @@ model SalesOrderItem {
   // Chú thích snapshot từ QuotationItem.note tại Approve.
   note String?
 
+  // Cảnh báo Validation Rule snapshot từ QuotationItem.warnings tại Approve
+  // (bổ sung 27/08/2026, theo yêu cầu hiện cảnh báo giá trên bản in Đơn hàng
+  // — trước đây chỉ Quotation có, Order luôn hiện rỗng). string[], null nếu
+  // không có cảnh báo nào tại thời điểm chốt giá.
+  warnings Json?
+
+  // Chi tiết từng phụ phí (PricingRuleItem SURCHARGE_BREAKDOWN) snapshot từ
+  // QuotationItem.applicableSurcharges tại Approve (phát hiện 27/08/2026 —
+  // cùng lỗ hổng với warnings: Order chỉ lưu TỔNG surchargeAfterDiscount,
+  // chưa lưu breakdown nên bản in Đơn hàng không hiện được từng dòng phụ phí
+  // như bản in Báo giá, dù đã cộng đúng vào giá). Kiểu
+  // { label, amount, perArea }[], null với đa số sản phẩm không cấu hình.
+  applicableSurcharges Json? @map("applicable_surcharges")
+
   materialRequirementVersionId String? @map("material_requirement_version_id")
   plannedCost                  Decimal @default(0) @map("planned_cost") @db.Decimal(15, 0)
 
@@ -1472,16 +1487,61 @@ model Receivable {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  salesOrder  SalesOrder          @relation(fields: [salesOrderId], references: [id])
+  salesOrder      SalesOrder          @relation(fields: [salesOrderId], references: [id])
   // 023-cong-no-payment-allocation-fifo: 1 Payment có thể cấn nhiều Receivable
   // (FIFO đa đơn) — lịch sử thu tiền của 1 Receivable giờ đọc qua allocations,
   // không còn quan hệ Payment 1-1 receivableId trực tiếp.
-  allocations PaymentAllocation[]
+  allocations     PaymentAllocation[]
+  debtAdjustments DebtAdjustment[]
 
   @@index([customerId])
   // Dashboard (009-dashboard.md Task 07) — overdue/risk/upcoming-due đều lọc theo dueDate.
   @@index([dueDate])
   @@map("receivables")
+}
+
+// Giảm trừ công nợ thủ công, KHÔNG phải Payment — không có dòng tiền mặt nào
+// chảy vào (rà soát nghiệp vụ 27/08/2026, xem debt.md mục "Manual
+// Adjustment"). Phát sinh từ 2 nơi: (1) tự động ngay sau khi tạo Return có
+// phần Công ty hỗ trợ, (2) độc lập từ nút "Giảm trừ công nợ" trong tab Công
+// nợ, lý do bất kỳ, không bắt buộc gắn Return. Là nguồn dữ liệu gốc duy nhất
+// cho Return.debtAdjustedAt/Amount/ByName (ReturnService tự SUM/query lại,
+// không lưu cộng dồn trên Return nữa — tránh 2 nguồn dữ liệu lệch nhau) và
+// cho Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" phần giảm trừ
+// độc lập (returnId = null, xem DebtService.getStandaloneAdjustmentTotal()).
+model DebtAdjustment {
+  id           String  @id @default(cuid())
+  receivableId String  @map("receivable_id")
+  // Redundant reference (copy ID bất biến) — tránh join khi query theo khách
+  // hàng/đơn hàng, cùng convention Return.customerId/ownerId.
+  customerId   String  @map("customer_id")
+  salesOrderId String  @map("sales_order_id")
+  returnId     String? @map("return_id")
+
+  amount Decimal @db.Decimal(15, 0)
+  reason String
+
+  // Người phụ trách để tính "Doanh số theo nhân viên" (KHÔNG phải người bấm
+  // nút, xem createdBy bên dưới). Có returnId -> copy từ Return.ownerId/Name.
+  // Không có (giảm trừ độc lập) -> mặc định copy từ SalesOrder.ownerId/Name
+  // của đơn hàng liên quan tại thời điểm tạo (chốt 27/08/2026 — không cho
+  // chọn thủ công ở FE). Plain field, không @relation, cùng convention
+  // Return.ownerId.
+  ownerId   String? @map("owner_id")
+  ownerName String? @map("owner_name")
+
+  // Người thực hiện thao tác (kế toán) + thời gian.
+  createdBy     String?  @map("created_by")
+  createdByName String?  @map("created_by_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  receivable    Receivable @relation(fields: [receivableId], references: [id])
+  createdByUser User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
+  @@index([returnId])
+  @@index([salesOrderId])
+  @@map("debt_adjustments")
 }
 
 // 023-cong-no-payment-allocation-fifo: cấn 1 Payment vào Receivable. Trước đây
@@ -1738,16 +1798,25 @@ model Return {
 
   // Phân bổ trách nhiệm (rà soát nghiệp vụ 27/08/2026) — nhập ngay lúc tạo
   // Return, không đợi xử lý xong với khách:
-  // customerBorneAmount: số tiền khách chịu (0 <= customerBorneAmount <=
-  // totalValue). Mặc định FE đề xuất = totalValue (khách chịu 100%, an toàn
-  // — không tự ý giảm công nợ nếu kế toán không chủ động chỉnh).
-  // companyBorneReason: lý do công ty chịu phần còn lại (totalValue -
+  // customerBorneAmount: "Phí khách" — số tiền khách chịu (0 <=
+  // customerBorneAmount <= totalValue). Mặc định FE đề xuất = totalValue
+  // (khách chịu 100%, an toàn — không tự ý giảm công nợ nếu kế toán không
+  // chủ động chỉnh).
+  // companyBorneReason: lý do "Công ty hỗ trợ" phần còn lại (totalValue -
   // customerBorneAmount) — bắt buộc nhập ở FE khi phần này > 0, NULL khi
-  // khách chịu 100%. Phần công ty chịu tự động kích hoạt Manual Adjustment
-  // giảm Receivable ngay lúc tạo Return (xem debt.md mục Manual Adjustment) —
-  // không tạo Payment thật, không ảnh hưởng báo cáo dòng tiền mặt.
+  // khách chịu 100%.
   customerBorneAmount Decimal @default(0) @map("customer_borne_amount") @db.Decimal(15, 0)
   companyBorneReason  String? @map("company_borne_reason")
+
+  // Trạng thái giảm công nợ (bổ sung 27/08/2026, chốt lại luồng 27/08/2026:
+  // FE tự động gọi POST /receivables/:id/manual-adjustment ngay sau khi tạo
+  // Return thành công, nếu có phần Công ty hỗ trợ — không đợi người dùng
+  // bấm thêm nút). KHÔNG lưu trên Return nữa (sửa 27/08/2026 — trước đó lưu
+  // cộng dồn thủ công, rủi ro lệch với số Receivable đã thực giảm khi giảm
+  // nhiều lần) — ReturnService.findOne() tự SUM/query lại từ bảng
+  // DebtAdjustment (where returnId = id), trả về object với field tên
+  // debtAdjustedAt/debtAdjustedAmount/debtAdjustedByName y hệt trước đây để
+  // FE không phải đổi. Xem model DebtAdjustment.
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

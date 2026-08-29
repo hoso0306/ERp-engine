@@ -78,7 +78,7 @@ export class DashboardService {
   // `recentOrders` không đổi — vẫn fetch không lọc, FE tự lọc client-side
   // theo đúng filter của khối (giữ nguyên cách làm cũ, không đổi).
   async getSalesDashboard(range?: { from?: Date; to?: Date }) {
-    const [summary, recentOrders, companyBorneReturnValue] =
+    const [summary, recentOrders, companyBorneReturnValue, standaloneAdjustmentValue] =
       await Promise.all([
         this.salesOrderService.getDashboardSummary(range),
         this.salesOrderService.getRecentOrders(),
@@ -88,12 +88,17 @@ export class DashboardService {
         // tiền, không phải tổn thất doanh thu). Không sửa lợi nhuận kế hoạch
         // — ngoài phạm vi đã xác nhận.
         this.returnService.getTotalCompanyBorneValue(range),
+        // Giảm trừ công nợ ĐỘC LẬP (không gắn Return, rà soát nghiệp vụ
+        // 27/08/2026) — cũng là tổn thất doanh thu thật, trừ thêm vào cùng
+        // KPI. Chỉ lấy returnId = null để không trừ trùng với dòng trên.
+        this.debtService.getStandaloneAdjustmentTotal(range),
       ]);
 
     return {
       summary: {
         ...summary,
-        totalRevenue: summary.totalRevenue - companyBorneReturnValue,
+        totalRevenue:
+          summary.totalRevenue - companyBorneReturnValue - standaloneAdjustmentValue,
       },
       recentOrders,
     };
@@ -105,13 +110,20 @@ export class DashboardService {
   // trong khoảng lọc (getRevenueByEmployee() chỉ nhóm theo ownerId có đơn
   // trong range). Trừ đúng phần công ty chịu của Return cho từng nhân viên.
   async getEmployeeRevenueDashboard(from: Date, to: Date) {
-    const [{ employees }, returnByOwner] = await Promise.all([
+    const [{ employees }, returnByOwner, standaloneByOwner] = await Promise.all([
       this.salesOrderService.getRevenueByEmployee(from, to),
       this.returnService.getCompanyBorneValueByOwner({ from, to }),
+      // Giảm trừ công nợ độc lập theo nhân viên (rà soát nghiệp vụ
+      // 27/08/2026) — cộng thêm vào cùng phần trừ doanh số, tránh trùng với
+      // returnByOwner (getStandaloneAdjustmentByOwner chỉ lấy returnId = null).
+      this.debtService.getStandaloneAdjustmentByOwner({ from, to }),
     ]);
 
     const returnByOwnerId = new Map(
       returnByOwner.map((r) => [r.ownerId, r.companyBorneValue]),
+    );
+    const standaloneByOwnerId = new Map(
+      standaloneByOwner.map((s) => [s.ownerId, s.amount]),
     );
 
     return employees
@@ -119,7 +131,10 @@ export class DashboardService {
         const companyBorneValue = e.ownerId
           ? (returnByOwnerId.get(e.ownerId) ?? 0)
           : 0;
-        const netRevenue = e.revenue - companyBorneValue;
+        const standaloneValue = e.ownerId
+          ? (standaloneByOwnerId.get(e.ownerId) ?? 0)
+          : 0;
+        const netRevenue = e.revenue - companyBorneValue - standaloneValue;
         return {
           ownerId: e.ownerId,
           ownerName: e.ownerName,
@@ -128,6 +143,26 @@ export class DashboardService {
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  // Trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026) — CHỈ số của
+  // CHÍNH userId truyền vào (không nhận ownerId từ bên ngoài, Controller
+  // luôn truyền đúng req.user.userId — không lộ số của người khác), nên
+  // không cần permission `sales-order.view-cost`/`debt.view` như
+  // getEmployeeRevenueDashboard()/getTotalRemainingByOwner() dùng cho người
+  // khác. Doanh số/số đơn tái dùng đúng công thức getEmployeeRevenueDashboard()
+  // (đã trừ Công ty hỗ trợ + giảm trừ độc lập) — chỉ lọc lấy đúng 1 dòng.
+  async getMySummary(userId: string, from: Date, to: Date) {
+    const [employees, totalRemainingDebt] = await Promise.all([
+      this.getEmployeeRevenueDashboard(from, to),
+      this.debtService.getTotalRemainingByOwner(userId),
+    ]);
+    const mine = employees.find((e) => e.ownerId === userId);
+    return {
+      revenue: mine?.revenue ?? 0,
+      orderCount: mine?.orderCount ?? 0,
+      totalRemainingDebt,
+    };
   }
 
   async getProductionDashboard(range?: { from?: Date; to?: Date }) {

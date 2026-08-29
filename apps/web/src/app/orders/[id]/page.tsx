@@ -292,6 +292,14 @@ export default function SalesOrderDetailPage() {
   const canDeliver = order.status === "SHIPPED" && hasPermission("sales-order.deliver");
   const canCancel = order.status !== "CANCELLED" && order.status !== "DELIVERED" && hasPermission("sales-order.cancel");
   const hasDeposit = Number(order.receivable?.paidAmount ?? 0) > 0;
+  // Tổng phần Công ty hỗ trợ của các Return thuộc đơn (rà soát nghiệp vụ
+  // Return, 27/08/2026) — dùng cho 2 dòng "Tổng giảm trừ hàng hoàn"/"Tổng
+  // giá trị đơn hàng" ở khối Danh sách sản phẩm. Cùng công thức với khối "Đã
+  // hoàn" bên dưới (totalValue - customerBorneAmount mỗi Return).
+  const returnDeductionTotal = order.returns.reduce(
+    (sum, r) => sum + (Number(r.totalValue) - Number(r.customerBorneAmount)),
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -468,6 +476,7 @@ export default function SalesOrderDetailPage() {
           items={order.items}
           discountAmount={Number(order.discountAmount ?? 0)}
           shippingFee={Number(order.shippingFee ?? 0)}
+          returnDeductionTotal={returnDeductionTotal}
         />
       </div>
 
@@ -591,11 +600,11 @@ export default function SalesOrderDetailPage() {
                     Tổng giá trị hoàn: <span className="font-mono text-foreground">{formatMoney(r.totalValue)}</span>
                   </span>
                   <span className="text-muted-foreground">
-                    Khách chịu: <span className="font-mono text-foreground">{formatMoney(r.customerBorneAmount)}</span>
+                    Phí khách: <span className="font-mono text-foreground">{formatMoney(r.customerBorneAmount)}</span>
                   </span>
                   {r.totalValue - r.customerBorneAmount > 0 && (
                     <span className="text-muted-foreground">
-                      Công ty chịu: <span className="font-mono text-foreground">{formatMoney(r.totalValue - r.customerBorneAmount)}</span>
+                      Công ty hỗ trợ: <span className="font-mono text-foreground">{formatMoney(r.totalValue - r.customerBorneAmount)}</span>
                       {r.companyBorneReason && <span> ({r.companyBorneReason})</span>}
                     </span>
                   )}

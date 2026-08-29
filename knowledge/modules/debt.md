@@ -475,15 +475,15 @@ Chặn: hoàn tác một Payment `type = REVERSAL` (không cho reverse-of-revers
 
 ---
 
-# Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026 — xây mới, thay cho ghi chú kế hoạch V2 cũ)
+# Manual Adjustment (rà soát nghiệp vụ Return, 27/08/2026 — xây mới, thay cho ghi chú kế hoạch V2 cũ; mở rộng sang giảm trừ ĐỘC LẬP + bảng `DebtAdjustment`, cùng ngày)
 
-Giảm thẳng công nợ **không qua thu tiền thật** — dùng khi Return có phần "công ty chịu" (xem `return.md` mục "Phân bổ khách/công ty chịu"), hoặc điều chỉnh công nợ thủ công khác do kế toán chủ động thực hiện.
+Giảm thẳng công nợ **không qua thu tiền thật** — dùng khi Return có phần "Công ty hỗ trợ" (xem `return.md` mục "Phân bổ Phí khách/Công ty hỗ trợ"), **hoặc** giảm trừ công nợ **độc lập** với lý do bất kỳ do kế toán chủ động thực hiện ngay từ trang chi tiết Receivable — không bắt buộc gắn với 1 Return cụ thể.
 
 ```http
 POST /receivables/:id/manual-adjustment
 ```
 
-Body: `{ amount, reason, returnCode?, returnId? }` — `returnCode`/`returnId` chỉ để truy vết/deep-link, không phải FK.
+Body: `{ amount, reason, returnCode?, returnId? }` — `returnCode`/`returnId` optional, chỉ truyền khi phát sinh từ Return.
 
 ```text
 Nhận amount + reason (bắt buộc)
@@ -499,19 +499,34 @@ Tính lại SalesOrder.paymentStatus (paidAmount không đổi, totalAmount gi�
 Ghi SalesOrderTimeline (action DEBT_MANUAL_ADJUSTED, payload { amount, reason,
         returnCode, returnId, oldTotalAmount, newTotalAmount,
         oldRemainingAmount, newRemainingAmount, fromStatus, toStatus })
+        ↓
+Ghi bản ghi mới vào bảng DebtAdjustment (receivableId, customerId, salesOrderId,
+        returnId, amount, reason, ownerId/ownerName, createdBy/createdByName)
 ```
 
-**Không tạo `Payment`/`PaymentAllocation`** — đây là điểm khác biệt cốt lõi với luồng thu tiền. Payment nghĩa là "tiền thật đã về" (xem mục "Dữ liệu quản lý" ở trên); Manual Adjustment là công ty tự nguyện giảm số tiền phải thu (vd bù cho lỗi sản xuất), không có dòng tiền nào chảy vào — nhờ vậy các báo cáo dòng tiền mặt ("Tiền đã thu hôm nay", Cash in report — đều chỉ đọc từ bảng `Payment`) không bị ảnh hưởng.
+**`ownerId`/`ownerName` trên `DebtAdjustment`** — "người phụ trách" phục vụ Dashboard "Doanh số theo nhân viên" (KHÁC `createdBy`/`createdByName` = người bấm nút thực hiện):
+- Có `returnId` (phát sinh từ Return): copy từ `Return.ownerId/ownerName`.
+- Không có (giảm trừ độc lập): mặc định copy từ `SalesOrder.ownerId/ownerName` của đơn hàng liên quan (salesperson của đơn) — chốt 27/08/2026, không cho chọn thủ công ở FE.
+
+**Không tạo `Payment`/`PaymentAllocation`** — đây là điểm khác biệt cốt lõi với luồng thu tiền. Payment nghĩa là "tiền thật đã về" (xem mục "Dữ liệu quản lý" ở trên); Manual Adjustment là công ty tự nguyện giảm số tiền phải thu (vd bù cho lỗi sản xuất, hoặc giảm giá goodwill), không có dòng tiền nào chảy vào — nhờ vậy các báo cáo dòng tiền mặt ("Tiền đã thu hôm nay", Cash in report — đều chỉ đọc từ bảng `Payment`) không bị ảnh hưởng.
 
 **Đúng khuôn Manual Override (CLAUDE.md mục 5):** bắt buộc lý do, lưu người thực hiện + thời gian + giá trị cũ/mới — chỉ khác Manual Override "chuẩn" (`order.md`) ở chỗ đối tượng bị đổi là số liệu công nợ, không phải `SalesOrder.status`, nên dùng action Timeline riêng (`DEBT_MANUAL_ADJUSTED`) thay vì tái dùng `MANUAL_OVERRIDE`.
 
-**Hiển thị:** `GET /receivables/:id` include thêm `salesOrder.timeline` (lọc đúng action `DEBT_MANUAL_ADJUSTED`) — trang chi tiết Receivable có khối "Lịch sử điều chỉnh công nợ" riêng, cạnh "Lịch sử thu tiền" (allocations), để kế toán kiểm tra lại được.
+**Bảng `DebtAdjustment`** (mới, sửa 27/08/2026) — nguồn dữ liệu gốc duy nhất cho mọi khoản giảm trừ công nợ, thay cho cách lưu cộng dồn trực tiếp trên `Return` (đã thử, rồi bỏ vì tạo 2 nguồn dữ liệu dễ lệch nhau). `SalesOrderTimeline` (`DEBT_MANUAL_ADJUSTED`) vẫn ghi song song, giữ nguyên vai trò lịch sử theo đơn hàng (Timeline First — CLAUDE.md mục 6); `DebtAdjustment` phục vụ các query tổng hợp cần index (theo khách hàng, theo nhân viên, theo Return) mà JSON payload trên Timeline không làm hiệu quả được:
+- `Return.debtAdjustedAt/debtAdjustedAmount/debtAdjustedByName` — Return **không tự lưu** 3 field này nữa (dù response API vẫn trả về cùng tên, để FE không đổi) — `ReturnService.findOne()` tự SUM/query lại từ `DebtAdjustment where returnId = id`: `debtAdjustedAmount` = tổng cộng dồn qua mọi lần, `debtAdjustedAt`/`debtAdjustedByName` = của lần gần nhất.
+- Dashboard "Doanh thu kế hoạch"/"Doanh số theo nhân viên" phần giảm trừ **độc lập** — `DebtService.getStandaloneAdjustmentTotal()`/`getStandaloneAdjustmentByOwner()`, chỉ lấy `returnId = null` (phần Return-driven đã tính riêng qua `ReturnService.getTotalCompanyBorneValue()`/`getCompanyBorneValueByOwner()`, tránh trừ trùng — xem `dashboard.md`).
+- Tab "Lịch sử giảm trừ/công nợ đầu kỳ" ở trang khách hàng — `DebtService.getDebtAdjustmentHistoryByCustomer()`.
 
-**2 nơi gọi API này:**
-- Tự động, ngay trong luồng tạo Return khi phần công ty chịu > 0 (FE gọi tuần tự sau `POST /returns`, không phải Return service gọi thẳng — xem `return.md`).
-- Thủ công, nút "Điều chỉnh giảm công nợ" trên trang chi tiết Return (dự phòng khi bước tự động lỗi/bỏ qua, hoặc cần điều chỉnh thêm sau này).
+**Hiển thị:**
+- `GET /receivables/:id` include thêm `salesOrder.timeline` (lọc đúng action `DEBT_MANUAL_ADJUSTED`) — trang chi tiết Receivable có khối "Lịch sử điều chỉnh công nợ" riêng, cạnh "Lịch sử thu tiền" (allocations).
+- `GET /debt-adjustments/by-customer/:customerId` (mới) — tab "Lịch sử giảm trừ/công nợ đầu kỳ" trong trang chi tiết khách hàng, gộp `DebtAdjustment` (cả Return-driven lẫn độc lập) và `OpeningBalanceTimeline` (chỉ action `OPENING_BALANCE_CREATED` — tăng công nợ đầu kỳ), sort theo thời gian, mỗi dòng có người tạo + thời gian.
 
-Permission: `debt.manual-adjustment` (tách riêng khỏi `debt.create-payment` — bản chất khác nhau, không phải tiền thật).
+**3 nơi gọi `POST /receivables/:id/manual-adjustment`** (mở rộng 27/08/2026 — thêm nơi thứ 3, giảm trừ độc lập):
+- **Tự động, ngay sau khi tạo Return thành công** (nếu phần Công ty hỗ trợ > 0) — FE gọi luôn, dùng đúng amount/reason đã nhập ở Bước 2, không hỏi lại.
+- **Thủ công, dự phòng cho Return** — khi bước tự động ở trên lỗi, hoặc từ trang chi tiết Return bất cứ lúc nào sau đó (cần điều chỉnh thêm). Qua component FE `DebtAdjustmentGate` (bọc `ManualAdjustmentDialog`) — gate kiểm tra `Return.debtAdjustedAt` trước, cảnh báo nếu đã có điều chỉnh trước đó (kèm **tổng** số tiền/ngày lần gần nhất/người thực hiện lần gần nhất), tránh giảm trừ trùng lặp mà không biết; vẫn cho phép "Vẫn tạo tiếp" để giảm bổ sung.
+- **Độc lập, từ trang chi tiết Receivable** (mới, 27/08/2026) — nút "Giảm trừ công nợ" mở thẳng `ManualAdjustmentDialog`, không qua Return, không qua `DebtAdjustmentGate` (gate đó chỉ để tránh trùng lặp theo 1 Return cụ thể, không áp dụng ở đây — mỗi lần bấm là 1 giao dịch độc lập, không có khái niệm "đã có rồi").
+
+Permission: `debt.manual-adjustment` (tách riêng khỏi `debt.create-payment` — bản chất khác nhau, không phải tiền thật). Đọc lịch sử: `debt.view`.
 
 ---
 
@@ -773,8 +788,9 @@ sẽ phát triển thành Accounting Module / Report Module (V2).
   - bỏ API `record-payment`
   - `cancel()` không chặn theo `Receivable.paidAmount` — nhưng phải trả về thông tin cọc đã thu để UI hiển thị cảnh báo xác nhận, và ghi `paidAmount` + refundNote vào Timeline payload
   - `deliver()` cần set thêm `Receivable.dueDate`
-- Dashboard — KPI "Doanh thu kế hoạch" nay còn phụ thuộc gián tiếp vào Return (qua Manual Adjustment làm giảm `remainingAmount`, không phải Dashboard đọc thẳng Return)
-- Return (rà soát nghiệp vụ Return, 27/08/2026) — gọi `POST /receivables/:id/manual-adjustment` (qua FE điều phối, không phải Return service gọi thẳng `DebtService`) khi tạo phiếu hoàn có phần công ty chịu — xem `return.md` mục "Phân bổ khách/công ty chịu"
+- Dashboard — KPI "Doanh thu kế hoạch"/"Doanh số theo nhân viên" đọc trực tiếp `DebtService.getStandaloneAdjustmentTotal()`/`getStandaloneAdjustmentByOwner()` (phần giảm trừ độc lập) cộng với `ReturnService.getTotalCompanyBorneValue()`/`getCompanyBorneValueByOwner()` (phần gắn Return) — xem `dashboard.md`
+- Return (rà soát nghiệp vụ Return, 27/08/2026) — gọi `POST /receivables/:id/manual-adjustment` (qua FE điều phối, không phải Return service gọi thẳng `DebtService`) khi tạo phiếu hoàn có phần công ty chịu — xem `return.md` mục "Phân bổ khách/công ty chịu". Ngược lại, `ReturnService.findOne()` tự đọc bảng `DebtAdjustment` (do Debt module sở hữu) để tính `debtAdjustedAt/Amount/ByName` — chấp nhận đọc chéo 1 bảng đơn giản, KHÔNG gọi qua `DebtService` (tránh vòng phụ thuộc DebtModule ↔ ReturnModule vì DebtModule đã phụ thuộc `ReturnService` ở Dashboard/getStandaloneAdjustment...).
+- Customer (mới, 27/08/2026) — tab "Lịch sử giảm trừ/công nợ đầu kỳ" gọi `GET /debt-adjustments/by-customer/:customerId`, gộp `DebtAdjustment` (Debt) và `OpeningBalanceTimeline` (cũng thuộc Debt module, đọc trực tiếp cùng service — không vi phạm Module Ownership)
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã thống nhất ở đây.
 

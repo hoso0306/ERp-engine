@@ -19,10 +19,31 @@ import { navigation } from "@/config/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useBranding } from "@/lib/use-branding";
 
+// So khớp active theo tiền tố có ranh giới rõ ràng (tránh "/settings-other"
+// khớp nhầm "/settings"), rồi chọn href DÀI NHẤT khớp trong TOÀN BỘ menu
+// (không chỉ trong nhóm) — cần thiết từ khi có "Tài khoản của tôi"
+// (/settings/me) cùng nhóm với "Cài đặt" (/settings): cả 2 href đều là tiền
+// tố của "/settings/me", nếu so khớp độc lập từng mục sẽ sáng đèn cả 2 cùng
+// lúc, chỉ đúng 1 mục cụ thể nhất mới nên sáng.
+function findActiveHref(pathname: string, allItems: { href: string }[]): string | null {
+  let best: string | null = null;
+  for (const item of allItems) {
+    const matches = item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (matches && (!best || item.href.length > best.length)) {
+      best = item.href;
+    }
+  }
+  return best;
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
   const branding = useBranding();
+  const activeHref = findActiveHref(
+    pathname,
+    navigation.flatMap((group) => group.items),
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -53,10 +74,7 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {visibleItems.map((item) => {
-                  const isActive =
-                    item.href === "/"
-                      ? pathname === "/"
-                      : pathname.startsWith(item.href);
+                  const isActive = item.href === activeHref;
 
                   // Module chưa có trang (BE sẵn, FE thuộc milestone sau):
                   // disable + badge "Đang phát triển" — không dẫn vào trang trống.

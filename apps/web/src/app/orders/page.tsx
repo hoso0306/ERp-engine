@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader, Loading, ErrorState, EmptyState, todayISO } from "@/components/shared";
 import {
   SalesOrderFilter,
@@ -21,14 +22,28 @@ interface SalesOrderRow {
   status: string;
   paymentStatus: string;
   totalAmount: number;
+  // netAmount = totalAmount đã trừ phần Công ty hỗ trợ của hàng hoàn (rà
+  // soát nghiệp vụ Return, 27/08/2026) — xem sales-order-table.tsx.
+  netAmount?: number;
   totalProductionOrders: number;
   completedProductionOrders: number;
   expectedDeliveryDate: string | null;
   createdAt: string;
 }
 
-export default function OrdersPage() {
+function OrdersPageContent() {
   const { user } = useAuth();
+  // Deep-link từ trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026) —
+  // bấm "Doanh số của tôi" mở thẳng /orders?ownerId=self&createdFrom=...
+  // &createdTo=...&excludeStatus=CANCELLED, chỉ đọc 1 LẦN lúc vào trang
+  // (không đồng bộ ngược 2 chiều với URL sau đó, cùng cách trang này vốn
+  // quản lý filter thuần bằng React state).
+  const searchParams = useSearchParams();
+  const initialOwnerId = searchParams.get("ownerId") ?? "all";
+  const initialCreatedFrom = searchParams.get("createdFrom") ?? todayISO();
+  const initialCreatedTo = searchParams.get("createdTo") ?? todayISO();
+  const initialExcludeStatus = searchParams.get("excludeStatus") ?? "";
+
   const [orders, setOrders] = useState<SalesOrderRow[]>([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
   const [search, setSearch] = useState("");
@@ -36,15 +51,20 @@ export default function OrdersPage() {
   // Đơn hàng) — vào trang thấy ngay các đơn phát sinh hôm nay, không giới hạn
   // trạng thái.
   const [tab, setTab] = useState<SalesOrderTab>("all");
-  const [createdFrom, setCreatedFrom] = useState(todayISO());
-  const [createdTo, setCreatedTo] = useState(todayISO());
+  const [createdFrom, setCreatedFrom] = useState(initialCreatedFrom);
+  const [createdTo, setCreatedTo] = useState(initialCreatedTo);
   const [deliveryFrom, setDeliveryFrom] = useState("");
   const [deliveryTo, setDeliveryTo] = useState("");
   // Bộ lọc "Người phụ trách" — mặc định "all" để giữ đúng hành vi hiện có
   // (trang vẫn hiện toàn bộ đơn như trước), không tự ý bó hẹp view của
   // người dùng hiện tại xuống chỉ đơn của họ.
-  const [ownerId, setOwnerId] = useState("all");
+  const [ownerId, setOwnerId] = useState(initialOwnerId);
   const [owners, setOwners] = useState<SalesOrderOwnerOption[]>([]);
+  // Loại trừ 1 trạng thái cụ thể (rà soát nghiệp vụ 27/08/2026) — chỉ dùng
+  // khi vào trang qua deep-link (vd loại Đã huỷ từ "Doanh số của tôi"), tab
+  // "Tất cả" trở thành "Tất cả trừ X". Không có UI riêng để tự chọn — bỏ qua
+  // ngay khi người dùng chọn 1 tab trạng thái cụ thể khác "Tất cả".
+  const [excludeStatus] = useState(initialExcludeStatus);
   const [page, setPage] = useState(1);
   // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
   // nguyên 10 như trước.
@@ -66,6 +86,7 @@ export default function OrdersPage() {
       if (search) params.set("search", search);
       const statusParam = TAB_STATUS_PARAM[tab];
       if (statusParam) params.set("status", statusParam);
+      else if (tab === "all" && excludeStatus) params.set("excludeStatus", excludeStatus);
       if (ownerId === "self" && user) params.set("ownerId", user.id);
       else if (ownerId !== "all") params.set("ownerId", ownerId);
       if (createdFrom) params.set("createdFrom", createdFrom);
@@ -83,7 +104,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, tab, ownerId, user, createdFrom, createdTo, deliveryFrom, deliveryTo, page, limit]);
+  }, [search, tab, excludeStatus, ownerId, user, createdFrom, createdTo, deliveryFrom, deliveryTo, page, limit]);
 
   useEffect(() => {
     const timer = setTimeout(fetchOrders, search ? 300 : 0);
@@ -146,5 +167,13 @@ export default function OrdersPage() {
         <SalesOrderTable orders={orders} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
       )}
     </div>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <OrdersPageContent />
+    </Suspense>
   );
 }
