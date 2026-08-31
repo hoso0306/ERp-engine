@@ -2272,6 +2272,8 @@ export class ProductService {
           : item.billValue
             ? Number(item.billValue)
             : null,
+      description:
+        dto.description !== undefined ? dto.description : item.description,
     });
 
     const data: Prisma.PricingRuleItemUpdateInput = {};
