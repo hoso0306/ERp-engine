@@ -1061,6 +1061,24 @@ export class DebtService {
       }));
   }
 
+  // Báo cáo "Doanh thu theo khách hàng" (report.md C2, rà soát nghiệp vụ
+  // Return, 03/09/2026 — cùng lý do getCompanyBorneValueByCustomer() ở
+  // ReturnService) — cùng công thức/convention getStandaloneAdjustmentByOwner()
+  // ở trên, chỉ đổi groupBy sang customerId.
+  async getStandaloneAdjustmentByCustomer(range?: { from?: Date; to?: Date }) {
+    const dateFilter = this.debtAdjustmentDateRangeFilter(range?.from, range?.to);
+    const grouped = await this.prisma.debtAdjustment.groupBy({
+      by: ['customerId'],
+      where: { returnId: null, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+      _sum: { amount: true },
+    });
+
+    return grouped.map((g) => ({
+      customerId: g.customerId,
+      amount: Number(g._sum.amount ?? 0),
+    }));
+  }
+
   // Tab "Lịch sử giảm trừ/công nợ đầu kỳ" (trang chi tiết khách hàng, rà
   // soát nghiệp vụ 27/08/2026) — gộp 2 nguồn cùng thuộc domain Công nợ,
   // sort theo createdAt desc, phân trang thủ công sau khi gộp (số dòng/khách

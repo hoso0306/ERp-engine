@@ -695,6 +695,32 @@ export class ReturnService {
       }));
   }
 
+  // Dùng cho Báo cáo "Doanh thu theo khách hàng" (report.md C2, rà soát
+  // nghiệp vụ Return, 03/09/2026 — trước đó report.service.ts gọi thẳng
+  // SalesOrderService, chưa trừ phần công ty chịu như Dashboard) — cùng công
+  // thức/convention với getCompanyBorneValueByOwner() ở trên, chỉ đổi
+  // groupBy sang customerId (Return.customerId cũng là plain field bất biến,
+  // cùng lý do dùng ownerId).
+  async getCompanyBorneValueByCustomer(range?: { from?: Date; to?: Date }) {
+    const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
+    const where: Prisma.ReturnWhereInput = returnDateFilter
+      ? { returnDate: returnDateFilter }
+      : {};
+
+    const grouped = await this.prisma.return.groupBy({
+      by: ['customerId'],
+      where,
+      _sum: { totalValue: true, customerBorneAmount: true },
+    });
+
+    return grouped.map((g) => ({
+      customerId: g.customerId,
+      companyBorneValue:
+        Number(g._sum.totalValue ?? 0) -
+        Number(g._sum.customerBorneAmount ?? 0),
+    }));
+  }
+
   async getReturnsByCustomer(range?: { from?: Date; to?: Date }, limit = 10) {
     const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const grouped = await this.prisma.return.groupBy({

@@ -171,13 +171,14 @@ SalesOrder.status != CANCELLED
 
 ### C1. Doanh thu theo nhân viên
 
-- **Nguồn:** `SalesOrder.totalAmount` GROUP BY người phụ trách, lọc kỳ theo `createdAt`.
-- **Phụ thuộc schema:** khoá nhóm phải là `ownerId` (FK User) — hiện `SalesOrder` chỉ có `ownerName String?` tự do, group theo chuỗi gõ tay sẽ vỡ số liệu ngay lần đổi tên đầu tiên. **Báo cáo này chỉ triển khai được sau khi hoàn thành việc chuyển `ownerName → ownerId + ownerName (snapshot hiển thị)`** — đã nằm trong danh sách "Nên sửa trước Go-Live" của architecture review.
+- **Nguồn:** `SalesOrder.totalAmount` GROUP BY `ownerId` (FK bất biến, đã triển khai — mục "Phụ thuộc schema" cũ ở đây đã xong), lọc kỳ theo `createdAt`.
+- **Trừ phần Công ty hỗ trợ hàng hoàn + giảm trừ công nợ độc lập** (rà soát nghiệp vụ Return, 03/09/2026 — trước đó report này gọi thẳng `SalesOrderService.getRevenueByEmployee()`, chưa trừ như Dashboard "Doanh số theo nhân viên" đã làm, gây lệch số giữa 2 nơi cùng tên gọi tương tự). Nay `ReportService.getRevenueByEmployee()` trừ thêm `ReturnService.getCompanyBorneValueByOwner()` + `DebtService.getStandaloneAdjustmentByOwner()`, cùng công thức Dashboard — chỉ trừ được cho nhân viên đã có đơn hàng trong khoảng lọc (giới hạn đã chấp nhận, xem `dashboard.md`).
 
 ### C2. Doanh thu theo khách hàng / Báo cáo khách hàng
 
 - **Nguồn:** `SalesOrder.totalAmount` GROUP BY `customerId` (đã có sẵn, đã index), lọc kỳ.
 - **Hiển thị:** top khách theo doanh thu kỳ; khách mới trong kỳ (`Customer.createdAt`); với từng khách: lần mua đầu (`MIN(SalesOrder.createdAt)`), lần mua gần nhất (`MAX`), tổng số đơn, tổng doanh thu, công nợ hiện tại — đúng cam kết "tính realtime, không lưu trong bảng customers" của `customer.md`.
+- **Trừ phần Công ty hỗ trợ hàng hoàn + giảm trừ công nợ độc lập** (rà soát nghiệp vụ Return, 03/09/2026 — cùng lý do C1 ở trên) — `ReturnService.getCompanyBorneValueByCustomer()` + `DebtService.getStandaloneAdjustmentByCustomer()`, group theo `customerId`, cùng giới hạn (chỉ trừ được cho khách đã có đơn hàng trong khoảng lọc).
 
 ## Nhóm D — Vận hành
 

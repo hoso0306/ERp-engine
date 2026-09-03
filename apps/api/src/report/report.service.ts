@@ -205,29 +205,87 @@ export class ReportService {
   // Nhóm C — Con người (Task 04)
   // ─────────────────────────────────────────────────────
 
-  // C1
-  getRevenueByEmployee(range: ReportRange) {
-    return this.salesOrderService.getRevenueByEmployee(range.from, range.to);
+  // C1 — trừ phần Công ty hỗ trợ của Return + giảm trừ công nợ độc lập theo
+  // từng nhân viên (rà soát nghiệp vụ Return, 03/09/2026 — trước đó gọi thẳng
+  // SalesOrderService, chưa trừ như Dashboard "Doanh số theo nhân viên" đã
+  // làm, xem dashboard.service.ts getEmployeeRevenueDashboard()). Cùng giới
+  // hạn đã chấp nhận ở Dashboard: chỉ trừ được cho nhân viên đã có đơn hàng
+  // trong khoảng lọc (groupBy đơn hàng tự loại nhân viên không có đơn).
+  async getRevenueByEmployee(range: ReportRange) {
+    const [raw, companyBorneByOwner, standaloneByOwner] = await Promise.all([
+      this.salesOrderService.getRevenueByEmployee(range.from, range.to),
+      this.returnService.getCompanyBorneValueByOwner(range),
+      this.debtService.getStandaloneAdjustmentByOwner(range),
+    ]);
+
+    const companyBorneMap = new Map(
+      companyBorneByOwner.map((r) => [r.ownerId, r.companyBorneValue]),
+    );
+    const standaloneMap = new Map(
+      standaloneByOwner.map((s) => [s.ownerId, s.amount]),
+    );
+
+    const employees = raw.employees.map((e) => {
+      const deduction = e.ownerId
+        ? (companyBorneMap.get(e.ownerId) ?? 0) +
+          (standaloneMap.get(e.ownerId) ?? 0)
+        : 0;
+      return { ...e, revenue: e.revenue - deduction };
+    });
+    const totalRevenue = employees.reduce((s, e) => s + e.revenue, 0);
+
+    return {
+      totalRevenue,
+      employees: employees
+        .map((e) => ({
+          ...e,
+          revenuePercent: totalRevenue > 0 ? (e.revenue / totalRevenue) * 100 : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
   }
 
   // C2 — gộp 3 nguồn: doanh thu theo khách (Sales Order) + khách mới trong kỳ
   // (Customer) + công nợ hiện tại từng khách (Debt, realtime — không lưu).
+  // Trừ phần Công ty hỗ trợ của Return + giảm trừ công nợ độc lập theo từng
+  // khách hàng (rà soát nghiệp vụ Return, 03/09/2026 — cùng lý do C1 ở trên,
+  // cùng giới hạn: chỉ trừ được cho khách đã có đơn hàng trong khoảng lọc).
   async getRevenueByCustomer(range: ReportRange) {
-    const [byCustomer, newCustomers] = await Promise.all([
-      this.salesOrderService.getRevenueByCustomer(range.from, range.to),
-      this.customerService.getNewCustomersInRange(range.from, range.to),
-    ]);
+    const [byCustomer, newCustomers, companyBorneByCustomer, standaloneByCustomer] =
+      await Promise.all([
+        this.salesOrderService.getRevenueByCustomer(range.from, range.to),
+        this.customerService.getNewCustomersInRange(range.from, range.to),
+        this.returnService.getCompanyBorneValueByCustomer(range),
+        this.debtService.getStandaloneAdjustmentByCustomer(range),
+      ]);
+
+    const companyBorneMap = new Map(
+      companyBorneByCustomer.map((r) => [r.customerId, r.companyBorneValue]),
+    );
+    const standaloneMap = new Map(
+      standaloneByCustomer.map((s) => [s.customerId, s.amount]),
+    );
 
     const remainingByCustomer = await this.debtService.getRemainingByCustomers(
       byCustomer.customers.map((c) => c.customerId),
     );
 
+    const customers = byCustomer.customers
+      .map((c) => {
+        const deduction =
+          (companyBorneMap.get(c.customerId) ?? 0) +
+          (standaloneMap.get(c.customerId) ?? 0);
+        return {
+          ...c,
+          revenue: c.revenue - deduction,
+          currentDebt: remainingByCustomer.get(c.customerId) ?? 0,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+
     return {
-      totalRevenue: byCustomer.totalRevenue,
-      customers: byCustomer.customers.map((c) => ({
-        ...c,
-        currentDebt: remainingByCustomer.get(c.customerId) ?? 0,
-      })),
+      totalRevenue: customers.reduce((s, c) => s + c.revenue, 0),
+      customers,
       newCustomers,
     };
   }
