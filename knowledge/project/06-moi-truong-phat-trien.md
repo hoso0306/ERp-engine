@@ -73,6 +73,62 @@ docker compose -f docker-compose.prod.yml ps
 
 ---
 
+# Backup & Restore (Disaster Recovery)
+
+## Backup tự động (VPS)
+
+Cron của user `deploy` trên VPS, chạy `scripts/backup/backup.sh` mỗi ngày lúc 2h sáng:
+
+```
+0 2 * * * cd /opt/erp && BACKUP_DIR=/opt/erp/backups RETENTION_DAYS=14 ./scripts/backup/backup.sh >> /var/log/erp-backup.log 2>&1
+```
+
+Mỗi lần chạy tạo ra 2 thứ, lưu ở `/opt/erp/backups/` (giữ 14 ngày) **và** đẩy off-site lên Google Drive qua rclone (remote `erp-gdrive:erp-backup/`, giữ 30 ngày cho bản DB dump):
+
+| File | Nội dung | Lịch sử giữ lại |
+| --- | --- | --- |
+| `erp-YYYYMMDD-HHMMSS.sql.gz` | `pg_dump` toàn bộ database `erp` (schema + data, kể cả logo/con dấu base64) | 14 ngày (local), 30 ngày (Drive) |
+| `erp-config-latest.tar.gz` | `.env.production` (JWT_SECRET, mật khẩu DB, domain...) + SSL cert Cloudflare Origin (`origin.key`, `origin.pem`) | Chỉ giữ **1 bản mới nhất**, luôn ghi đè (không cần lịch sử vì hiếm khi đổi) |
+
+**Không nằm trong backup** (vì không cần / đã có nơi khác):
+- Code — đã có GitHub (`hoso0306/ERp-engine`).
+- Role Postgres (`erp`) — không cần dump riêng, vì `docker-compose.prod.yml` tự tạo role này từ `.env.production` (`POSTGRES_USER`/`POSTGRES_PASSWORD`) khi container Postgres khởi tạo lần đầu.
+
+Cấu hình rclone nằm ở `/home/deploy/.config/rclone/rclone.conf` trên VPS (không tracked trong Git — chứa token OAuth). Dùng **shared client_id của rclone** (đang bị khai tử dần trong 2026 — nếu sau này lệnh backup báo lỗi liên quan `client_id`/token, cần tạo Google Cloud OAuth client riêng, xem https://rclone.org/drive/#making-your-own-client-id, rồi `rclone config` sửa lại remote `erp-gdrive`).
+
+## Restore trên VPS mới (khi VPS hiện tại sập hoàn toàn)
+
+```bash
+# 1. Lấy code
+git clone https://github.com/hoso0306/ERp-engine /opt/erp
+cd /opt/erp
+
+# 2. Cài rclone, cấu hình lại remote erp-gdrive (xem hướng dẫn OAuth ở trên)
+#    rồi tải 2 file mới nhất từ Drive:
+rclone copy erp-gdrive:erp-backup/erp-config-latest.tar.gz .
+rclone lsl erp-gdrive:erp-backup/ | grep '.sql.gz' | tail -1   # tìm bản .sql.gz mới nhất
+rclone copy erp-gdrive:erp-backup/<file>.sql.gz .
+
+# 3. Giải nén config — có lại .env.production + SSL cert
+tar -xzf erp-config-latest.tar.gz -C .
+mkdir -p docker/nginx/certs
+mv origin.key origin.pem docker/nginx/certs/
+
+# 4. Dựng container (tạo role/database erp rỗng từ .env.production)
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build postgres
+
+# 5. Phục hồi data
+gunzip -c <file>.sql.gz | docker exec -i erp-postgres psql -U erp erp
+
+# 6. Dựng nốt api/web/nginx
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+# 7. Trỏ DNS domain sang IP VPS mới (Cloudflare) — cert cũ (origin.pem) dùng lại được
+#    vì Cloudflare Origin Cert không gắn với IP, chỉ gắn với domain.
+```
+
+---
+
 # Sự cố thường gặp
 
 **Login báo lỗi 500 / "table does not exist":** kiểm tra container Postgres có đang chạy và có đúng data không:
@@ -100,6 +156,6 @@ cd ~/Workspace/Projects/ERP-engine && docker compose up -d   # bật lại Docke
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-| Phiên bản | 2.0 |
+| Phiên bản | 2.1 |
 | Trạng thái | Draft |
-| Cập nhật | 14/09/2026 — chuyển local từ Postgres native sang Docker (`erp-postgres`, postgres:17-alpine) để khớp version production |
+| Cập nhật | 14/09/2026 — thêm backup off-site Google Drive (rclone) + backup `.env.production`/SSL cert, hướng dẫn restore VPS mới |
