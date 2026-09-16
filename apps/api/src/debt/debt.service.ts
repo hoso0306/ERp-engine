@@ -1079,6 +1079,35 @@ export class DebtService {
     }));
   }
 
+  // Báo cáo "Doanh thu" (report.md A1, rà soát nghiệp vụ Return, 16/09/2026)
+  // — KHÁC quy ước getStandaloneAdjustmentByOwner/Customer() ở trên: A1 là
+  // chuỗi thời gian nên khoản giảm trừ phải quy về đúng NGÀY TẠO ĐƠN HÀNG
+  // GỐC (SalesOrder.createdAt), không phải DebtAdjustment.createdAt — cùng
+  // lý do ReturnService.getCompanyBorneValueByOrderDate(). DebtAdjustment
+  // không @relation sang SalesOrder (chỉ lưu salesOrderId, xem comment
+  // schema.prisma) nên phải join thủ công qua 2 bước.
+  async getStandaloneAdjustmentByOrderDate(range: { from: Date; to: Date }) {
+    const orders = await this.prisma.salesOrder.findMany({
+      where: {
+        status: { not: SalesOrderStatus.CANCELLED },
+        createdAt: { gte: range.from, lte: range.to },
+      },
+      select: { id: true, createdAt: true },
+    });
+    if (orders.length === 0) return [];
+
+    const orderDateMap = new Map(orders.map((o) => [o.id, o.createdAt]));
+    const adjustments = await this.prisma.debtAdjustment.findMany({
+      where: { returnId: null, salesOrderId: { in: [...orderDateMap.keys()] } },
+      select: { salesOrderId: true, amount: true },
+    });
+
+    return adjustments.map((a) => ({
+      date: orderDateMap.get(a.salesOrderId)!,
+      value: Number(a.amount),
+    }));
+  }
+
   // Tab "Lịch sử giảm trừ/công nợ đầu kỳ" (trang chi tiết khách hàng, rà
   // soát nghiệp vụ 27/08/2026) — gộp 2 nguồn cùng thuộc domain Công nợ,
   // sort theo createdAt desc, phân trang thủ công sau khi gộp (số dòng/khách

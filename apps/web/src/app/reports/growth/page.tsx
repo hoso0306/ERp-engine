@@ -68,7 +68,7 @@ export default function GrowthReportPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tốc độ phát triển"
-        description="Doanh thu, tiền về, lợi nhuận kế hoạch theo tuần/tháng/năm"
+        description="Doanh thu (đã trừ hoàn), tiền về, lợi nhuận kế hoạch theo tuần/tháng/năm"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-md border p-0.5">

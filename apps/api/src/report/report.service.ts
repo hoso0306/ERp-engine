@@ -4,7 +4,7 @@ import { DebtService } from '../debt/debt.service';
 import { CustomerService } from '../customer/customer.service';
 import { ReturnService } from '../return/return.service';
 import { SettingService } from '../setting/setting.service';
-import type { ReportGroupBy } from '../shared/report-range';
+import { buildSeries, type ReportGroupBy } from '../shared/report-range';
 import type { ExcelColumn } from '../shared/excel/excel.service';
 import type { PdfColumn } from '../shared/pdf/pdf.service';
 
@@ -93,13 +93,79 @@ export class ReportService {
   // Nhóm A — Tài chính (Task 02)
   // ─────────────────────────────────────────────────────
 
-  // A1
-  getRevenue(range: ReportRange, groupBy: ReportGroupBy = 'day') {
-    return this.salesOrderService.getRevenueReport(
+  // A1 — trừ phần Công ty hỗ trợ của Return + giảm trừ công nợ độc lập
+  // (rà soát nghiệp vụ Return, 16/09/2026 — cùng lý do C1/C2, KHÁC cách quy
+  // ngày: A1 là chuỗi thời gian nên khoản trừ quy về đúng ngày TẠO ĐƠN HÀNG
+  // GỐC — xem ReturnService.getCompanyBorneValueByOrderDate() — chứ không
+  // phải ngày hoàn/ngày giảm trừ. B3 (getGrowth) gọi lại method này nên tự
+  // động kế thừa — có chủ đích (đã xác nhận với người dùng).
+  async getRevenue(range: ReportRange, groupBy: ReportGroupBy = 'day') {
+    const timezone = await this.getTimezone();
+
+    const [gross, companyBorne, standalone] = await Promise.all([
+      this.salesOrderService.getRevenueReport(range.from, range.to, groupBy),
+      this.returnService.getCompanyBorneValueByOrderDate(range),
+      this.debtService.getStandaloneAdjustmentByOrderDate(range),
+    ]);
+
+    const prevRange = {
+      from: gross.previousPeriod.from,
+      to: gross.previousPeriod.to,
+    };
+    const [prevCompanyBorne, prevStandalone] = await Promise.all([
+      this.returnService.getCompanyBorneValueByOrderDate(prevRange),
+      this.debtService.getStandaloneAdjustmentByOrderDate(prevRange),
+    ]);
+
+    const deductionRows = [...companyBorne, ...standalone].map((r) => ({
+      date: r.date,
+      values: { deduction: r.value },
+    }));
+    const deductionSeries = buildSeries(
+      deductionRows,
       range.from,
       range.to,
+      timezone,
       groupBy,
+      ['deduction'],
     );
+    const deductionByPeriod = new Map(
+      deductionSeries.map((p) => [p.period, p.deduction]),
+    );
+
+    const series = gross.series.map((p) => ({
+      ...p,
+      revenue: p.revenue - (deductionByPeriod.get(p.period) ?? 0),
+    }));
+
+    const totalDeduction =
+      companyBorne.reduce((s, r) => s + r.value, 0) +
+      standalone.reduce((s, r) => s + r.value, 0);
+    const prevDeduction =
+      prevCompanyBorne.reduce((s, r) => s + r.value, 0) +
+      prevStandalone.reduce((s, r) => s + r.value, 0);
+
+    const totalRevenue = gross.totalRevenue - totalDeduction;
+    const previousRevenue = gross.previousPeriod.totalRevenue - prevDeduction;
+
+    return {
+      ...gross,
+      totalRevenue,
+      series,
+      previousPeriod: { ...gross.previousPeriod, totalRevenue: previousRevenue },
+      growthPercent:
+        previousRevenue > 0
+          ? ((totalRevenue - previousRevenue) / previousRevenue) * 100
+          : null,
+    };
+  }
+
+  private async getTimezone(): Promise<string> {
+    try {
+      return (await this.settingService.getCompany()).timezone;
+    } catch {
+      return 'Asia/Ho_Chi_Minh';
+    }
   }
 
   // A2 — Actual, không cộng lẫn với A1/A3 (Planned).

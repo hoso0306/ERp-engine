@@ -26,6 +26,9 @@ interface RevenueReport {
 type GroupBy = "day" | "week" | "month" | "year";
 
 // A1 — Báo cáo doanh thu (report.md: SalesOrder.totalAmount, mốc createdAt).
+// Đã trừ phần Công ty chịu khi hoàn hàng + giảm trừ công nợ độc lập (rà soát
+// nghiệp vụ Return, 16/09/2026), quy về đúng ngày tạo đơn hàng gốc — xem
+// ReportService.getRevenue().
 export default function RevenueReportPage() {
   const initial = defaultReportRange();
   const [from, setFrom] = useState(initial.from);
@@ -57,7 +60,7 @@ export default function RevenueReportPage() {
     <div className="space-y-6">
       <PageHeader
         title="Báo cáo doanh thu"
-        description="Doanh thu kế hoạch theo ngày chốt đơn, loại đơn huỷ"
+        description="Doanh thu kế hoạch theo ngày chốt đơn, loại đơn huỷ, đã trừ hàng hoàn"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-md border p-0.5">
@@ -86,7 +89,7 @@ export default function RevenueReportPage() {
       {data && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <StatTile label="Tổng doanh thu" value={formatMoney(data.totalRevenue)} />
+            <StatTile label="Tổng doanh thu (đã trừ hoàn)" value={formatMoney(data.totalRevenue)} />
             <StatTile label="Số đơn" value={String(data.orderCount)} />
             <StatTile
               label="So với kỳ trước"

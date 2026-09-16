@@ -93,7 +93,14 @@ Report là **Presentation Layer** — cùng tầng và cùng luật với Dashbo
 
 **V1 không tồn tại "lợi nhuận thực tế".** Hệ thống chưa theo dõi chi phí thực tế (actual cost — đã chừa sẵn ở `order.md`: V2 thêm `actualRevenue/actualCost/actualProfit`). Mọi nơi hiển thị "lợi nhuận" phải ghi rõ nhãn **"Lợi nhuận kế hoạch"** — không được hiển thị chữ "lợi nhuận" trần trụi khiến Owner tưởng là lãi thật.
 
-**Hàng hoàn không trừ vào doanh thu.** Nhất quán `return.md` ("Return không làm thay đổi doanh thu"). Báo cáo hiển thị "Giá trị hàng hoàn" thành chỉ số **riêng, đặt cạnh** doanh thu để Owner tự đối chiếu — không tự động tính "doanh thu thuần". Nếu sau này doanh nghiệp cần giảm trừ thật, nghiệp vụ đó đi qua Manual Adjustment của Debt module (V2), không đi qua Report.
+**Hàng hoàn không trừ vào doanh thu — trừ các ngoại lệ đã duyệt dưới đây.** Nhất quán `return.md` ("Return không làm thay đổi doanh thu") cho phần lớn báo cáo: hiển thị "Giá trị hàng hoàn" thành chỉ số **riêng, đặt cạnh** doanh thu để Owner tự đối chiếu, không tự động tính "doanh thu thuần".
+
+**Ngoại lệ đã duyệt — trừ phần Công ty chịu khi hoàn + giảm trừ công nợ độc lập:**
+- **C1/C2** (Doanh thu theo nhân viên/khách hàng, rà soát 03/09/2026): trừ `ReturnService.getCompanyBorneValueByOwner/Customer()` + `DebtService.getStandaloneAdjustmentByOwner/Customer()`, group theo `ownerId`/`customerId` — không quan tâm ngày, vì đây là tổng theo thực thể chứ không phải chuỗi thời gian.
+- **A1 + B3** (Doanh thu tổng/theo ngày, và Tốc độ phát triển — rà soát 16/09/2026): trừ cùng 2 nguồn trên, nhưng quy theo **ngày tạo đơn hàng gốc** (`SalesOrder.createdAt`), KHÔNG phải ngày hoàn/ngày giảm trừ — `ReturnService.getCompanyBorneValueByOrderDate()` + `DebtService.getStandaloneAdjustmentByOrderDate()`. Ví dụ: đơn tạo 11/2 giá trị 5tr, hoàn 12/2 phần công ty chịu 2tr → doanh thu ngày 11/2 hiển thị 3tr, ngày 12/2 không có gì. B3 (`getGrowth()`) gọi lại `getRevenue()` của A1 nên tự động kế thừa, có chủ đích. UI hiển thị nhãn rõ "(đã trừ hoàn)" để không lẫn với B2/B4/Growth-by-product-type — các báo cáo này **vẫn giữ gross**, chưa có quy tắc phân bổ theo sản phẩm (xem "Không làm" bên dưới).
+- Mọi báo cáo khác (B2, B4, D2...) **vẫn gross**, không tự ý mở rộng thêm khi chưa có yêu cầu nghiệp vụ.
+
+Nếu sau này doanh nghiệp cần giảm trừ thật ở các báo cáo còn lại, nghiệp vụ đó đi qua Manual Adjustment của Debt module (V2), không đi qua Report.
 
 **Công nợ không lọc theo kỳ.** "Còn phải thu" là trạng thái tại thời điểm xem — không có khái niệm "công nợ của tháng 6". Bộ lọc ngày trong Báo cáo công nợ chỉ áp dụng cho phần **phát sinh** (đơn mới trong kỳ, tiền thu trong kỳ), không áp dụng cho số dư.
 
@@ -326,7 +333,7 @@ report.view
 - Bảng thống kê riêng / Materialized View / cache / background job.
 - Đóng sổ kỳ (period close) — số liệu quá khứ thay đổi khi đơn huỷ là hành vi chấp nhận.
 - Lợi nhuận thực tế (actual cost) — chờ V2 `actualRevenue/actualCost/actualProfit` (`order.md`).
-- Doanh thu thuần sau hàng hoàn — chờ nghiệp vụ Manual Adjustment (Debt V2).
+- Doanh thu thuần sau hàng hoàn — **đã làm cho A1/B3/C1/C2** (16/09/2026 + 03/09/2026, xem mục "Giải thích các quyết định"). Còn lại (B2, B4...) chưa làm — chờ quy tắc phân bổ theo sản phẩm.
 - Báo cáo kho (D1) và mọi chỉ số tồn kho — module Kho tạm gỡ khỏi triển khai (xem `warehouse.md`).
 - Báo cáo tuỳ biến (custom report builder), lập lịch gửi báo cáo qua email.
 - Mục tiêu doanh thu theo kỳ và tỷ lệ hoàn thành mục tiêu (A1) — chờ khi hệ thống có Setting "Mục tiêu doanh thu" (chưa tồn tại). Không thêm vào "Hiển thị" của A1 khi chưa có dữ liệu mục tiêu thật.
@@ -339,7 +346,7 @@ report.view
 - 14 báo cáo phân tích (Nhóm A-D) loại `SalesOrder.status = CANCELLED` (trừ Payment — không thể tồn tại trên đơn huỷ). Nhóm "Xuất dữ liệu backup" (E1-E3) là ngoại lệ có chủ đích — KHÔNG loại `CANCELLED`, xem mục riêng.
 - Chỉ số Planned và Actual không được cộng lẫn trong cùng một con số.
 - "Lợi nhuận" luôn hiển thị nhãn "kế hoạch" ở V1.
-- Giá trị hàng hoàn hiển thị riêng, không trừ vào doanh thu.
+- Giá trị hàng hoàn hiển thị riêng, không trừ vào doanh thu — trừ A1/B3/C1/C2 (ngoại lệ đã duyệt, xem mục "Giải thích các quyết định").
 - GROUP BY ngày/tháng/năm theo `Settings.Company.timezone`; khoảng lọc inclusive theo ngày.
 - Report chỉ đọc qua Service của module sở hữu (Module Ownership) — không query trực tiếp bảng của module khác, không tính lại Business Logic.
 - B4 và C1 chỉ được triển khai sau khi hoàn thành thay đổi schema tương ứng (mục "Thay đổi schema cần trước") — không ship bản tạm bằng join ngược Master Data hay group theo chuỗi tên.

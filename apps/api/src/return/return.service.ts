@@ -721,6 +721,36 @@ export class ReturnService {
     }));
   }
 
+  // Dùng cho Báo cáo "Doanh thu" (report.md A1, rà soát nghiệp vụ Return,
+  // 16/09/2026) — KHÁC quy ước getCompanyBorneValueByOwner/Customer() ở
+  // trên: A1 là chuỗi thời gian nên phần công ty chịu phải quy về đúng
+  // NGÀY TẠO ĐƠN HÀNG GỐC (SalesOrder.createdAt), không phải returnDate —
+  // đơn hoàn chỉ là sự việc làm giảm số liệu của ngày tạo đơn, tự nó không
+  // tạo doanh thu âm ở ngày hoàn. Vì vậy lọc theo range cũng phải theo
+  // SalesOrder.createdAt (khác returnDateRangeFilter ở trên) — một Return
+  // phát sinh ngoài range vẫn được tính nếu đơn gốc nằm trong range, và
+  // ngược lại.
+  async getCompanyBorneValueByOrderDate(range: { from: Date; to: Date }) {
+    const rows = await this.prisma.return.findMany({
+      where: {
+        salesOrder: {
+          status: { not: SalesOrderStatus.CANCELLED },
+          createdAt: { gte: range.from, lte: range.to },
+        },
+      },
+      select: {
+        totalValue: true,
+        customerBorneAmount: true,
+        salesOrder: { select: { createdAt: true } },
+      },
+    });
+
+    return rows.map((r) => ({
+      date: r.salesOrder.createdAt,
+      value: Number(r.totalValue) - Number(r.customerBorneAmount),
+    }));
+  }
+
   async getReturnsByCustomer(range?: { from?: Date; to?: Date }, limit = 10) {
     const returnDateFilter = this.returnDateRangeFilter(range?.from, range?.to);
     const grouped = await this.prisma.return.groupBy({
