@@ -23,15 +23,29 @@ interface RecoveryInventory {
 
 interface ReturnItemRow {
   id: string;
-  productCode: string;
-  productName: string;
+  // Bán lẻ vật tư (chốt 28/07/2026) — PRODUCT thì product*/parameters có giá
+  // trị, MATERIAL thì material* có giá trị.
+  itemType: "PRODUCT" | "MATERIAL";
+  productCode: string | null;
+  productName: string | null;
   productParameters: Parameter[] | null;
+  materialCode: string | null;
+  materialName: string | null;
+  materialUnit: string | null;
   orderedQuantity: number;
   returnedQuantity: number;
   unitPriceSnapshot: number;
   reason: string;
   note: string | null;
   recoveryInventory: RecoveryInventory | null;
+}
+
+function itemDisplayCode(item: ReturnItemRow) {
+  return item.itemType === "MATERIAL" ? item.materialCode : item.productCode;
+}
+
+function itemDisplayName(item: ReturnItemRow) {
+  return item.itemType === "MATERIAL" ? item.materialName : item.productName;
 }
 
 interface ReturnItemTableProps {
@@ -48,7 +62,7 @@ function formatMoney(n: number) {
 
 export function ReturnItemTable({ items, totalValue }: ReturnItemTableProps) {
   if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground py-6 text-center">Chưa có sản phẩm nào.</p>;
+    return <p className="text-sm text-muted-foreground py-6 text-center">Chưa có dòng trả hàng nào.</p>;
   }
 
   return (
@@ -56,7 +70,7 @@ export function ReturnItemTable({ items, totalValue }: ReturnItemTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Sản phẩm</TableHead>
+            <TableHead>Sản phẩm / Vật tư</TableHead>
             <TableHead>Thông số</TableHead>
             <TableHead className="text-right">SL đặt / trả</TableHead>
             <TableHead className="text-right">Đơn giá</TableHead>
@@ -72,8 +86,13 @@ export function ReturnItemTable({ items, totalValue }: ReturnItemTableProps) {
             return (
               <TableRow key={item.id}>
                 <TableCell>
-                  <div className="font-medium">{item.productName}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
+                  <div className="font-medium">{itemDisplayName(item)}</div>
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {itemDisplayCode(item)}
+                    {item.itemType === "MATERIAL" && (
+                      <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-sans">Vật tư</span>
+                    )}
+                  </div>
                   {item.note && (
                     <div className="text-xs text-muted-foreground italic mt-1">{item.note}</div>
                   )}
@@ -92,6 +111,7 @@ export function ReturnItemTable({ items, totalValue }: ReturnItemTableProps) {
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   {Number(item.orderedQuantity)} / {Number(item.returnedQuantity)}
+                  {item.itemType === "MATERIAL" && item.materialUnit ? ` ${item.materialUnit}` : ""}
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm">
                   {formatMoney(Number(item.unitPriceSnapshot))}

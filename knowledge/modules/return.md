@@ -12,6 +12,8 @@ Quản lý toàn bộ hàng khách trả.
 
 Return vẫn **không phải** module hoàn tiền (Refund) — không có tiền mặt thật chảy ra khi tạo Return.
 
+**Cập nhật 17/09/2026 — hỗ trợ hoàn dòng vật tư bán lẻ.** `SalesOrderItem.itemType = MATERIAL` (tính năng "Bán lẻ vật tư", chốt 28/07/2026) trước đây bị chặn ở Return (chỉ nhận dòng PRODUCT, quyết định cắt phạm vi lúc đó, không phải giới hạn kỹ thuật). Nay Return nhận cả 2 loại — `ReturnItem`/`RecoveryInventory` snapshot rẽ nhánh theo `itemType`: PRODUCT dùng `productCode/productName`, MATERIAL dùng `materialCode/materialName/materialUnit` (cùng convention `SalesOrderItem`). Vật tư hoàn về **vẫn sinh `RecoveryInventory`** (đưa vào kho thu hồi, để đó) giống sản phẩm — chưa có logic tái sử dụng riêng cho vật tư ở V1. `Return.totalValue`/`customerBorneAmount` tính ở cấp header (không phân biệt loại dòng) nên tự động phản ánh đúng vào Dashboard/Report A1/B3/C1/C2, không cần sửa thêm ở các nơi đó.
+
 Module này giúp doanh nghiệp:
 
 - Ghi nhận hàng khách trả.

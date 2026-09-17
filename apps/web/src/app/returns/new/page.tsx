@@ -33,11 +33,25 @@ interface Parameter {
 
 interface SalesOrderItem {
   id: string;
-  productCode: string;
-  productName: string;
+  // Bán lẻ vật tư (chốt 28/07/2026) — PRODUCT thì product*/parameters có giá
+  // trị, MATERIAL thì material* có giá trị (xem itemDisplayName/Code bên dưới).
+  itemType: "PRODUCT" | "MATERIAL";
+  productCode: string | null;
+  productName: string | null;
+  materialCode: string | null;
+  materialName: string | null;
+  materialUnit: string | null;
   quantity: number;
   finalPrice: number;
   parameters: Parameter[];
+}
+
+function itemDisplayCode(item: SalesOrderItem) {
+  return item.itemType === "MATERIAL" ? item.materialCode : item.productCode;
+}
+
+function itemDisplayName(item: SalesOrderItem) {
+  return item.itemType === "MATERIAL" ? item.materialName : item.productName;
 }
 
 interface SalesOrderDetail {
@@ -188,7 +202,7 @@ function CreateReturnForm() {
       .map(([salesOrderItemId, s]) => ({ salesOrderItemId, ...s }));
 
     if (items.length === 0) {
-      toast.error("Vui lòng chọn ít nhất một sản phẩm để trả.");
+      toast.error("Vui lòng chọn ít nhất một dòng để trả.");
       return;
     }
 
@@ -198,11 +212,11 @@ function CreateReturnForm() {
       const remaining = Number(soItem.quantity) - alreadyReturned;
       const qty = Number(item.quantity);
       if (!qty || qty <= 0 || qty > remaining) {
-        toast.error(`Số lượng trả của "${soItem.productName}" phải từ 1 đến ${remaining}.`);
+        toast.error(`Số lượng trả của "${itemDisplayName(soItem)}" phải từ 1 đến ${remaining}.`);
         return;
       }
       if (!item.reason) {
-        toast.error(`Vui lòng chọn lý do trả cho "${soItem.productName}".`);
+        toast.error(`Vui lòng chọn lý do trả cho "${itemDisplayName(soItem)}".`);
         return;
       }
     }
@@ -329,13 +343,13 @@ function CreateReturnForm() {
           </div>
 
           <div className="space-y-3">
-            <h3 className="text-base font-semibold">Chọn sản phẩm trả</h3>
+            <h3 className="text-base font-semibold">Chọn dòng trả hàng</h3>
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
-                    <TableHead>Sản phẩm</TableHead>
+                    <TableHead>Sản phẩm / Vật tư</TableHead>
                     <TableHead className="text-right">Đã đặt</TableHead>
                     <TableHead className="text-right">Đã trả trước đó</TableHead>
                     <TableHead className="text-right">Còn lại tối đa</TableHead>
@@ -361,15 +375,23 @@ function CreateReturnForm() {
                           />
                         </TableCell>
                         <TableCell>
-                          <div className="font-medium">{item.productName}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
+                          <div className="font-medium">{itemDisplayName(item)}</div>
+                          <div className="text-xs text-muted-foreground font-mono">
+                            {itemDisplayCode(item)}
+                            {item.itemType === "MATERIAL" && (
+                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-sans">Vật tư</span>
+                            )}
+                          </div>
                           {item.parameters.length > 0 && (
                             <div className="text-xs text-muted-foreground mt-0.5">
                               {item.parameters.map((p) => `${p.label}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join(", ")}
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="text-right text-sm">{Number(item.quantity)}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          {Number(item.quantity)}
+                          {item.itemType === "MATERIAL" && item.materialUnit ? ` ${item.materialUnit}` : ""}
+                        </TableCell>
                         <TableCell className="text-right text-sm">{alreadyReturned}</TableCell>
                         <TableCell className="text-right text-sm font-medium">{remaining}</TableCell>
                         <TableCell>
@@ -458,7 +480,7 @@ function CreateReturnForm() {
             <div className="rounded-md border divide-y">
               {selectedItems.map((it) => (
                 <div key={it.salesOrderItemId} className="px-4 py-3 flex items-center justify-between text-sm">
-                  <span>{it.soItem.productName} × {it.quantity}</span>
+                  <span>{itemDisplayName(it.soItem)} × {it.quantity}</span>
                   <span className="font-mono">
                     {formatMoney(Number(it.soItem.finalPrice) * Number(it.quantity))}
                   </span>

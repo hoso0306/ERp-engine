@@ -18,15 +18,29 @@ interface Parameter {
 export interface RecoveryInventoryRow {
   id: string;
   code: string;
-  productCode: string;
-  productName: string;
+  // Bán lẻ vật tư (chốt 28/07/2026) — PRODUCT thì product*/parameters có giá
+  // trị, MATERIAL thì material* có giá trị.
+  itemType: "PRODUCT" | "MATERIAL";
+  productCode: string | null;
+  productName: string | null;
   productParameters: Parameter[] | null;
+  materialCode: string | null;
+  materialName: string | null;
+  materialUnit: string | null;
   quantity: number;
   location: string | null;
   status: string;
   createdFromReturnCode: string;
   imageUrl: string | null;
   createdAt: string;
+}
+
+function itemDisplayCode(item: RecoveryInventoryRow) {
+  return item.itemType === "MATERIAL" ? item.materialCode : item.productCode;
+}
+
+function itemDisplayName(item: RecoveryInventoryRow) {
+  return item.itemType === "MATERIAL" ? item.materialName : item.productName;
 }
 
 interface Meta {
@@ -70,7 +84,7 @@ export function RecoveryInventoryTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-28">Mã</TableHead>
-              <TableHead>Sản phẩm</TableHead>
+              <TableHead>Sản phẩm / Vật tư</TableHead>
               <TableHead>Thông số</TableHead>
               <TableHead className="text-right">Số lượng</TableHead>
               <TableHead>Vị trí</TableHead>
@@ -87,8 +101,13 @@ export function RecoveryInventoryTable({
                 <TableRow key={item.id}>
                   <TableCell className="font-mono text-xs font-medium">{item.code}</TableCell>
                   <TableCell>
-                    <div className="font-medium text-sm">{item.productName}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{item.productCode}</div>
+                    <div className="font-medium text-sm">{itemDisplayName(item)}</div>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {itemDisplayCode(item)}
+                      {item.itemType === "MATERIAL" && (
+                        <span className="ml-1.5 rounded bg-muted px-1 py-0.5 font-sans">Vật tư</span>
+                      )}
+                    </div>
                     {item.imageUrl && (
                       <a
                         href={item.imageUrl}
@@ -113,7 +132,10 @@ export function RecoveryInventoryTable({
                         : "—"}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-sm">{Number(item.quantity)}</TableCell>
+                  <TableCell className="text-right text-sm">
+                    {Number(item.quantity)}
+                    {item.itemType === "MATERIAL" && item.materialUnit ? ` ${item.materialUnit}` : ""}
+                  </TableCell>
                   <TableCell className="text-sm">{item.location ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {item.createdFromReturnCode}

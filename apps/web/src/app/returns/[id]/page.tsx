@@ -31,9 +31,15 @@ interface RecoveryInventory {
 
 interface ReturnItem {
   id: string;
-  productCode: string;
-  productName: string;
+  // Bán lẻ vật tư (chốt 28/07/2026) — PRODUCT thì product*/parameters có giá
+  // trị, MATERIAL thì material* có giá trị.
+  itemType: "PRODUCT" | "MATERIAL";
+  productCode: string | null;
+  productName: string | null;
   productParameters: Parameter[] | null;
+  materialCode: string | null;
+  materialName: string | null;
+  materialUnit: string | null;
   orderedQuantity: number;
   returnedQuantity: number;
   unitPriceSnapshot: number;
@@ -232,7 +238,7 @@ export default function ReturnDetailPage() {
 
       {/* Items */}
       <div className="space-y-4">
-        <h3 className="text-base font-semibold">Danh sách sản phẩm trả</h3>
+        <h3 className="text-base font-semibold">Danh sách dòng trả hàng</h3>
         <ReturnItemTable items={ret.items} totalValue={Number(ret.totalValue)} />
       </div>
 

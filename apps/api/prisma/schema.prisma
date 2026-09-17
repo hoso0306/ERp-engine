@@ -1840,9 +1840,22 @@ model ReturnItem {
   // ProductionOrderItem.salesOrderItemId (xem production.md).
   salesOrderItemId String @map("sales_order_item_id")
 
-  productCode       String       @map("product_code")
-  productName       String       @map("product_name")
+  // Hoàn vật tư bán lẻ (rà soát nghiệp vụ Return, 17/09/2026) — snapshot từ
+  // SalesOrderItem.itemType tại thời điểm tạo Return, cùng convention
+  // SalesOrderItem.itemType. Default PRODUCT để backfill an toàn cho dữ liệu
+  // cũ (toàn bộ Return trước đây chỉ có dòng PRODUCT).
+  itemType QuotationItemType @default(PRODUCT) @map("item_type")
+
+  // Bắt buộc khi itemType=PRODUCT, null khi itemType=MATERIAL — cùng convention
+  // SalesOrderItem.productCode/productName.
+  productCode       String?      @map("product_code")
+  productName       String?      @map("product_name")
   productParameters Json?        @map("product_parameters")
+  // Bắt buộc khi itemType=MATERIAL, null khi itemType=PRODUCT — cùng convention
+  // SalesOrderItem.materialCode/materialName/materialUnit.
+  materialCode String? @map("material_code")
+  materialName String? @map("material_name")
+  materialUnit String? @map("material_unit")
   orderedQuantity   Decimal      @map("ordered_quantity") @db.Decimal(15, 4)
   returnedQuantity  Decimal      @map("returned_quantity") @db.Decimal(15, 4)
   // Snapshot từ SalesOrderItem.finalPrice — không đọc lại sau khi tạo.
@@ -1871,9 +1884,16 @@ model RecoveryInventory {
   // returnItemId → ReturnItem → Return mỗi lần hiển thị (xem return.md).
   createdFromReturnCode String @map("created_from_return_code")
 
-  productCode       String                  @map("product_code")
-  productName       String                  @map("product_name")
+  // Hoàn vật tư bán lẻ (rà soát nghiệp vụ Return, 17/09/2026) — copy từ
+  // ReturnItem.itemType, cùng lý do/convention ReturnItem.itemType.
+  itemType QuotationItemType @default(PRODUCT) @map("item_type")
+
+  productCode       String?                 @map("product_code")
+  productName       String?                 @map("product_name")
   productParameters Json?                   @map("product_parameters")
+  materialCode      String?                 @map("material_code")
+  materialName      String?                 @map("material_name")
+  materialUnit      String?                 @map("material_unit")
   quantity          Decimal                 @db.Decimal(15, 4)
   location          String?
   status            RecoveryInventoryStatus @default(AVAILABLE)

@@ -256,21 +256,34 @@ describe('ReturnService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects khi dòng SalesOrderItem là vật tư bán lẻ (itemType=MATERIAL, chưa hỗ trợ trả hàng)', async () => {
+    // Hoàn vật tư bán lẻ (rà soát nghiệp vụ Return, 17/09/2026) — trước đây
+    // bị chặn cứng (itemType=MATERIAL), nay hỗ trợ, snapshot rẽ nhánh sang
+    // materialCode/materialName/materialUnit thay vì productCode/productName.
+    it('creates Return + ReturnItem + RecoveryInventory cho dòng vật tư bán lẻ (itemType=MATERIAL)', async () => {
       prisma.salesOrder.findUnique.mockResolvedValue(
         makeSalesOrder({
           items: [
             {
               id: 'soi-1',
               itemType: 'MATERIAL',
+              materialCode: 'VT000001',
               materialName: 'Bạt xếp/cuốn - Mô tơ động cơ',
+              materialUnit: 'Cái',
               quantity: 5,
               finalPrice: 1000000,
+              vatRate: 0,
               parameters: [],
             },
           ],
         }),
       );
+      prisma.return.create.mockResolvedValue({ id: 'ret-1', code: 'RT000001' });
+      prisma.returnItem.create.mockResolvedValue({ id: 'item-1' });
+      prisma.return.findUniqueOrThrow.mockResolvedValue({
+        id: 'ret-1',
+        code: 'RT000001',
+        items: [],
+      });
 
       await expect(
         service.create({
@@ -279,7 +292,32 @@ describe('ReturnService', () => {
             { salesOrderItemId: 'soi-1', returnedQuantity: 2, reason: 'OTHER' },
           ],
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).resolves.toBeDefined();
+
+      expect(prisma.returnItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemType: 'MATERIAL',
+            productCode: null,
+            productName: null,
+            materialCode: 'VT000001',
+            materialName: 'Bạt xếp/cuốn - Mô tơ động cơ',
+            materialUnit: 'Cái',
+          }),
+        }),
+      );
+      expect(prisma.recoveryInventory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            itemType: 'MATERIAL',
+            productCode: null,
+            productName: null,
+            materialCode: 'VT000001',
+            materialName: 'Bạt xếp/cuốn - Mô tơ động cơ',
+            materialUnit: 'Cái',
+          }),
+        }),
+      );
     });
 
     it('creates Return + ReturnItem + RecoveryInventory in one transaction when valid', async () => {

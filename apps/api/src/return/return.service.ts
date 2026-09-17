@@ -219,14 +219,6 @@ export class ReturnService {
           `Dòng sản phẩm "${item.salesOrderItemId}" không thuộc đơn hàng này.`,
         );
       }
-      // Bán lẻ vật tư (chốt 28/07/2026, sprint-04/025) — ngoài phạm vi module
-      // Hàng hoàn ở milestone này, chỉ hỗ trợ trả dòng PRODUCT.
-      if (soItemForCheck.itemType !== 'PRODUCT') {
-        throw new BadRequestException(
-          `Dòng "${soItemForCheck.materialName}" là vật tư bán lẻ, chưa hỗ trợ trả hàng.`,
-        );
-      }
-
       requestedByItem.set(
         item.salesOrderItemId,
         (requestedByItem.get(item.salesOrderItemId) ?? 0) +
@@ -248,8 +240,9 @@ export class ReturnService {
         Number(alreadyReturned._sum.returnedQuantity ?? 0) + requestedQuantity;
 
       if (totalAfter > orderedQuantity) {
+        const soItem = salesOrderItemMap.get(salesOrderItemId)!;
         throw new BadRequestException(
-          `Sản phẩm "${salesOrderItemMap.get(salesOrderItemId)!.productName}" chỉ còn được trả tối đa ${
+          `"${soItem.itemType === 'MATERIAL' ? soItem.materialName : soItem.productName}" chỉ còn được trả tối đa ${
             orderedQuantity - Number(alreadyReturned._sum.returnedQuantity ?? 0)
           } (đã đặt ${orderedQuantity}, đã trả trước đó ${alreadyReturned._sum.returnedQuantity ?? 0}).`,
         );
@@ -324,15 +317,23 @@ export class ReturnService {
             displayOrder: p.displayOrder,
           }));
 
+          // Hoàn vật tư bán lẻ (rà soát nghiệp vụ Return, 17/09/2026) — snapshot
+          // rẽ nhánh theo itemType, cùng convention SalesOrderItem: PRODUCT thì
+          // productCode/Name có giá trị + materialCode/Name/Unit null, ngược lại
+          // MATERIAL thì materialCode/Name/Unit có giá trị + product* null.
+          const isMaterial = soItem.itemType === 'MATERIAL';
+
           const returnItem = await tx.returnItem.create({
             data: {
               returnId: ret.id,
               salesOrderItemId: soItem.id,
-              // Đã chặn dòng MATERIAL ở validate phía trên — productCode/Name
-              // luôn có giá trị ở đây (chỉ còn dòng PRODUCT).
-              productCode: soItem.productCode!,
-              productName: soItem.productName!,
-              productParameters,
+              itemType: soItem.itemType,
+              productCode: isMaterial ? null : soItem.productCode!,
+              productName: isMaterial ? null : soItem.productName!,
+              productParameters: isMaterial ? undefined : productParameters,
+              materialCode: isMaterial ? soItem.materialCode! : null,
+              materialName: isMaterial ? soItem.materialName! : null,
+              materialUnit: isMaterial ? soItem.materialUnit! : null,
               orderedQuantity: soItem.quantity,
               returnedQuantity: item.returnedQuantity,
               unitPriceSnapshot: soItem.finalPrice,
@@ -345,15 +346,22 @@ export class ReturnService {
           // RecoveryInventory sinh tự động, cùng transaction — không có Running
           // Number riêng cho Recovery Inventory trong tài liệu, dùng mã Return
           // + số thứ tự dòng để đảm bảo duy nhất và vẫn truy vết được nguồn gốc.
+          // Vật tư hoàn cũng đưa vào kho thu hồi như sản phẩm (chốt 17/09/2026,
+          // rà soát nghiệp vụ Return) — chỉ đơn thuần ghi nhận/để đó, không có
+          // logic tái sử dụng riêng cho vật tư ở V1.
           recoverySeq += 1;
           await tx.recoveryInventory.create({
             data: {
               code: `${returnCode}-${recoverySeq}`,
               returnItemId: returnItem.id,
               createdFromReturnCode: returnCode,
-              productCode: soItem.productCode!,
-              productName: soItem.productName!,
-              productParameters,
+              itemType: soItem.itemType,
+              productCode: isMaterial ? null : soItem.productCode!,
+              productName: isMaterial ? null : soItem.productName!,
+              productParameters: isMaterial ? undefined : productParameters,
+              materialCode: isMaterial ? soItem.materialCode! : null,
+              materialName: isMaterial ? soItem.materialName! : null,
+              materialUnit: isMaterial ? soItem.materialUnit! : null,
               quantity: item.returnedQuantity,
               status: RecoveryInventoryStatus.AVAILABLE,
             },
@@ -380,14 +388,17 @@ export class ReturnService {
     const where: Prisma.RecoveryInventoryWhereInput = {};
 
     if (query.search) {
-      // Tìm không phân biệt dấu tiếng Việt — giữ nguyên đúng 4 field đang
-      // tìm (mã tồn/mã SP/tên SP/mã hoàn gốc), chỉ đổi cách so khớp.
+      // Tìm không phân biệt dấu tiếng Việt — 6 field (mã tồn/mã hoàn gốc +
+      // mã-tên SP hoặc mã-tên vật tư tuỳ itemType, cột kia NULL nên
+      // unaccentLike tự bỏ qua, không cần lọc theo itemType riêng).
       where.id = {
         in: await findMatchingIds(
           this.prisma,
           Prisma.sql`SELECT id FROM recovery_inventories WHERE ${unaccentLike(Prisma.sql`code`, query.search)}
             OR ${unaccentLike(Prisma.sql`product_code`, query.search)}
             OR ${unaccentLike(Prisma.sql`product_name`, query.search)}
+            OR ${unaccentLike(Prisma.sql`material_code`, query.search)}
+            OR ${unaccentLike(Prisma.sql`material_name`, query.search)}
             OR ${unaccentLike(Prisma.sql`created_from_return_code`, query.search)}`,
         ),
       };
