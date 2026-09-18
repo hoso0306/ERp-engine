@@ -4,6 +4,12 @@
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
 WORKDIR /repo
+# VPS production thiếu route IPv6 mặc định nhưng DNS registry.npmjs.org ưu
+# tiên trả AAAA — Node cứ thử IPv6 trước rồi mới fallback IPv4, làm `pnpm
+# install` chậm bất thường/ECONNRESET khi cache layer này bị invalidate
+# (mỗi lần đổi prisma/schema.prisma, xem stage deps bên dưới). Ép IPv4 luôn,
+# chỉ ảnh hưởng lúc build — stage runtime tách riêng, không kế thừa ENV này.
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
 
 FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./

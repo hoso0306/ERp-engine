@@ -4,6 +4,9 @@
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
 WORKDIR /repo
+# Cùng lý do apps/api/Dockerfile — VPS thiếu route IPv6, ép IPv4 để tránh
+# pnpm install chậm bất thường/ECONNRESET khi cache layer deps bị invalidate.
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
 
 FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
