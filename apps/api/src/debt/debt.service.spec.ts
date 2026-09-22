@@ -950,11 +950,49 @@ describe('DebtService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('rejects khi amount vượt quá remainingAmount', async () => {
-      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+    it('rejects khi remainingAmount đã về 0', async () => {
+      prisma.receivable.findUnique.mockResolvedValue(
+        makeReceivable({ remainingAmount: 0 }),
+      );
       await expect(
         service.manualAdjustment('rec-1', { amount: 500000, reason: 'test' }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('cap về remainingAmount khi amount vượt quá (không throw)', async () => {
+      // remainingAmount mặc định 300000 < amount yêu cầu 500000 — chỉ giảm
+      // được 300000, phần dư 200000 để FE tự cảnh báo (rà soát nghiệp vụ
+      // Return có giảm thêm cấp đơn, 22/09/2026).
+      prisma.receivable.findUnique.mockResolvedValue(makeReceivable());
+      prisma.receivable.update.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 700000,
+        paidAmount: 700000,
+        remainingAmount: 0,
+      });
+      prisma.receivable.findUniqueOrThrow.mockResolvedValue({
+        id: 'rec-1',
+        totalAmount: 700000,
+      });
+
+      const result = await service.manualAdjustment('rec-1', {
+        amount: 500000,
+        reason: 'test',
+      });
+
+      expect(prisma.receivable.update).toHaveBeenCalledWith({
+        where: { id: 'rec-1' },
+        data: {
+          totalAmount: { decrement: 300000 },
+          remainingAmount: { decrement: 300000 },
+        },
+      });
+      expect(prisma.debtAdjustment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ amount: 300000 }) }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ appliedAmount: 300000, requestedAmount: 500000 }),
+      );
     });
 
     it('giảm totalAmount/remainingAmount, ghi Timeline, KHÔNG tạo Payment', async () => {

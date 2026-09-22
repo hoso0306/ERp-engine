@@ -904,22 +904,31 @@ export class DebtService {
         'Không thể điều chỉnh công nợ của đơn hàng đã huỷ.',
       );
     }
-    if (dto.amount > Number(receivable.remainingAmount)) {
+    // Cap về đúng số còn phải thu thay vì chặn cứng (rà soát nghiệp vụ Return
+    // có giảm thêm cấp đơn, 22/09/2026) — companyBorneAmount của Return được
+    // tính từ đơn giá dòng, có thể vượt remainingAmount thực tế (đơn đã có
+    // giảm thêm cấp đơn không phân bổ xuống dòng, hoặc đơn đã PAID hết).
+    // Giảm tối đa những gì còn giảm được, phần dư (nếu có) do FE cảnh báo
+    // cho người dùng tự xử lý ngoài hệ thống — không tự "sáng tạo" giao dịch
+    // hoàn tiền (ngoài phạm vi CLAUDE.md mục 1: không tự ý suy đoán nghiệp vụ).
+    const remainingAmount = Number(receivable.remainingAmount);
+    if (remainingAmount <= 0) {
       throw new BadRequestException(
-        `Số tiền điều chỉnh không được vượt quá số còn phải thu (${receivable.remainingAmount}).`,
+        'Công nợ đơn hàng đã về 0, không còn gì để giảm trừ.',
       );
     }
+    const appliedAmount = Math.min(dto.amount, remainingAmount);
 
     const createdByName = await resolveActorName(this.prisma, userId);
     const oldTotalAmount = Number(receivable.totalAmount);
-    const oldRemainingAmount = Number(receivable.remainingAmount);
+    const oldRemainingAmount = remainingAmount;
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedReceivable = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.receivable.update({
         where: { id: receivableId },
         data: {
-          totalAmount: { decrement: dto.amount },
-          remainingAmount: { decrement: dto.amount },
+          totalAmount: { decrement: appliedAmount },
+          remainingAmount: { decrement: appliedAmount },
         },
       });
 
@@ -941,7 +950,8 @@ export class DebtService {
           action: SalesOrderTimelineAction.DEBT_MANUAL_ADJUSTED,
           actorType: SalesOrderTimelineActorType.USER,
           payload: {
-            amount: dto.amount,
+            amount: appliedAmount,
+            requestedAmount: dto.amount,
             reason: dto.reason.trim(),
             returnCode: dto.returnCode ?? null,
             returnId: dto.returnId ?? null,
@@ -985,7 +995,7 @@ export class DebtService {
           customerId: receivable.customerId,
           salesOrderId: receivable.salesOrder.id,
           returnId: dto.returnId ?? null,
-          amount: dto.amount,
+          amount: appliedAmount,
           reason: dto.reason.trim(),
           ownerId,
           ownerName,
@@ -999,6 +1009,11 @@ export class DebtService {
         include: RECEIVABLE_DETAIL_INCLUDE,
       });
     });
+
+    // appliedAmount/requestedAmount: cho FE biết có bị cap hay không (dto.amount
+    // > remainingAmount tại thời điểm giảm) để hiển thị cảnh báo đúng, không
+    // báo "Đã giảm công nợ" chung chung khi thực tế chỉ giảm được một phần.
+    return { ...updatedReceivable, appliedAmount, requestedAmount: dto.amount };
   }
 
   private debtAdjustmentDateRangeFilter(

@@ -67,13 +67,19 @@ export function ManualAdjustmentDialog({
     }
     setSaving(true);
     try {
-      await apiPost(`/receivables/${receivableId}/manual-adjustment`, {
-        amount: value,
-        reason: reason.trim(),
-        returnCode,
-        returnId,
-      });
-      toast.success("Đã giảm công nợ.");
+      const result = await apiPost<{ appliedAmount: number; requestedAmount: number }>(
+        `/receivables/${receivableId}/manual-adjustment`,
+        { amount: value, reason: reason.trim(), returnCode, returnId },
+      );
+      if (result.appliedAmount < result.requestedAmount) {
+        const shortfall = result.requestedAmount - result.appliedAmount;
+        toast.warning(
+          `Chỉ giảm được ${formatMoney(result.appliedAmount)} (công nợ đã về 0). Còn ${formatMoney(shortfall)} chưa xử lý được, cần xử lý ngoài hệ thống.`,
+          { duration: 10000 },
+        );
+      } else {
+        toast.success("Đã giảm công nợ.");
+      }
       onOpenChange(false);
       onSaved();
     } catch (err) {
