@@ -4,11 +4,21 @@
 #
 # Chạy: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 
+# Giới hạn log mỗi container (22/09/2026) — mặc định Docker (json-file) không
+# giới hạn dung lượng, log erp-nginx từng phình tới 441MB sau 2 tháng chạy
+# liên tục không restart. Xoay vòng tối đa 3 file × 10MB/service.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17-alpine
     container_name: erp-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -22,6 +32,7 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: erp-api
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
@@ -42,6 +53,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: erp-web
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - api
     expose:
@@ -51,6 +63,7 @@ services:
     image: nginx:alpine
     container_name: erp-nginx
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - api
       - web
