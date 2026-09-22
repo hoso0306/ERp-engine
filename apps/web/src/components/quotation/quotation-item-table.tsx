@@ -96,9 +96,16 @@ export function QuotationItemTable({ items, editable, onEdit, onDelete, onDuplic
   const hasIncompleteCost = costByItemId
     ? items.some((i) => costByItemId.get(i.id)?.costAvailable === false)
     : false;
-  // Tách ngược VAT (chốt 16/08/2026): totalAmount đã gồm VAT sẵn, trừ thêm
-  // totalVat để không tính VAT vào lợi nhuận.
-  const profit = totalAmount - totalVat - totalCost;
+  // Lợi nhuận (chốt 22/09/2026): trừ Giảm thêm rồi tách VAT MỘT LẦN trên Tổng
+  // thanh toán theo mức xuất hóa đơn thực tế (INVOICE_VAT_RATE, apps/api
+  // quotation-workflow.service.ts) — khác `totalVat` ở trên (tổng vatAmount
+  // lưu riêng từng dòng, chỉ dùng hiển thị cột "VAT", không đổi).
+  const INVOICE_VAT_RATE = 8;
+  const profitTaxableBase = totalAmount - discountAmount;
+  const profit =
+    profitTaxableBase -
+    Math.round((profitTaxableBase * INVOICE_VAT_RATE) / (100 + INVOICE_VAT_RATE)) -
+    totalCost;
   // Luôn = 9 (Sản phẩm..Chú thích) — không phụ thuộc editable, vì cột action
   // (nếu có) được thêm riêng qua {editable && <TableCell/>} ở cuối mỗi hàng,
   // không phải một phần của colSpan nhãn. Chỉ dùng khi showCost=true (giá trị

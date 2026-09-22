@@ -395,8 +395,10 @@ describe('QuotationWorkflowService.approve()', () => {
     const soData = tx.salesOrder.create.mock.calls[0][0].data;
     expect(soData.totalAmount).toBe(2_000_000);
     expect(soData.plannedCost).toBe(0);
-    // plannedProfit = totalAmount − plannedCost − discountAmount
-    expect(soData.plannedProfit).toBe(2_000_000 - 0 - 300_000);
+    // plannedProfit (chốt 22/09/2026): trừ discountAmount rồi tách VAT 1 lần
+    // theo INVOICE_VAT_RATE (8%) trên phần còn lại — taxableBase = 1.700.000,
+    // VAT = round(1.700.000×8/108) = 125.926.
+    expect(soData.plannedProfit).toBe(1_700_000 - 125_926 - 0);
   });
 
   // Phí vận chuyển (chốt 27/07/2026) — cộng vào grandTotal (không chịu VAT),
@@ -443,8 +445,9 @@ describe('QuotationWorkflowService.approve()', () => {
     expect(soData.shippingFee).toBe(150_000);
     // grandTotal = totalAmount + totalVatAmount - discountAmount + shippingFee
     expect(soData.grandTotal).toBe(2_000_000 + 0 - 0 + 150_000);
-    // plannedProfit = totalAmount − plannedCost − discountAmount (KHÔNG cộng shippingFee)
-    expect(soData.plannedProfit).toBe(2_000_000 - 0 - 0);
+    // plannedProfit (chốt 22/09/2026): không có Giảm thêm — taxableBase =
+    // 2.000.000, VAT = round(2.000.000×8/108) = 148.148. KHÔNG cộng shippingFee.
+    expect(soData.plannedProfit).toBe(2_000_000 - 148_148 - 0);
 
     const receivableData = tx.receivable.create.mock.calls[0][0].data;
     expect(receivableData.totalAmount).toBe(2_000_000 - 0 + 150_000);
@@ -1373,6 +1376,7 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
 
   it('getCostSummary(): tính đúng giá vốn/lợi nhuận từng dòng + tổng, đánh dấu costAvailable=false khi sản phẩm chưa có Material Requirement Version ACTIVE', async () => {
     prisma.quotation.findUnique.mockResolvedValue({
+      discountAmount: 0,
       items: [
         {
           id: 'item-1',
@@ -1425,18 +1429,22 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
     expect(item1.totalCost).toBe(250_000);
     expect(item1.costUnitPrice).toBe(125_000);
     expect(item1.totalSale).toBe(600_000);
-    // Tách ngược VAT (chốt 16/08/2026): profit = totalSale - vatAmount - totalCost.
-    expect(item1.profit).toBe(250_000);
+    // Lợi nhuận từng dòng (chốt 22/09/2026): tách VAT theo INVOICE_VAT_RATE
+    // (8%) trên totalSale của dòng đó — round(600.000×8/108) = 44.444.
+    expect(item1.profit).toBe(600_000 - 44_444 - 250_000);
 
     const item2 = result.items.find((i) => i.quotationItemId === 'item-2')!;
     expect(item2.costAvailable).toBe(false);
     expect(item2.totalCost).toBe(0);
-    expect(item2.profit).toBe(180_000);
+    // round(200.000×8/108) = 14.815.
+    expect(item2.profit).toBe(200_000 - 14_815 - 0);
 
+    // Tổng (chốt 22/09/2026): trừ discountAmount (=0 ở test này) rồi tách VAT
+    // MỘT LẦN trên toàn bộ taxableBase — round(800.000×8/108) = 59.259.
     expect(result.totals).toEqual({
       totalCost: 250_000,
       totalSale: 800_000,
-      profit: 430_000,
+      profit: 800_000 - 59_259 - 250_000,
     });
     expect(result.hasIncompleteData).toBe(true);
   });
@@ -1463,13 +1471,13 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
     prisma.quotation.findMany.mockResolvedValue([
       {
         id: 'q-1',
+        discountAmount: 0,
         items: [
           {
             id: 'item-1',
             productId: 'prod-1',
             quantity: 2,
             subtotal: 600_000,
-            vatAmount: 100_000,
             parameters: [],
           },
         ],
@@ -1497,8 +1505,11 @@ describe('QuotationWorkflowService — Giá vốn/Lợi nhuận (022)', () => {
     const result = await service.findAll({}, 'role-owner');
 
     expect((result.data[0] as { totalCost: number }).totalCost).toBe(250_000);
-    // Tách ngược VAT (chốt 16/08/2026): profit = subtotal - vatAmount - totalCost.
-    expect((result.data[0] as { profit: number }).profit).toBe(250_000);
+    // Lợi nhuận (chốt 22/09/2026): trừ discountAmount (=0) rồi tách VAT theo
+    // INVOICE_VAT_RATE (8%) — round(600.000×8/108) = 44.444.
+    expect((result.data[0] as { profit: number }).profit).toBe(
+      600_000 - 44_444 - 250_000,
+    );
   });
 });
 

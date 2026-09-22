@@ -78,6 +78,14 @@ const QUOTATION_INCLUDE = {
 
 @Injectable()
 export class QuotationWorkflowService {
+  // Mức VAT công ty thực tế luôn dùng khi xuất hóa đơn cho khách (chốt
+  // 22/09/2026) — ÁP DỤNG CHUNG cho toàn bộ Tổng thanh toán của 1 báo giá/đơn
+  // hàng, KHÔNG dùng mức vatRate lưu riêng từng dòng (mức đó chỉ có ý nghĩa
+  // lưu trữ nội bộ, phần mềm không xuất hóa đơn theo từng dòng). Chỉ dùng để
+  // TÍNH LỢI NHUẬN HIỂN THỊ — không đổi vatAmount/vatRate lưu trên dòng báo
+  // giá hay totalVatAmount lưu trên SalesOrder.
+  private readonly INVOICE_VAT_RATE = 8;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricingEngine: PricingEngineService,
@@ -224,7 +232,8 @@ export class QuotationWorkflowService {
 
       resultData = (
         data as Array<{
-          items: Array<{ id: string; subtotal: unknown; vatAmount: unknown }>;
+          discountAmount: unknown;
+          items: Array<{ id: string; subtotal: unknown }>;
         }>
       ).map((q) => {
         const totalCost = q.items.reduce(
@@ -232,10 +241,14 @@ export class QuotationWorkflowService {
           0,
         );
         const totalSale = q.items.reduce((s, i) => s + Number(i.subtotal), 0);
-        // Tách ngược VAT (chốt 16/08/2026): totalSale đã gồm VAT, phải trừ
-        // thêm để không tính VAT vào lợi nhuận.
-        const totalVat = q.items.reduce((s, i) => s + Number(i.vatAmount), 0);
-        return { ...q, totalCost, profit: totalSale - totalVat - totalCost };
+        // Lợi nhuận tính theo VAT xuất hóa đơn thực tế (chốt 22/09/2026): hóa
+        // đơn luôn xuất 1 mức INVOICE_VAT_RATE trên Tổng thanh toán (đã trừ
+        // Giảm thêm) — KHÔNG cộng vatAmount lưu riêng từng dòng (mức đó chỉ
+        // có ý nghĩa lưu trữ, không phản ánh hóa đơn thật).
+        const taxableBase = totalSale - Number(q.discountAmount);
+        const vatAmount = this.calcInvoiceVatAmount(taxableBase);
+        const profit = taxableBase - vatAmount - totalCost;
+        return { ...q, totalCost, profit };
       });
     }
 
@@ -264,6 +277,7 @@ export class QuotationWorkflowService {
     const quotation = await this.prisma.quotation.findUnique({
       where: { id },
       select: {
+        discountAmount: true,
         items: {
           select: {
             id: true,
@@ -277,7 +291,6 @@ export class QuotationWorkflowService {
             quantity: true,
             finalPrice: true,
             subtotal: true,
-            vatAmount: true,
             parameters: { select: { name: true, value: true } },
           },
           orderBy: { displayOrder: 'asc' },
@@ -302,11 +315,13 @@ export class QuotationWorkflowService {
 
     const items = quotation.items.map((item) => {
       const cost = costByItemId.get(item.id)!;
-      // Tách ngược VAT (chốt 16/08/2026): subtotal đã gồm VAT sẵn — totalSale
-      // hiển thị vẫn là subtotal (giá bán thực), nhưng profit phải trừ thêm
-      // vatAmount vì phần đó không phải doanh thu thực.
+      // Lợi nhuận từng dòng (chốt 22/09/2026): tách VAT theo mức xuất hóa đơn
+      // thực tế (INVOICE_VAT_RATE), không dùng vatAmount lưu riêng từng dòng
+      // — mức đó chỉ có ý nghĩa lưu trữ, không phản ánh hóa đơn thật. Dòng
+      // này CHƯA phân bổ Giảm thêm (Giảm thêm là khoản cấp toàn báo giá,
+      // không gắn với 1 dòng cụ thể) — xem `totals` bên dưới cho số đã trừ.
       const totalSale = Number(item.subtotal);
-      const vatAmount = Number(item.vatAmount);
+      const vatAmount = this.calcInvoiceVatAmount(totalSale);
       const profit = totalSale - vatAmount - cost.totalCost;
 
       return {
@@ -325,14 +340,18 @@ export class QuotationWorkflowService {
       };
     });
 
-    const totals = items.reduce(
-      (acc, i) => ({
-        totalCost: acc.totalCost + i.totalCost,
-        totalSale: acc.totalSale + i.totalSale,
-        profit: acc.profit + i.profit,
-      }),
-      { totalCost: 0, totalSale: 0, profit: 0 },
-    );
+    // Tổng lợi nhuận (chốt 22/09/2026): trừ đúng Giảm thêm rồi mới tách VAT
+    // MỘT LẦN trên Tổng thanh toán — khớp đúng số xuất hóa đơn thực tế, khác
+    // với việc cộng dồn profit từng dòng ở trên (dòng không có Giảm thêm).
+    const totalCost = items.reduce((s, i) => s + i.totalCost, 0);
+    const totalSale = items.reduce((s, i) => s + i.totalSale, 0);
+    const taxableBase = totalSale - Number(quotation.discountAmount);
+    const totalVatAmount = this.calcInvoiceVatAmount(taxableBase);
+    const totals = {
+      totalCost,
+      totalSale,
+      profit: taxableBase - totalVatAmount - totalCost,
+    };
 
     return {
       items,
@@ -1704,17 +1723,20 @@ export class QuotationWorkflowService {
         const plannedCost =
           itemComputations.reduce((s, c) => s + c.itemPlannedCost, 0) +
           materialItemComputations.reduce((s, c) => s + c.itemPlannedCost, 0);
-        // Trừ thêm discountAmount (Giảm thêm cấp toàn báo giá, chốt 18/07/2026 —
-        // Review Nghiệp vụ Tài chính, Finding #1): grandTotal (Receivable) đã trừ
-        // đúng, plannedProfit trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi
-        // phồng đúng bằng số tiền Giảm thêm.
-        // Trừ thêm totalVatAmount (chốt 16/08/2026): totalAmount đã gồm VAT nên
-        // phần VAT không phải doanh thu thực — phải tách ra khỏi lợi nhuận.
+        // Lợi nhuận kế hoạch (chốt 22/09/2026): trừ đúng Giảm thêm rồi mới
+        // tách VAT MỘT LẦN trên Tổng thanh toán theo mức xuất hóa đơn thực tế
+        // (INVOICE_VAT_RATE) — khác `totalVatAmount` ở trên (tổng vatAmount
+        // lưu riêng từng dòng, dùng cho grandTotal/lưu trên SalesOrder, không
+        // đổi). Trừ Giảm thêm (chốt 18/07/2026 — Review Nghiệp vụ Tài chính,
+        // Finding #1): grandTotal (Receivable) đã trừ đúng, plannedProfit
+        // trước đây bị bỏ sót → lợi nhuận kế hoạch bị thổi phồng đúng bằng số
+        // tiền Giảm thêm.
+        const profitTaxableBase =
+          totalAmount - Number(quotation.discountAmount);
         const plannedProfit =
-          totalAmount -
-          totalVatAmount -
-          plannedCost -
-          Number(quotation.discountAmount);
+          profitTaxableBase -
+          this.calcInvoiceVatAmount(profitTaxableBase) -
+          plannedCost;
         // Dòng MATERIAL không sinh Production Order — chỉ đếm xưởng của dòng PRODUCT.
         const totalProductionOrders = new Set(
           itemComputations.map((c) => c.item.product!.productionCenterId),
@@ -2069,6 +2091,12 @@ export class QuotationWorkflowService {
   // cáo/quyết toán thuế.
   private calcVatAmount(subtotal: number, vatRate: number): number {
     return Math.round((subtotal * vatRate) / (100 + vatRate));
+  }
+
+  // Tách VAT theo mức xuất hóa đơn thực tế (INVOICE_VAT_RATE) — dùng riêng
+  // cho tính Lợi nhuận hiển thị, xem comment ở khai báo INVOICE_VAT_RATE.
+  private calcInvoiceVatAmount(taxableBase: number): number {
+    return this.calcVatAmount(taxableBase, this.INVOICE_VAT_RATE);
   }
 
   // 022-gia-von-loi-nhuan-bao-gia.md — Giá vốn ƯỚC TÍNH (không phải snapshot)
