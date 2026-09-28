@@ -22,6 +22,12 @@ FROM deps AS build
 # --build-arg, không thể chỉ set ENV lúc chạy container như biến server thường.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Thiếu biến thì build vẫn "thành công" nhưng mọi URL API thành tương đối —
+# hỏng ngầm (sự cố 28/09/2026). Chặn ngay tại đây, container cũ vẫn chạy.
+RUN if [ -z "$NEXT_PUBLIC_API_URL" ]; then \
+      echo "LỖI: NEXT_PUBLIC_API_URL rỗng — build production phải truyền --env-file .env.production (hoặc dùng scripts/deploy/deploy.sh)." >&2; \
+      exit 1; \
+    fi
 COPY apps/web apps/web
 RUN pnpm --filter web build
 

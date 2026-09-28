@@ -54,6 +54,10 @@ services:
     container_name: erp-web
     restart: unless-stopped
     logging: *default-logging
+    environment:
+      # Fetch phía server (logo trang đăng nhập) gọi thẳng container api qua
+      # mạng nội bộ — đọc lúc chạy, không phụ thuộc NEXT_PUBLIC_API_URL lúc build.
+      API_INTERNAL_URL: http://api:3001
     depends_on:
       - api
     expose:

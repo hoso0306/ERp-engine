@@ -60,8 +60,10 @@ ERP Engine dùng port **3000 / 3001 / 5432**, cả 3 đều qua Docker (containe
 | IP | `14.225.211.11` |
 | User | `root` |
 | Thư mục project | `/opt/erp` |
-| Deploy | `docker compose -f docker-compose.prod.yml up -d --build` |
+| Deploy | `./scripts/deploy/deploy.sh` (backup thủ công trước — xem "Backup & Restore") |
 | Postgres version | `postgres:17-alpine` — khớp với local |
+
+> **Cảnh báo:** không chạy `docker compose -f docker-compose.prod.yml ... build`/`up --build` mà thiếu `--env-file .env.production` (VPS không có file `.env`). `NEXT_PUBLIC_API_URL` được nhúng vào web lúc build — thiếu biến thì web build xong nhưng dùng URL API tương đối, hỏng ngầm (sự cố 28/09/2026: trang đăng nhập mất logo). `apps/web/Dockerfile` giờ chặn build khi biến này rỗng. Luôn deploy bằng `deploy.sh`.
 
 Containers production: `erp-postgres`, `erp-api`, `erp-web`, `erp-nginx` (reverse proxy, expose port 80/443 ra ngoài — 3 container còn lại không map port ra host).
 
@@ -156,6 +158,6 @@ cd ~/Workspace/Projects/ERP-engine && docker compose up -d   # bật lại Docke
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-| Phiên bản | 2.1 |
+| Phiên bản | 2.2 |
 | Trạng thái | Draft |
-| Cập nhật | 14/09/2026 — thêm backup off-site Google Drive (rclone) + backup `.env.production`/SSL cert, hướng dẫn restore VPS mới |
+| Cập nhật | 28/09/2026 — deploy chỉ qua `deploy.sh`, cảnh báo build thiếu `--env-file` (sự cố mất logo đăng nhập). 14/09/2026 — thêm backup off-site Google Drive (rclone) + backup `.env.production`/SSL cert, hướng dẫn restore VPS mới |
