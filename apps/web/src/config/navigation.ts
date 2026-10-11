@@ -15,6 +15,7 @@ import {
   Tag,
   Building2,
   UserCircle,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 import { ALL_REPORT_PERMISSIONS } from "./report-permissions";
@@ -96,6 +97,9 @@ export const navigation: NavGroup[] = [
       // (kể cả role không có settings.view như SALES — họ không thấy được
       // "Cài đặt" ở trên nhưng vẫn phải thấy trang cá nhân của chính họ).
       { title: "Tài khoản của tôi", href: "/settings/me", icon: UserCircle },
+      // Hướng dẫn & cập nhật (030) — ai đăng nhập cũng thấy; từng bài/dòng
+      // bên trong tự ẩn theo quyền (content/help/).
+      { title: "Hướng dẫn & cập nhật", href: "/help", icon: LifeBuoy },
     ],
   },
 ];

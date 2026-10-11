@@ -269,6 +269,21 @@ Không tạo thư mục ngoài quy hoạch nếu chưa được thống nhất.
 
 ---
 
+# Hướng dẫn & cập nhật cho người dùng (030, 12/10/2026)
+
+Phần mềm có mục "Hướng dẫn & cập nhật" (`/help`). Nội dung là dữ liệu tĩnh ở `apps/web/src/content/help/`:
+
+* `changelog.ts` — nhật ký cập nhật, mới nhất ở đầu mảng.
+* `articles/*.ts` — bài hướng dẫn theo công việc.
+
+Quy ước: **mọi tính năng người dùng nhìn thấy** phải cập nhật trong **cùng commit**:
+
+* Thêm 1 mục vào `changelog.ts` (đợt deploy đó).
+* Sửa / thêm bài hướng dẫn liên quan (viết theo tên nút thật trên giao diện).
+* Gắn `requiredAnyPermission` để người không có quyền dùng tính năng không thấy mục/bài đó.
+
+---
+
 # Phiên bản
 
 | Thuộc tính | Giá trị    |
