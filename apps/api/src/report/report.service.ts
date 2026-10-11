@@ -197,6 +197,30 @@ export class ReportService {
     return this.salesOrderService.getRevenueByProduct(range.from, range.to);
   }
 
+  // Nhóm Sản xuất — Doanh thu theo xưởng (sprint-04/028). GROSS (SUM
+  // SalesOrderItem.subtotal theo productionCenterId snapshot), chưa trừ hàng
+  // hoàn — cùng lý do B2/B4. Dùng chung method với khối Dashboard 1d.
+  getRevenueByProductionCenter(range: ReportRange) {
+    return this.salesOrderService.getRevenueByProductionCenter(
+      range.from,
+      range.to,
+    );
+  }
+
+  // Chi tiết 1 xưởng — chuỗi doanh thu theo kỳ (cùng nguồn gross ở trên).
+  getProductionCenterRevenue(
+    productionCenterId: string,
+    range: ReportRange,
+    groupBy: ReportGroupBy = 'day',
+  ) {
+    return this.salesOrderService.getProductionCenterRevenueSeries(
+      productionCenterId,
+      range.from,
+      range.to,
+      groupBy,
+    );
+  }
+
   // B3 — KHÔNG phải method mới: gọi lại A1/A2/A3 với groupBy tuần/tháng/năm,
   // gộp 3 kết quả. % tăng trưởng tính runtime từ chính chuỗi đã trả về.
   async getGrowth(

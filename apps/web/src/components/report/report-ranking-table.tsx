@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export interface RankingRow {
@@ -6,6 +7,8 @@ export interface RankingRow {
   sublabel?: string;
   value: number;
   percent: number;
+  // Drill-down sang trang chi tiết (vd Doanh thu theo xưởng) — optional.
+  href?: string;
 }
 
 interface ReportRankingTableProps {
@@ -35,7 +38,15 @@ export function ReportRankingTable({ rows, labelHeader, valueHeader, formatValue
             <TableRow key={row.id}>
               <TableCell className="text-center text-sm text-muted-foreground">{index + 1}</TableCell>
               <TableCell>
-                <div className="text-sm font-medium">{row.label}</div>
+                <div className="text-sm font-medium">
+                  {row.href ? (
+                    <Link href={row.href} className="text-primary hover:underline">
+                      {row.label}
+                    </Link>
+                  ) : (
+                    row.label
+                  )}
+                </div>
                 {row.sublabel && <div className="text-xs text-muted-foreground">{row.sublabel}</div>}
                 <div className="mt-1.5 h-1.5 w-full max-w-40 rounded-full bg-muted">
                   <div

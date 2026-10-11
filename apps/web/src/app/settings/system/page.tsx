@@ -11,6 +11,7 @@ import { apiGet } from "@/lib/api";
 // hạn danh sách module hiển thị (danh sách module luôn lấy động từ GET /settings).
 const MODULE_LABEL: Record<string, string> = {
   Dashboard: "Dashboard",
+  Customer: "Khách hàng",
   Notification: "Thông báo",
   Document: "Tài liệu in ấn",
   Security: "Bảo mật",

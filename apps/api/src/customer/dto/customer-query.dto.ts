@@ -3,6 +3,7 @@ export class CustomerQueryDto {
   customerGroupId?: string;
   deliveryRouteId?: string;
   status?: string;
+  priority?: string;
   page?: string;
   limit?: string;
 }

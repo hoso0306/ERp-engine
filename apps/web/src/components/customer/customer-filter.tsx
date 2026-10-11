@@ -24,6 +24,8 @@ interface CustomerFilterProps {
   routes: FilterOption[];
   selectedRouteId: string;
   onRouteChange: (value: string | null) => void;
+  selectedPriority: string;
+  onPriorityChange: (value: string | null) => void;
 }
 
 export function CustomerFilter({
@@ -35,6 +37,8 @@ export function CustomerFilter({
   routes,
   selectedRouteId,
   onRouteChange,
+  selectedPriority,
+  onPriorityChange,
 }: CustomerFilterProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -73,6 +77,18 @@ export function CustomerFilter({
               {r.name}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={selectedPriority} onValueChange={onPriorityChange}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Mức độ ưu tiên" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Tất cả mức ưu tiên</SelectItem>
+          <SelectItem value="HIGH">Cao</SelectItem>
+          <SelectItem value="MEDIUM">Trung bình</SelectItem>
+          <SelectItem value="LOW">Thấp</SelectItem>
         </SelectContent>
       </Select>
     </div>

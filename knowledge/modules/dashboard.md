@@ -165,6 +165,26 @@ Riêng biểu đồ cột so sánh nhân viên đặt trên cùng trang (`Employ
 
 ---
 
+## 1d. Doanh số theo xưởng (sprint-04/028, 11/10/2026 — khối mới)
+
+Nguồn dữ liệu: `SalesOrderService.getRevenueByProductionCenter(from, to)`.
+
+Đặt ngay dưới khối 1b, **1 card riêng, bộ lọc riêng** mặc định "Tháng này" (cùng cơ chế 1b, `shared/date-range-filter.tsx`).
+
+Mỗi dòng: xưởng, số đơn (distinct `SalesOrder`), doanh số = `SUM(SalesOrderItem.subtotal)` GROUP BY `SalesOrderItem.productionCenterId` (snapshot tại Approve — không join ngược `ProductionCenter`), tỷ trọng %. Lọc `SalesOrder.createdAt` trong khoảng, loại `CANCELLED` (`reportRangeWhere()`).
+
+- **GROSS — không trừ hàng hoàn** (khác 1b): chưa có quy tắc phân bổ giá trị hoàn theo dòng/xưởng, cùng lý do B2/B4 ở `report.md`. UI ghi rõ "chưa trừ hoàn".
+- Hiện **mọi xưởng có phát sinh doanh số**, không hard-code danh sách.
+- Dòng bán lẻ vật tư (`productionCenterId = null`) giữ thành 1 dòng "Bán lẻ vật tư" → tổng các dòng = `SUM(SalesOrder.totalAmount)` gross trong khoảng (vì `totalAmount = SUM(subtotal)`).
+- 1 đơn có dòng ở nhiều xưởng được đếm ở mỗi xưởng → tổng cột "Số đơn" có thể lớn hơn số đơn thực.
+
+Bấm tên xưởng → báo cáo chi tiết xưởng `/reports/production-centers/[id]` (`report.md` E1 — quyền `report.view`; người thiếu quyền này bấm vào sẽ không xem được, đã chấp nhận).
+
+Permission: `sales-order.view-cost`. Endpoint: `GET /dashboard/sales/by-production-center?from=&to=` (bắt buộc `from`/`to`).
+
+
+---
+
 ## 2. Production Overview
 
 Nguồn dữ liệu: `ProductionOrderService`.

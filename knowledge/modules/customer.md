@@ -204,8 +204,22 @@ Customer       1 ── N  Order     (module sau)
 * Tìm kiếm theo số điện thoại
 * Lọc theo nhóm khách hàng
 * Lọc theo tuyến giao hàng
+* Lọc theo mức độ ưu tiên (Cao / Trung bình / Thấp — 11/10/2026; áp dụng cả cho Export Excel)
 * Phân trang
 * Sắp xếp
+
+## Khách cần nhắc (sprint-04/028, 11/10/2026)
+
+Tab riêng ở trang Khách hàng — danh sách khách lâu không mua để sale chủ động liên hệ. **Chỉ đọc, V1 không ghi nhận "đã liên hệ".**
+
+- Ngưỡng số ngày theo **Mức độ ưu tiên** của khách: `Settings.Customer.reminderDaysHigh/Medium/Low` (mặc định 30/60/90 — xem `setting.md`).
+- Mốc = ngày mua gần nhất (`MAX(SalesOrder.createdAt)`, loại `CANCELLED`, qua `SalesOrderService.getOrderStatsByCustomer()`). Khách **chưa từng mua** lấy mốc = ngày tạo khách (hiển thị "Chưa mua", doanh số 0).
+- Nhắc khi `số ngày không mua ≥ ngưỡng`. Số ngày không mua / quá ngưỡng là Derived Data tính runtime, không lưu.
+- Loại khách `INACTIVE` và khách đã xoá mềm.
+- Sắp xếp: ưu tiên Cao → Trung bình → Thấp, rồi số ngày quá ngưỡng giảm dần. Lọc được theo mức ưu tiên.
+- Không phân theo người phụ trách: `saleId` chưa dùng ở UI, mọi người có `customer.view` thấy toàn bộ.
+
+Endpoint: `GET /customers/reminders?priority=` (`customer.view`).
 
 ## Thêm
 

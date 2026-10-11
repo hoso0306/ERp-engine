@@ -12,13 +12,26 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CreateCustomerProductDiscountDto } from './dto/create-customer-product-discount.dto';
 import { UpdateCustomerProductDiscountDto } from './dto/update-customer-product-discount.dto';
-import { Prisma, SalesOrderStatus } from '@prisma/client';
+import { Prisma, Priority, SalesOrderStatus } from '@prisma/client';
 import { OpeningBalanceService } from '../debt/opening-balance.service';
 import { retryOnCodeConflict } from '../shared/retry-on-code-conflict';
 import { findMatchingIds, unaccentLike } from '../shared/unaccent-search';
+import { SalesOrderService } from '../sales-order/sales-order.service';
+import { SettingService } from '../setting/setting.service';
 
 const PRIORITY_VALUES = ['LOW', 'MEDIUM', 'HIGH'];
 const STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+// Nhắc khách lâu không mua (sprint-04/028) — Setting key theo Priority,
+// thứ tự sắp xếp HIGH → MEDIUM → LOW.
+const REMINDER_SETTING_KEY: Record<string, string> = {
+  HIGH: 'reminderDaysHigh',
+  MEDIUM: 'reminderDaysMedium',
+  LOW: 'reminderDaysLow',
+};
+const PRIORITY_RANK: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
 // Mặc định cho khách hàng mới khi không chọn/không điền (chốt 27/07/2026) —
 // chỉ áp dụng lúc TẠO MỚI (form UI + API + dòng mới trong Excel import),
@@ -32,6 +45,8 @@ export class CustomerService {
     private readonly prisma: PrismaService,
     private readonly excel: ExcelService,
     private readonly openingBalanceService: OpeningBalanceService,
+    private readonly salesOrderService: SalesOrderService,
+    private readonly settingService: SettingService,
   ) {}
 
   // Tìm không phân biệt dấu tiếng Việt (vd "hoang" khớp "Hoàng") — giữ
@@ -68,6 +83,11 @@ export class CustomerService {
 
     if (query.status === 'ACTIVE' || query.status === 'INACTIVE') {
       where.status = query.status;
+    }
+
+    // Lọc theo Mức độ ưu tiên (11/10/2026) — giá trị sai bỏ qua, cùng cách status.
+    if (query.priority && PRIORITY_VALUES.includes(query.priority)) {
+      where.priority = query.priority as Priority;
     }
 
     const [data, total] = await Promise.all([
@@ -305,6 +325,86 @@ export class CustomerService {
     });
   }
 
+  // Nhắc khách lâu không mua (sprint-04/028) — chỉ đọc, không lưu gì.
+  // Ngưỡng theo Customer.priority (Settings.Customer.reminderDays*). Mốc =
+  // ngày mua gần nhất (đơn không CANCELLED, qua SalesOrderService — Module
+  // Ownership); khách chưa mua lần nào lấy mốc = ngày tạo khách. Số ngày
+  // không mua / quá ngưỡng là Derived Data tính runtime (Nguyên tắc 13).
+  // Loại khách INACTIVE (đã chủ động ngừng) và khách đã xoá mềm.
+  async getReminders(priority?: string) {
+    if (priority && !PRIORITY_VALUES.includes(priority)) {
+      throw new BadRequestException('Mức độ ưu tiên không hợp lệ.');
+    }
+
+    const [thresholdEntries, customers, stats] = await Promise.all([
+      Promise.all(
+        Object.entries(REMINDER_SETTING_KEY).map(
+          async ([p, key]) =>
+            [
+              p,
+              await this.settingService.getNumberValue('Customer', key),
+            ] as const,
+        ),
+      ),
+      this.prisma.customer.findMany({
+        where: {
+          deletedAt: null,
+          status: 'ACTIVE',
+          ...(priority ? { priority: priority as Priority } : {}),
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          phone: true,
+          companyName: true,
+          priority: true,
+          createdAt: true,
+        },
+      }),
+      this.salesOrderService.getOrderStatsByCustomer(),
+    ]);
+
+    const thresholds = Object.fromEntries(thresholdEntries) as Record<
+      string,
+      number
+    >;
+    const statsByCustomer = new Map(stats.map((s) => [s.customerId, s]));
+    const now = Date.now();
+
+    const rows = customers
+      .map((c) => {
+        const stat = statsByCustomer.get(c.id);
+        const since = stat?.lastOrderAt ?? c.createdAt;
+        const daysSinceLastOrder = Math.floor(
+          (now - since.getTime()) / MS_PER_DAY,
+        );
+        const thresholdDays = thresholds[c.priority];
+        return {
+          customerId: c.id,
+          code: c.code,
+          name: c.name,
+          phone: c.phone,
+          companyName: c.companyName,
+          priority: c.priority,
+          lastOrderAt: stat?.lastOrderAt ?? null,
+          orderCount: stat?.orderCount ?? 0,
+          totalRevenue: stat?.totalRevenue ?? 0,
+          daysSinceLastOrder,
+          thresholdDays,
+          overdueDays: daysSinceLastOrder - thresholdDays,
+        };
+      })
+      .filter((r) => r.overdueDays >= 0)
+      .sort(
+        (a, b) =>
+          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+          b.overdueDays - a.overdueDays,
+      );
+
+    return { thresholds, customers: rows };
+  }
+
   async findDeleted(query: CustomerQueryDto) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '10', 10)));
@@ -368,6 +468,8 @@ export class CustomerService {
     if (query.deliveryRouteId) where.deliveryRouteId = query.deliveryRouteId;
     if (query.status === 'ACTIVE' || query.status === 'INACTIVE')
       where.status = query.status;
+    if (query.priority && PRIORITY_VALUES.includes(query.priority))
+      where.priority = query.priority as Priority;
 
     const customers = await this.prisma.customer.findMany({
       where,

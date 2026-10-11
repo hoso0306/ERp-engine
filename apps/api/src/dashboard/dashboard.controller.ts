@@ -135,6 +135,26 @@ export class DashboardController {
     );
   }
 
+  // Khối "Doanh số theo xưởng" (sprint-04/028) — cùng cơ chế với
+  // sales/by-employee: bắt buộc from/to, gate sales-order.view-cost.
+  @Get('sales/by-production-center')
+  @RequirePermission('dashboard.view')
+  async getSalesByProductionCenter(
+    @Query() query: DashboardOverviewQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const allowed = await this.permissionKeys(req);
+    if (!allowed.has('sales-order.view-cost')) return null;
+    const range = this.parseRange(query);
+    if (!range?.from || !range?.to) {
+      throw new BadRequestException('from và to là bắt buộc.');
+    }
+    return this.dashboardService.getProductionCenterRevenueDashboard(
+      range.from,
+      range.to,
+    );
+  }
+
   // Trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026) — CỐ Ý không
   // gắn @RequirePermission: chỉ trả số của CHÍNH người gọi (userId lấy từ
   // JWT, không nhận từ query), nên không cần sales-order.view-cost/debt.view

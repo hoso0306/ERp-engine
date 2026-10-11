@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/shared";
 import { SalesOverviewPanel } from "@/components/dashboard/sales-overview-panel";
 import { EmployeeRevenuePanel } from "@/components/dashboard/employee-revenue-panel";
+import { ProductionCenterRevenuePanel } from "@/components/dashboard/production-center-revenue-panel";
 import { ProductionOverviewPanel } from "@/components/dashboard/production-overview-panel";
 import { DebtOverviewPanel } from "@/components/dashboard/debt-overview-panel";
 import { ReturnOverviewPanel } from "@/components/dashboard/return-overview-panel";
@@ -19,6 +20,8 @@ import { TodaySummaryBar } from "@/components/dashboard/today-summary-bar";
 // Doanh số theo nhân viên (rà soát nghiệp vụ Return, 27/08/2026) — khối mới
 // đặt ngay dưới Kinh doanh, filter riêng mặc định "Tháng này" (khác "Hôm
 // nay" của khối Kinh doanh).
+// Doanh số theo xưởng (sprint-04/028) — đặt ngay dưới Doanh số theo nhân
+// viên, cùng cơ chế filter riêng mặc định "Tháng này".
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
@@ -32,6 +35,7 @@ export default function DashboardPage() {
         <AlertsPanel />
         <SalesOverviewPanel />
         <EmployeeRevenuePanel />
+        <ProductionCenterRevenuePanel />
         <ProductionOverviewPanel />
         <DebtOverviewPanel />
         <ReturnOverviewPanel />

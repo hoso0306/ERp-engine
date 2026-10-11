@@ -309,6 +309,12 @@ async function main() {
     { module: 'Dashboard', key: 'quotationPendingDays', value: '7', defaultValue: '7', valueType: 'NUMBER', description: 'Số ngày báo giá đã gửi khách mà chưa có phản hồi thì cảnh báo trên Dashboard' },
     { module: 'Dashboard', key: 'productionOrderSlaDays', value: '2', defaultValue: '2', valueType: 'NUMBER', description: 'Số ngày SLA sản xuất — phiếu SX quá hạn này kể từ lúc sinh phiếu mà chưa hoàn thành thì cảnh báo trên Dashboard' },
 
+    // Nhắc khách lâu không mua (sprint-04/028) — ngưỡng số ngày theo
+    // Customer.priority. Prod nhận qua migration 20261011000000_customer_reminder_settings.
+    { module: 'Customer', key: 'reminderDaysHigh', value: '30', defaultValue: '30', valueType: 'NUMBER', description: 'Nhắc khách ưu tiên Cao khi không mua hàng quá số ngày này' },
+    { module: 'Customer', key: 'reminderDaysMedium', value: '60', defaultValue: '60', valueType: 'NUMBER', description: 'Nhắc khách ưu tiên Trung bình khi không mua hàng quá số ngày này' },
+    { module: 'Customer', key: 'reminderDaysLow', value: '90', defaultValue: '90', valueType: 'NUMBER', description: 'Nhắc khách ưu tiên Thấp khi không mua hàng quá số ngày này' },
+
     // Notification Settings (V1 chỉ bật/tắt, chưa gửi thật)
     { module: 'Notification', key: 'notifyOverdueDebt', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo công nợ quá hạn' },
     { module: 'Notification', key: 'notifyCreditLimitExceeded', value: 'true', defaultValue: 'true', valueType: 'BOOLEAN', description: 'Cảnh báo khách vượt hạn mức công nợ' },

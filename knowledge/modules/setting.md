@@ -149,6 +149,18 @@ productionOrderSlaDays
 
 Dashboard chỉ đọc các giá trị này, không lưu dữ liệu Dashboard.
 
+## 3b. Customer Settings (sprint-04/028, 11/10/2026)
+
+Ngưỡng nhắc khách lâu không mua, theo `Customer.priority`:
+
+```text
+reminderDaysHigh     (mặc định 30)
+reminderDaysMedium   (mặc định 60)
+reminderDaysLow      (mặc định 90)
+```
+
+Chỉ `CustomerService.getReminders()` đọc (tab "Khách cần nhắc", xem `customer.md`). Seed ở `prisma/seed.ts` + data migration `20261011000000_customer_reminder_settings` (INSERT … ON CONFLICT DO NOTHING) để môi trường đã chạy seed trước đây vẫn có 3 dòng khi `migrate deploy`.
+
 ## 4. Notification Settings
 
 Bật/Tắt thông báo. V1 chỉ bật/tắt, chưa cấu hình kênh gửi (email/SMS/Zalo... xem "Future Policies").

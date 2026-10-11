@@ -151,6 +151,8 @@ Xưởng cầu vồng
 
 Một Product chỉ thuộc đúng một Production Center.
 
+Báo cáo doanh thu theo xưởng + danh sách phiếu sản xuất của từng xưởng: xem `report.md` Nhóm E (Sản xuất). Trang danh sách Xưởng sản xuất (`/production-centers`) chỉ quản lý Master Data, không link sang báo cáo.
+
 ---
 
 # Trạng thái Phiếu sản xuất

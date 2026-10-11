@@ -18,6 +18,7 @@ import {
   Banknote,
   Contact,
   type LucideIcon,
+  Factory,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 
@@ -65,6 +66,13 @@ const REPORT_GROUPS: ReportGroup[] = [
     label: "Vận hành",
     reports: [
       { title: "Hàng hoàn", description: "Số phiếu, giá trị hoàn, top lý do", href: "/reports/returns", icon: RotateCcw },
+    ],
+  },
+  {
+    // Nhóm Sản xuất (sprint-04/028).
+    label: "Sản xuất",
+    reports: [
+      { title: "Doanh thu theo xưởng", description: "Doanh thu từng xưởng, chi tiết theo thời gian", href: "/reports/production-centers", icon: Factory },
     ],
   },
   {

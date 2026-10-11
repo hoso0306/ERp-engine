@@ -116,6 +116,28 @@ export class ReportController {
     return this.reportService.getRevenueByCustomer(this.parseRange(query));
   }
 
+  // Nhóm Sản xuất — Doanh thu theo xưởng (sprint-04/028).
+  @Get('revenue-by-production-center')
+  @RequirePermission('report.view')
+  getRevenueByProductionCenter(@Query() query: ReportQueryDto) {
+    return this.reportService.getRevenueByProductionCenter(
+      this.parseRange(query),
+    );
+  }
+
+  @Get('revenue-by-production-center/:id')
+  @RequirePermission('report.view')
+  getProductionCenterRevenue(
+    @Param('id') id: string,
+    @Query() query: ReportQueryDto,
+  ) {
+    return this.reportService.getProductionCenterRevenue(
+      id,
+      this.parseRange(query),
+      this.parseGroupBy(query.groupBy),
+    );
+  }
+
   // D2
   @Get('returns')
   @RequirePermission('report.view')

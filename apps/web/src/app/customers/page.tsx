@@ -9,6 +9,7 @@ import { PageHeader, Loading, ErrorState, EmptyState } from "@/components/shared
 import { CustomerFilter } from "@/components/customer/customer-filter";
 import { CustomerTable } from "@/components/customer/customer-table";
 import { CustomerDeletedTable } from "@/components/customer/customer-deleted-table";
+import { CustomerReminderPanel } from "@/components/customer/customer-reminder-panel";
 import { CustomerImportDialog } from "@/components/customer/customer-import-dialog";
 import { apiGet, apiUrl } from "@/lib/api";
 import { downloadAuthenticatedFile } from "@/lib/download";
@@ -32,6 +33,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [groupId, setGroupId] = useState("all");
   const [routeId, setRouteId] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [page, setPage] = useState(1);
   // Số dòng/trang (Pagination dùng chung, chốt 20/08/2026) — mặc định giữ
   // nguyên 10 như trước.
@@ -56,6 +58,7 @@ export default function CustomersPage() {
       if (search) params.set("search", search);
       if (groupId !== "all") params.set("customerGroupId", groupId);
       if (routeId !== "all") params.set("deliveryRouteId", routeId);
+      if (priority !== "all") params.set("priority", priority);
       await downloadAuthenticatedFile(apiUrl(`/customers/export?${params}`), "khach-hang.xlsx");
     } catch {
       toast.error("Không thể xuất file.");
@@ -72,6 +75,7 @@ export default function CustomersPage() {
       if (search) params.set("search", search);
       if (groupId !== "all") params.set("customerGroupId", groupId);
       if (routeId !== "all") params.set("deliveryRouteId", routeId);
+      if (priority !== "all") params.set("priority", priority);
       params.set("page", String(page));
       params.set("limit", String(limit));
 
@@ -83,7 +87,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, groupId, routeId, page, limit]);
+  }, [search, groupId, routeId, priority, page, limit]);
 
   const fetchDeleted = useCallback(async () => {
     setDeletedLoading(true);
@@ -112,7 +116,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, groupId, routeId, limit]);
+  }, [search, groupId, routeId, priority, limit]);
 
   useEffect(() => {
     setDeletedPage(1);
@@ -168,6 +172,7 @@ export default function CustomersPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="all">Tất cả</TabsTrigger>
+          <TabsTrigger value="reminders">Khách cần nhắc</TabsTrigger>
           <TabsTrigger value="deleted">
             Đã xoá {deletedMeta.total > 0 && `(${deletedMeta.total})`}
           </TabsTrigger>
@@ -183,6 +188,8 @@ export default function CustomersPage() {
             routes={routes}
             selectedRouteId={routeId}
             onRouteChange={(v) => setRouteId(v ?? "all")}
+            selectedPriority={priority}
+            onPriorityChange={(v) => setPriority(v ?? "all")}
           />
 
           {loading && <Loading />}
@@ -193,6 +200,11 @@ export default function CustomersPage() {
           {!loading && !error && customers.length > 0 && (
             <CustomerTable customers={customers} meta={meta} onPageChange={setPage} onLimitChange={setLimit} />
           )}
+        </TabsContent>
+
+        {/* Nhắc khách lâu không mua (sprint-04/028) — panel tự fetch khi mount. */}
+        <TabsContent value="reminders" className="mt-4">
+          {tab === "reminders" && <CustomerReminderPanel />}
         </TabsContent>
 
         <TabsContent value="deleted" className="mt-4">

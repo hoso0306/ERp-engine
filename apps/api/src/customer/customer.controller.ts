@@ -41,6 +41,13 @@ export class CustomerController {
     return this.customerService.findDeleted(query);
   }
 
+  // Tab "Khách cần nhắc" (sprint-04/028) — route tĩnh, đăng ký trước ':id'.
+  @Get('reminders')
+  @RequirePermission('customer.view')
+  getReminders(@Query('priority') priority?: string) {
+    return this.customerService.getReminders(priority);
+  }
+
   @Get('groups')
   @RequirePermission('customer.view')
   findAllGroups() {

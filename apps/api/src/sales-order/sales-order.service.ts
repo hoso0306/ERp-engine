@@ -1207,6 +1207,110 @@ export class SalesOrderService {
     };
   }
 
+  // Doanh số theo xưởng (sprint-04/028) — group SalesOrderItem theo
+  // productionCenterId (Redundant Reference bất biến, snapshot tại Approve),
+  // hiển thị productionCenterName snapshot — không join ngược ProductionCenter.
+  // GROSS (SUM subtotal, không trừ hàng hoàn — chưa có quy tắc phân bổ giá
+  // trị hoàn theo dòng, cùng lý do B2/B4). Dòng bán lẻ vật tư
+  // (productionCenterId = null) giữ thành 1 nhóm riêng để tổng các xưởng
+  // khớp SUM(SalesOrder.totalAmount).
+  async getRevenueByProductionCenter(from: Date, to: Date) {
+    const rows = await this.prisma.salesOrderItem.findMany({
+      where: { salesOrder: this.reportRangeWhere(from, to) },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        salesOrderId: true,
+        productionCenterId: true,
+        productionCenterName: true,
+        subtotal: true,
+      },
+    });
+
+    type CenterAcc = {
+      productionCenterId: string | null;
+      productionCenterName: string | null;
+      revenue: number;
+      orderIds: Set<string>;
+    };
+    const byCenter = new Map<string | null, CenterAcc>();
+    let totalRevenue = 0;
+
+    for (const row of rows) {
+      const key = row.productionCenterId;
+      let acc = byCenter.get(key);
+      if (!acc) {
+        acc = {
+          productionCenterId: key,
+          productionCenterName: null,
+          revenue: 0,
+          orderIds: new Set(),
+        };
+        byCenter.set(key, acc);
+      }
+      // Nhãn hiển thị: snapshot mới nhất (rows sắp createdAt tăng dần).
+      acc.productionCenterName = row.productionCenterName;
+      acc.revenue += Number(row.subtotal);
+      acc.orderIds.add(row.salesOrderId);
+      totalRevenue += Number(row.subtotal);
+    }
+
+    return {
+      totalRevenue,
+      centers: Array.from(byCenter.values())
+        .map((c) => ({
+          productionCenterId: c.productionCenterId,
+          productionCenterName: c.productionCenterName,
+          orderCount: c.orderIds.size,
+          revenue: c.revenue,
+          revenuePercent:
+            totalRevenue > 0 ? (c.revenue / totalRevenue) * 100 : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  // Doanh số theo thời gian của 1 xưởng (sprint-04/028, trang chi tiết xưởng)
+  // — cùng nguồn/công thức getRevenueByProductionCenter() (gross), chuỗi theo
+  // kỳ cắt theo Settings.Company.timezone (buildSeries, giống A1).
+  async getProductionCenterRevenueSeries(
+    productionCenterId: string,
+    from: Date,
+    to: Date,
+    groupBy: ReportGroupBy = 'day',
+  ) {
+    const timezone = await this.getCompanyTimezone();
+    const rows = await this.prisma.salesOrderItem.findMany({
+      where: {
+        productionCenterId,
+        salesOrder: this.reportRangeWhere(from, to),
+      },
+      select: {
+        salesOrderId: true,
+        subtotal: true,
+        salesOrder: { select: { createdAt: true } },
+      },
+    });
+
+    const totalRevenue = rows.reduce((s, r) => s + Number(r.subtotal), 0);
+    const orderCount = new Set(rows.map((r) => r.salesOrderId)).size;
+
+    return {
+      totalRevenue,
+      orderCount,
+      series: buildSeries(
+        rows.map((r) => ({
+          date: r.salesOrder.createdAt,
+          values: { revenue: Number(r.subtotal) },
+        })),
+        from,
+        to,
+        timezone,
+        groupBy,
+        ['revenue'],
+      ),
+    };
+  }
+
   // B4 — group theo productTypeId/productTypeName snapshot + theo kỳ
   // (tuần/tháng/năm — page 026-tang-truong-nhom-sp cho chọn, mặc định tháng).
   async getGrowthByProductType(
@@ -1384,6 +1488,26 @@ export class SalesOrderService {
         }))
         .sort((a, b) => b.revenue - a.revenue),
     };
+  }
+
+  // Nhắc khách lâu không mua (sprint-04/028) — toàn thời gian (không theo
+  // kỳ), loại CANCELLED: ngày mua gần nhất = MAX(createdAt), tổng doanh số =
+  // SUM(totalAmount) gross. Khách chưa có đơn nào không xuất hiện ở đây —
+  // CustomerService tự xử lý (mốc = ngày tạo khách).
+  async getOrderStatsByCustomer() {
+    const grouped = await this.prisma.salesOrder.groupBy({
+      by: ['customerId'],
+      where: { status: { not: SalesOrderStatus.CANCELLED } },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+    return grouped.map((g) => ({
+      customerId: g.customerId,
+      orderCount: g._count._all,
+      totalRevenue: Number(g._sum.totalAmount ?? 0),
+      lastOrderAt: g._max.createdAt,
+    }));
   }
 
   // ─────────────────────────────────────────────────────

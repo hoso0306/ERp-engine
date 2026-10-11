@@ -196,6 +196,16 @@ SalesOrder.status != CANCELLED
 - **Nguồn:** `Return`/`ReturnItem`, lọc `returnDate` trong kỳ. Tái sử dụng các method đã có của `ReturnService` (`getTopReturnReasons()`, `getReturnsByCustomer()`...).
 - **Hiển thị:** số phiếu, số sản phẩm, giá trị hoàn theo giá bán (`returnedQuantity × unitPriceSnapshot`), top lý do, theo khách hàng — đúng ranh giới `return.md` (thống kê vận hành, không đụng tài chính).
 
+## Nhóm E — Sản xuất (sprint-04/028, 11/10/2026)
+
+### E1. Doanh thu theo xưởng
+
+- **Nguồn:** `SalesOrderItem.subtotal` GROUP BY `SalesOrderItem.productionCenterId` (snapshot tại Approve, hiển thị `productionCenterName` snapshot — không join ngược `ProductionCenter`), lọc `SalesOrder.createdAt` trong kỳ, loại `CANCELLED`. `SalesOrderService.getRevenueByProductionCenter()` — dùng chung với khối Dashboard 1d.
+- **GROSS — chưa trừ hàng hoàn**, cùng lý do B2/B4 (chưa có quy tắc phân bổ giá trị hoàn theo dòng/xưởng). UI ghi rõ nhãn.
+- **Hiển thị** (`/reports/production-centers`): bảng xếp hạng xưởng — số đơn (distinct), doanh thu, tỷ trọng. Dòng bán lẻ vật tư (`productionCenterId = null`) giữ thành 1 dòng "Bán lẻ vật tư" để tổng = SUM(totalAmount) gross. Bấm tên xưởng → chi tiết.
+- **Chi tiết 1 xưởng** (`/reports/production-centers/[id]`): chuỗi doanh thu theo Ngày/Tuần/Tháng/Năm (`getProductionCenterRevenueSeries()`, `buildSeries` theo timezone công ty) + biểu đồ; danh sách phiếu sản xuất của xưởng (tái dùng `GET /production-orders?productionCenterId=`, gate thêm `production.view`).
+- **API:** `GET /reports/revenue-by-production-center?from=&to=` và `GET /reports/revenue-by-production-center/:id?from=&to=&groupBy=` — quyền `report.view` như mọi báo cáo. Chưa có export Excel/PDF.
+
 ---
 
 # Xuất dữ liệu backup (chốt 28/07/2026)

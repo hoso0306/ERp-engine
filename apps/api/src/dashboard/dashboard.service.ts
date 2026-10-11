@@ -145,6 +145,13 @@ export class DashboardService {
       .sort((a, b) => b.revenue - a.revenue);
   }
 
+  // Khối "Doanh số theo xưởng" (sprint-04/028) — GROSS, không trừ hàng hoàn
+  // (khác khối theo nhân viên ở trên): chưa có quy tắc phân bổ giá trị hoàn
+  // theo dòng/xưởng. FE ghi rõ nhãn "chưa trừ hàng hoàn".
+  async getProductionCenterRevenueDashboard(from: Date, to: Date) {
+    return this.salesOrderService.getRevenueByProductionCenter(from, to);
+  }
+
   // Trang "Tài khoản của tôi" (rà soát nghiệp vụ 27/08/2026) — CHỈ số của
   // CHÍNH userId truyền vào (không nhận ownerId từ bên ngoài, Controller
   // luôn truyền đúng req.user.userId — không lộ số của người khác), nên

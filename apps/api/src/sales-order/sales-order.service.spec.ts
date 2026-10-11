@@ -478,3 +478,205 @@ describe('SalesOrderService.getDashboardSummary()', () => {
     );
   });
 });
+
+// sprint-04/028 — Doanh số theo xưởng + nhắc khách lâu không mua.
+describe('SalesOrderService — doanh số theo xưởng & thống kê theo khách', () => {
+  let service: SalesOrderService;
+  let prisma: {
+    salesOrderItem: { findMany: jest.Mock };
+    salesOrder: { groupBy: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      salesOrderItem: { findMany: jest.fn() },
+      salesOrder: { groupBy: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SalesOrderService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: SettingService,
+          useValue: {
+            getCompany: jest
+              .fn()
+              .mockResolvedValue({ timezone: 'Asia/Ho_Chi_Minh' }),
+          },
+        },
+        { provide: PermissionService, useValue: { hasPermission: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<SalesOrderService>(SalesOrderService);
+  });
+
+  describe('getRevenueByProductionCenter()', () => {
+    it('gom theo xưởng, đếm đơn distinct, giữ dòng bán lẻ (null) riêng, tổng khớp SUM subtotal', async () => {
+      prisma.salesOrderItem.findMany.mockResolvedValue([
+        {
+          salesOrderId: 'so-1',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'Xưởng A',
+          subtotal: 100,
+        },
+        {
+          salesOrderId: 'so-1',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'Xưởng A',
+          subtotal: 50,
+        },
+        {
+          salesOrderId: 'so-2',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'Xưởng A mới',
+          subtotal: 50,
+        },
+        {
+          salesOrderId: 'so-2',
+          productionCenterId: 'pc-b',
+          productionCenterName: 'Xưởng B',
+          subtotal: 300,
+        },
+        {
+          salesOrderId: 'so-3',
+          productionCenterId: null,
+          productionCenterName: null,
+          subtotal: 100,
+        },
+      ]);
+
+      const from = new Date('2026-10-01T00:00:00');
+      const to = new Date('2026-10-31T23:59:59.999');
+      const result = await service.getRevenueByProductionCenter(from, to);
+
+      expect(prisma.salesOrderItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            salesOrder: {
+              status: { not: 'CANCELLED' },
+              createdAt: { gte: from, lte: to },
+            },
+          },
+        }),
+      );
+      expect(result.totalRevenue).toBe(600);
+      expect(result.centers).toEqual([
+        {
+          productionCenterId: 'pc-b',
+          productionCenterName: 'Xưởng B',
+          orderCount: 1,
+          revenue: 300,
+          revenuePercent: 50,
+        },
+        // Nhãn = snapshot gặp sau cùng (rows sắp createdAt tăng dần).
+        {
+          productionCenterId: 'pc-a',
+          productionCenterName: 'Xưởng A mới',
+          orderCount: 2,
+          revenue: 200,
+          revenuePercent: (200 / 600) * 100,
+        },
+        {
+          productionCenterId: null,
+          productionCenterName: null,
+          orderCount: 1,
+          revenue: 100,
+          revenuePercent: (100 / 600) * 100,
+        },
+      ]);
+    });
+
+    it('không có dữ liệu -> tổng 0, danh sách rỗng', async () => {
+      prisma.salesOrderItem.findMany.mockResolvedValue([]);
+      const result = await service.getRevenueByProductionCenter(
+        new Date(),
+        new Date(),
+      );
+      expect(result).toEqual({ totalRevenue: 0, centers: [] });
+    });
+  });
+
+  describe('getProductionCenterRevenueSeries()', () => {
+    it('lọc đúng xưởng, cắt kỳ theo timezone công ty, đủ bucket trống', async () => {
+      prisma.salesOrderItem.findMany.mockResolvedValue([
+        // 23:30 ngày 01/10 giờ VN = 16:30Z — phải rơi vào ngày 01/10, không phải 02/10.
+        {
+          salesOrderId: 'so-1',
+          subtotal: 100,
+          salesOrder: { createdAt: new Date('2026-10-01T16:30:00Z') },
+        },
+        {
+          salesOrderId: 'so-1',
+          subtotal: 50,
+          salesOrder: { createdAt: new Date('2026-10-01T16:30:00Z') },
+        },
+        {
+          salesOrderId: 'so-2',
+          subtotal: 200,
+          salesOrder: { createdAt: new Date('2026-10-03T03:00:00Z') },
+        },
+      ]);
+
+      const from = new Date('2026-10-01T00:00:00+07:00');
+      const to = new Date('2026-10-03T23:59:59.999+07:00');
+      const result = await service.getProductionCenterRevenueSeries(
+        'pc-a',
+        from,
+        to,
+        'day',
+      );
+
+      expect(prisma.salesOrderItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            productionCenterId: 'pc-a',
+            salesOrder: {
+              status: { not: 'CANCELLED' },
+              createdAt: { gte: from, lte: to },
+            },
+          },
+        }),
+      );
+      expect(result.totalRevenue).toBe(350);
+      expect(result.orderCount).toBe(2);
+      expect(result.series).toEqual([
+        { period: '2026-10-01', revenue: 150 },
+        { period: '2026-10-02', revenue: 0 },
+        { period: '2026-10-03', revenue: 200 },
+      ]);
+    });
+  });
+
+  describe('getOrderStatsByCustomer()', () => {
+    it('group theo khách, loại CANCELLED, map ngày mua gần nhất + tổng doanh số', async () => {
+      const last = new Date('2026-09-01T00:00:00Z');
+      prisma.salesOrder.groupBy.mockResolvedValue([
+        {
+          customerId: 'c-1',
+          _sum: { totalAmount: 500 },
+          _count: { _all: 2 },
+          _max: { createdAt: last },
+        },
+      ]);
+
+      const result = await service.getOrderStatsByCustomer();
+
+      expect(prisma.salesOrder.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['customerId'],
+          where: { status: { not: 'CANCELLED' } },
+        }),
+      );
+      expect(result).toEqual([
+        {
+          customerId: 'c-1',
+          orderCount: 2,
+          totalRevenue: 500,
+          lastOrderAt: last,
+        },
+      ]);
+    });
+  });
+});
