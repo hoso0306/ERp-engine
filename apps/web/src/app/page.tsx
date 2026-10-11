@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { navigation } from "@/config/navigation";
+import { navigation, canSeeNavItem } from "@/config/navigation";
 import { useAuth } from "@/context/auth-context";
 import { EmptyState } from "@/components/shared";
 
@@ -11,9 +11,7 @@ export default function HomePage() {
   const groups = navigation
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) => !item.requiredPermission || hasPermission(item.requiredPermission),
-      ),
+      items: group.items.filter((item) => canSeeNavItem(item, hasPermission)),
     }))
     .filter((group) => group.items.length > 0);
 

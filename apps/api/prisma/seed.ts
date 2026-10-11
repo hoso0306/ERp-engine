@@ -11,6 +11,26 @@ const prisma = new PrismaClient({ adapter });
 // AuthService.setTemporaryPassword(), chỉ lặp lại đúng thuật toán của nó.
 const BCRYPT_SALT_ROUNDS = 10;
 
+// 16 thẻ ở trang /reports (029-phan-quyen-theo-tung-bao-cao.md).
+const REPORT_PERMISSION_ACTIONS = [
+  'revenue',
+  'cash-in',
+  'profit',
+  'debt',
+  'orders',
+  'revenue-by-product',
+  'growth',
+  'growth-by-product-type',
+  'revenue-by-employee',
+  'revenue-by-customer',
+  'returns',
+  'revenue-by-production-center',
+  'customers-list',
+  'orders-list',
+  'receivables-list',
+  'payments-list',
+];
+
 // Permission catalog (013-permission.md Task 00) — khớp knowledge/modules/permission.md.
 const PERMISSION_CATALOG: Record<string, string[]> = {
   customer: ['view', 'create', 'update', 'delete', 'export'],
@@ -61,9 +81,11 @@ const PERMISSION_CATALOG: Record<string, string[]> = {
   // Tách khỏi resource `production` (vốn chỉ có view/start/complete cho
   // ProductionOrder) — CRUD xưởng sản xuất là khái niệm khác.
   'production-center': ['view', 'create', 'update', 'delete'],
-  // Module Báo cáo (014-bao-cao.md Task 01) — một quyền duy nhất cho toàn
-  // module, không tách theo từng báo cáo ở V1 (report.md mục "Permission").
-  report: ['view'],
+  // Module Báo cáo — mỗi thẻ báo cáo một quyền (029-phan-quyen-theo-tung-
+  // bao-cao.md, thay cho `report.view` dùng chung trước đây). Action trùng
+  // đúng slug endpoint/reportName export (`GET /reports/:slug`,
+  // `/reports/:slug/export`) — xem report.md mục "Permission".
+  report: REPORT_PERMISSION_ACTIONS,
 };
 
 function keysForResource(resource: string): string[] {
@@ -74,8 +96,12 @@ function allKeys(): string[] {
   return Object.keys(PERMISSION_CATALOG).flatMap(keysForResource);
 }
 
+// Quyền "chỉ xem" của mọi resource. Resource `report` không có action
+// `view` (029) — mỗi thẻ báo cáo đều là quyền xem, nên lấy đủ cả 16.
 function viewKeys(): string[] {
-  return Object.keys(PERMISSION_CATALOG).map((resource) => `${resource}.view`);
+  return Object.keys(PERMISSION_CATALOG).flatMap((resource) =>
+    resource === 'report' ? keysForResource('report') : [`${resource}.view`],
+  );
 }
 
 // Default Roles + Role↔Permission mặc định (013-permission.md Task 00) — có
@@ -131,12 +157,13 @@ const DEFAULT_ROLES: { code: string; name: string; permissionKeys: string[] }[] 
   {
     code: 'ACCOUNTANT',
     name: 'Kế toán',
-    // report.view thêm tường minh (014-bao-cao.md Task 01) — ACCOUNTANT khai
-    // báo thủ công, không dùng viewKeys() như MANAGER/VIEWER.
+    // Quyền báo cáo thêm tường minh (014-bao-cao.md Task 01; tách theo
+    // từng thẻ ở 029) — ACCOUNTANT khai báo thủ công, không dùng viewKeys()
+    // như MANAGER/VIEWER.
     permissionKeys: [
       ...keysForResource('debt'),
       'settings.view',
-      'report.view',
+      ...keysForResource('report'),
       // Tự xuất đơn của mình (không có export-all) — kế toán bán hàng theo
       // dõi/báo cáo cá nhân đơn hàng do mình phụ trách.
       'sales-order.view',

@@ -72,6 +72,23 @@ const ACTION_LABELS: Record<string, string> = {
   deliver: "Khách nhận hàng",
   ship: "Gửi xe",
   receipt: "Nhập kho",
+  // Báo cáo — mỗi thẻ một quyền (029-phan-quyen-theo-tung-bao-cao.md).
+  revenue: "Doanh thu",
+  "cash-in": "Tiền mặt về",
+  profit: "Lợi nhuận kế hoạch",
+  debt: "Công nợ",
+  orders: "Đơn hàng",
+  "revenue-by-product": "Doanh thu theo sản phẩm",
+  growth: "Tốc độ phát triển",
+  "growth-by-product-type": "Tăng trưởng theo nhóm sản phẩm",
+  "revenue-by-employee": "Doanh thu theo nhân viên",
+  "revenue-by-customer": "Doanh thu theo khách hàng",
+  returns: "Hàng hoàn",
+  "revenue-by-production-center": "Doanh thu theo xưởng",
+  "customers-list": "Xuất DS khách hàng (backup)",
+  "orders-list": "Xuất DS đơn hàng (backup)",
+  "receivables-list": "Xuất DS công nợ (backup)",
+  "payments-list": "Xuất DS thanh toán (backup)",
 };
 
 export default function RoleDetailPage() {

@@ -178,7 +178,7 @@ Mỗi dòng: xưởng, số đơn (distinct `SalesOrder`), doanh số = `SUM(Sal
 - Dòng bán lẻ vật tư (`productionCenterId = null`) giữ thành 1 dòng "Bán lẻ vật tư" → tổng các dòng = `SUM(SalesOrder.totalAmount)` gross trong khoảng (vì `totalAmount = SUM(subtotal)`).
 - 1 đơn có dòng ở nhiều xưởng được đếm ở mỗi xưởng → tổng cột "Số đơn" có thể lớn hơn số đơn thực.
 
-Bấm tên xưởng → báo cáo chi tiết xưởng `/reports/production-centers/[id]` (`report.md` E1 — quyền `report.view`; người thiếu quyền này bấm vào sẽ không xem được, đã chấp nhận).
+Bấm tên xưởng → báo cáo chi tiết xưởng `/reports/production-centers/[id]` (`report.md` E1 — quyền `report.revenue-by-production-center`; người thiếu quyền này bấm vào sẽ không xem được, đã chấp nhận).
 
 Permission: `sales-order.view-cost`. Endpoint: `GET /dashboard/sales/by-production-center?from=&to=` (bắt buộc `from`/`to`).
 

@@ -204,7 +204,7 @@ SalesOrder.status != CANCELLED
 - **GROSS — chưa trừ hàng hoàn**, cùng lý do B2/B4 (chưa có quy tắc phân bổ giá trị hoàn theo dòng/xưởng). UI ghi rõ nhãn.
 - **Hiển thị** (`/reports/production-centers`): bảng xếp hạng xưởng — số đơn (distinct), doanh thu, tỷ trọng. Dòng bán lẻ vật tư (`productionCenterId = null`) giữ thành 1 dòng "Bán lẻ vật tư" để tổng = SUM(totalAmount) gross. Bấm tên xưởng → chi tiết.
 - **Chi tiết 1 xưởng** (`/reports/production-centers/[id]`): chuỗi doanh thu theo Ngày/Tuần/Tháng/Năm (`getProductionCenterRevenueSeries()`, `buildSeries` theo timezone công ty) + biểu đồ; danh sách phiếu sản xuất của xưởng (tái dùng `GET /production-orders?productionCenterId=`, gate thêm `production.view`).
-- **API:** `GET /reports/revenue-by-production-center?from=&to=` và `GET /reports/revenue-by-production-center/:id?from=&to=&groupBy=` — quyền `report.view` như mọi báo cáo. Chưa có export Excel/PDF.
+- **API:** `GET /reports/revenue-by-production-center?from=&to=` và `GET /reports/revenue-by-production-center/:id?from=&to=&groupBy=` — quyền `report.revenue-by-production-center` (dùng chung cho cả 2 route). Chưa có export Excel/PDF.
 
 ---
 
@@ -327,14 +327,32 @@ GET /reports/customers-list/export      # E4
 
 # Permission
 
-Một quyền duy nhất cho toàn module:
+**Mỗi thẻ báo cáo một quyền** (`workbench/sprint-04/029`, 11/10/2026 — thay cho `report.view` dùng chung trước đây, đã xoá). Key = `report.<slug>`, slug trùng đúng route API (`GET /reports/<slug>`, `GET /reports/<slug>/export`):
 
 ```text
-report.view
+report.revenue                       A1 Doanh thu
+report.cash-in                       A2 Tiền mặt về
+report.profit                        A3 Lợi nhuận kế hoạch
+report.debt                          A4 Công nợ
+report.orders                        B1 Đơn hàng
+report.revenue-by-product            B2 Doanh thu theo sản phẩm
+report.growth                        B3 Tốc độ phát triển
+report.growth-by-product-type        B4 Tăng trưởng theo nhóm sản phẩm
+report.revenue-by-employee           C1 Doanh thu theo nhân viên
+report.revenue-by-customer           C2 Doanh thu theo khách hàng
+report.returns                       D2 Hàng hoàn
+report.revenue-by-production-center  E1 Doanh thu theo xưởng (+ trang chi tiết xưởng)
+report.customers-list                Xuất DS khách hàng (backup)
+report.orders-list                   Xuất DS đơn hàng (backup)
+report.receivables-list              Xuất DS công nợ (backup)
+report.payments-list                 Xuất DS thanh toán (backup)
 ```
 
-- Seed thêm vào Permission catalog (đúng quy trình `permission.md`: Dev seed, không tạo qua API), gán mặc định cho `OWNER`/`ADMIN`/`ACCOUNTANT`/`MANAGER`.
-- Không tách quyền theo từng báo cáo ở V1 — chưa có nhu cầu thật. Nếu sau này cần ẩn báo cáo tài chính khỏi một Role, tách `report.finance.view` lúc đó.
+- Backend: mỗi route `@RequirePermission('report.<slug>')`; export `/:name/export` kiểm tra `report.${name}` trong method (route động, không gắn decorator tĩnh được).
+- Frontend: `/reports` chỉ hiện thẻ có quyền, nhóm trống ẩn cả nhóm; menu "Báo cáo" hiện khi có ≥ 1 quyền `report.*` (`NavItem.requiredAnyPermission`). Danh sách key FE ở `apps/web/src/config/report-permissions.ts` — phải khớp `REPORT_PERMISSION_ACTIONS` trong `seed.ts`.
+- Seed mặc định: OWNER/ADMIN (allKeys), MANAGER/VIEWER (viewKeys — gồm đủ 16), ACCOUNTANT (đủ 16).
+- Chuyển đổi dữ liệu: migration `20261012000000_report_permission_per_card` cấp đủ 16 quyền cho mọi role từng có `report.view` (không role nào mất quyền), ghi `permission_audits` GRANT/REVOKE, rồi xoá `report.view`.
+- **Chưa xử lý (task sau):** giá vốn/lợi nhuận còn lẫn trong thẻ không chuyên về lợi nhuận — chuỗi lợi nhuận KH ở B3 "Tốc độ phát triển", cột Giá vốn KH/Lợi nhuận KH ở export "Đơn hàng" backup. Bỏ tích `report.profit` chưa đủ để ẩn hoàn toàn số liệu giá vốn.
 
 ---
 
@@ -372,7 +390,7 @@ report.view
 - `ExcelService` (export Excel — đã có sẵn tại `apps/api/src/shared/excel/`).
 - `PdfService` (export PDF — **chưa tồn tại, cần viết mới**, wrapper mỏng quanh 1 thư viện PDF, đặt cùng vị trí quy ước với `ExcelService`, ví dụ `apps/api/src/shared/pdf/`).
 - `SettingService` (`timezone`, `defaultDashboardPeriod`).
-- Permission (`report.view`).
+- Permission (`report.<slug>` — mỗi thẻ một quyền, xem mục "Permission").
 - Frontend: cần thêm 1 thư viện vẽ biểu đồ (`apps/web` hiện chưa có) — chọn lúc code, đây là chi tiết kỹ thuật không thuộc phạm vi tài liệu nghiệp vụ này.
 
 ## Module bị ảnh hưởng (thay đổi cần thống nhất trước khi code)
@@ -380,7 +398,7 @@ report.view
 - **Sales Order module:** thêm snapshot `productId`/`productTypeId`/`productTypeName` vào `SalesOrderItem` (set tại Approve); thêm `ownerId`; thêm index `createdAt`.
 - **Debt module:** thêm index `Payment(paymentDate)`; bổ sung method đọc theo kỳ nếu chưa có.
 - **Return module:** thêm index `Return(returnDate)`.
-- **Permission module:** seed `report.view`.
+- **Permission module:** seed quyền báo cáo (ban đầu `report.view`, tách theo thẻ ở 029).
 - ~~**Warehouse module**~~ — không còn cần đụng tới, D1 tạm gỡ (module Kho đang được ẩn khỏi phần mềm ở task riêng, xem `warehouse.md`).
 
 Không được thay đổi Business Rule hoặc Data Model của các Module trên ngoài phạm vi đã liệt kê. Nếu cần thay đổi thêm phải dừng và xác nhận với người dùng.

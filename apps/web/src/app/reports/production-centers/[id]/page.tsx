@@ -59,7 +59,8 @@ const STATUS_TABS: { value: ProductionOrderTab; label: string }[] = [
 
 // Doanh thu theo thời gian của 1 xưởng (sprint-04/028) — GROSS (SUM thành
 // tiền dòng đơn hàng thuộc xưởng, chưa trừ hàng hoàn), cùng nguồn với khối
-// "Doanh số theo xưởng" ở Dashboard. Gate report.view như mọi báo cáo khác.
+// "Doanh số theo xưởng" ở Dashboard. Gate report.revenue-by-production-center
+// (cùng quyền thẻ "Doanh thu theo xưởng", 029).
 function CenterRevenueSection({ centerId }: { centerId: string }) {
   const initial = defaultReportRange();
   const [from, setFrom] = useState(initial.from);

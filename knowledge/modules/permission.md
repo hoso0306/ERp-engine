@@ -454,6 +454,19 @@ view
 
 ---
 
+## Report
+
+Mỗi thẻ báo cáo một quyền (029-phan-quyen-theo-tung-bao-cao.md, thay `report.view` cũ) — danh sách đầy đủ 16 key ở `report.md` mục "Permission".
+
+```text
+revenue, cash-in, profit, debt, orders, revenue-by-product, growth,
+growth-by-product-type, revenue-by-employee, revenue-by-customer, returns,
+revenue-by-production-center, customers-list, orders-list,
+receivables-list, payments-list
+```
+
+---
+
 ## Settings
 
 ```text
@@ -499,6 +512,8 @@ Warehouse không có quyền
 Ẩn Menu Warehouse.
 
 Không hiển thị Menu mà User không được phép truy cập.
+
+Menu có thể yêu cầu "ít nhất 1 trong nhiều quyền" (`NavItem.requiredAnyPermission`) — vd "Báo cáo" hiện khi User có ≥ 1 quyền `report.*` (029).
 
 ---
 

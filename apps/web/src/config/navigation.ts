@@ -17,6 +17,7 @@ import {
   UserCircle,
   type LucideIcon,
 } from "lucide-react";
+import { ALL_REPORT_PERMISSIONS } from "./report-permissions";
 
 export interface NavItem {
   title: string;
@@ -32,6 +33,15 @@ export interface NavItem {
   // PERMISSION_CATALOG của apps/api/prisma/seed.ts) — không tự suy đoán
   // thêm permission mới ở milestone FE này.
   requiredPermission?: string;
+  // Thấy mục menu nếu có ÍT NHẤT 1 trong các quyền này (029 — "Báo cáo" hiện
+  // khi có ≥ 1 quyền báo cáo theo thẻ). Dùng thay cho requiredPermission.
+  requiredAnyPermission?: string[];
+}
+
+// Dùng chung cho sidebar + trang chủ — 1 nơi duy nhất quyết định hiện/ẩn menu.
+export function canSeeNavItem(item: NavItem, hasPermission: (key: string) => boolean): boolean {
+  if (item.requiredAnyPermission) return item.requiredAnyPermission.some(hasPermission);
+  return !item.requiredPermission || hasPermission(item.requiredPermission);
 }
 
 export interface NavGroup {
@@ -44,7 +54,7 @@ export const navigation: NavGroup[] = [
     label: "Điều hành",
     items: [
       { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "dashboard.view" },
-      { title: "Báo cáo", href: "/reports", icon: BarChart3, requiredPermission: "report.view" },
+      { title: "Báo cáo", href: "/reports", icon: BarChart3, requiredAnyPermission: ALL_REPORT_PERMISSIONS },
     ],
   },
   {

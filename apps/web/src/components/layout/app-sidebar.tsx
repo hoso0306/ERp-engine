@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { navigation } from "@/config/navigation";
+import { navigation, canSeeNavItem } from "@/config/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useBranding } from "@/lib/use-branding";
 
@@ -63,9 +63,7 @@ export function AppSidebar() {
 
       <SidebarContent>
         {navigation.map((group) => {
-          const visibleItems = group.items.filter(
-            (item) => !item.requiredPermission || hasPermission(item.requiredPermission),
-          );
+          const visibleItems = group.items.filter((item) => canSeeNavItem(item, hasPermission));
           if (visibleItems.length === 0) return null;
 
           return (
