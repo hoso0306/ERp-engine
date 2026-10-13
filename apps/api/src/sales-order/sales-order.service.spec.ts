@@ -512,6 +512,14 @@ describe('SalesOrderService — doanh số theo xưởng & thống kê theo khá
     service = module.get<SalesOrderService>(SalesOrderService);
   });
 
+  // Đơn mẫu dùng chung (031): netRevenue = plannedProfit + plannedCost.
+  //  so-1: tiền hàng 150, giá vốn 60, LN 70  (net 130)
+  //  so-2: tiền hàng 350, giá vốn 150, LN 150 (net 300) — 2 xưởng A + B
+  //  so-3: tiền hàng 100, giá vốn 70, LN 20   (net 90)  — bán lẻ vật tư
+  const SO1 = { totalAmount: 150, plannedCost: 60, plannedProfit: 70 };
+  const SO2 = { totalAmount: 350, plannedCost: 150, plannedProfit: 150 };
+  const SO3 = { totalAmount: 100, plannedCost: 70, plannedProfit: 20 };
+
   describe('getRevenueByProductionCenter()', () => {
     it('gom theo xưởng, đếm đơn distinct, giữ dòng bán lẻ (null) riêng, tổng khớp SUM subtotal', async () => {
       prisma.salesOrderItem.findMany.mockResolvedValue([
@@ -520,30 +528,40 @@ describe('SalesOrderService — doanh số theo xưởng & thống kê theo khá
           productionCenterId: 'pc-a',
           productionCenterName: 'Xưởng A',
           subtotal: 100,
+          plannedCost: 40,
+          salesOrder: SO1,
         },
         {
           salesOrderId: 'so-1',
           productionCenterId: 'pc-a',
           productionCenterName: 'Xưởng A',
           subtotal: 50,
+          plannedCost: 20,
+          salesOrder: SO1,
         },
         {
           salesOrderId: 'so-2',
           productionCenterId: 'pc-a',
           productionCenterName: 'Xưởng A mới',
           subtotal: 50,
+          plannedCost: 30,
+          salesOrder: SO2,
         },
         {
           salesOrderId: 'so-2',
           productionCenterId: 'pc-b',
           productionCenterName: 'Xưởng B',
           subtotal: 300,
+          plannedCost: 120,
+          salesOrder: SO2,
         },
         {
           salesOrderId: 'so-3',
           productionCenterId: null,
           productionCenterName: null,
           subtotal: 100,
+          plannedCost: 70,
+          salesOrder: SO3,
         },
       ]);
 
@@ -562,30 +580,102 @@ describe('SalesOrderService — doanh số theo xưởng & thống kê theo khá
         }),
       );
       expect(result.totalRevenue).toBe(600);
-      expect(result.centers).toEqual([
+      expect(result.centers.map((c) => c.productionCenterId)).toEqual([
+        'pc-b',
+        'pc-a',
+        null,
+      ]);
+      const [b, a, retail] = result.centers;
+      expect(b).toMatchObject({
+        productionCenterName: 'Xưởng B',
+        orderCount: 1,
+        revenue: 300,
+        revenuePercent: 50,
+        plannedCost: 120,
+      });
+      // Nhãn = snapshot gặp sau cùng (rows sắp createdAt tăng dần).
+      expect(a).toMatchObject({
+        productionCenterName: 'Xưởng A mới',
+        orderCount: 2,
+        revenue: 200,
+        plannedCost: 90,
+      });
+      expect(a.revenuePercent).toBeCloseTo((200 / 600) * 100);
+      expect(retail).toMatchObject({
+        productionCenterName: null,
+        orderCount: 1,
+        revenue: 100,
+        plannedCost: 70,
+      });
+    });
+
+    it('lợi nhuận kế hoạch theo dòng của xưởng, Giảm thêm/VAT chia theo tỷ lệ doanh số; tổng = SUM(plannedProfit)', async () => {
+      prisma.salesOrderItem.findMany.mockResolvedValue([
         {
-          productionCenterId: 'pc-b',
-          productionCenterName: 'Xưởng B',
-          orderCount: 1,
-          revenue: 300,
-          revenuePercent: 50,
-        },
-        // Nhãn = snapshot gặp sau cùng (rows sắp createdAt tăng dần).
-        {
+          salesOrderId: 'so-1',
           productionCenterId: 'pc-a',
-          productionCenterName: 'Xưởng A mới',
-          orderCount: 2,
-          revenue: 200,
-          revenuePercent: (200 / 600) * 100,
+          productionCenterName: 'A',
+          subtotal: 100,
+          plannedCost: 40,
+          salesOrder: SO1,
         },
         {
+          salesOrderId: 'so-1',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'A',
+          subtotal: 50,
+          plannedCost: 20,
+          salesOrder: SO1,
+        },
+        {
+          salesOrderId: 'so-2',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'A',
+          subtotal: 50,
+          plannedCost: 30,
+          salesOrder: SO2,
+        },
+        {
+          salesOrderId: 'so-2',
+          productionCenterId: 'pc-b',
+          productionCenterName: 'B',
+          subtotal: 300,
+          plannedCost: 120,
+          salesOrder: SO2,
+        },
+        {
+          salesOrderId: 'so-3',
           productionCenterId: null,
           productionCenterName: null,
-          orderCount: 1,
-          revenue: 100,
-          revenuePercent: (100 / 600) * 100,
+          subtotal: 100,
+          plannedCost: 70,
+          salesOrder: SO3,
         },
       ]);
+
+      const result = await service.getRevenueByProductionCenter(
+        new Date(),
+        new Date(),
+      );
+      const byId = new Map(
+        result.centers.map((c) => [c.productionCenterId, c]),
+      );
+
+      // Xưởng A: trọn LN đơn so-1 (70) + phần của so-2: 300×50/350 − 30.
+      expect(byId.get('pc-a')!.plannedProfit).toBeCloseTo(
+        70 + (300 * 50) / 350 - 30,
+      );
+      // Xưởng B: 300×300/350 − 120.
+      expect(byId.get('pc-b')!.plannedProfit).toBeCloseTo(
+        (300 * 300) / 350 - 120,
+      );
+      // Bán lẻ: trọn LN đơn so-3.
+      expect(byId.get(null)!.plannedProfit).toBeCloseTo(20);
+      // Tổng các xưởng = tổng LN kế hoạch các đơn (70 + 150 + 20).
+      expect(result.totalPlannedProfit).toBeCloseTo(240);
+      expect(
+        result.centers.reduce((s, c) => s + c.plannedProfit, 0),
+      ).toBeCloseTo(240);
     });
 
     it('không có dữ liệu -> tổng 0, danh sách rỗng', async () => {
@@ -594,28 +684,54 @@ describe('SalesOrderService — doanh số theo xưởng & thống kê theo khá
         new Date(),
         new Date(),
       );
-      expect(result).toEqual({ totalRevenue: 0, centers: [] });
+      expect(result).toEqual({
+        totalRevenue: 0,
+        totalPlannedProfit: 0,
+        centers: [],
+      });
+    });
+
+    it('đơn có totalAmount = 0 -> không chia (tránh chia cho 0), LN dòng = −giá vốn', async () => {
+      prisma.salesOrderItem.findMany.mockResolvedValue([
+        {
+          salesOrderId: 'so-0',
+          productionCenterId: 'pc-a',
+          productionCenterName: 'A',
+          subtotal: 0,
+          plannedCost: 5,
+          salesOrder: { totalAmount: 0, plannedCost: 5, plannedProfit: -5 },
+        },
+      ]);
+      const result = await service.getRevenueByProductionCenter(
+        new Date(),
+        new Date(),
+      );
+      expect(result.centers[0].plannedProfit).toBe(-5);
+      expect(result.totalPlannedProfit).toBe(-5);
     });
   });
 
   describe('getProductionCenterRevenueSeries()', () => {
-    it('lọc đúng xưởng, cắt kỳ theo timezone công ty, đủ bucket trống', async () => {
+    it('lọc đúng xưởng, cắt kỳ theo timezone công ty, đủ bucket trống, có chuỗi lợi nhuận', async () => {
       prisma.salesOrderItem.findMany.mockResolvedValue([
         // 23:30 ngày 01/10 giờ VN = 16:30Z — phải rơi vào ngày 01/10, không phải 02/10.
         {
           salesOrderId: 'so-1',
           subtotal: 100,
-          salesOrder: { createdAt: new Date('2026-10-01T16:30:00Z') },
+          plannedCost: 40,
+          salesOrder: { ...SO1, createdAt: new Date('2026-10-01T16:30:00Z') },
         },
         {
           salesOrderId: 'so-1',
           subtotal: 50,
-          salesOrder: { createdAt: new Date('2026-10-01T16:30:00Z') },
+          plannedCost: 20,
+          salesOrder: { ...SO1, createdAt: new Date('2026-10-01T16:30:00Z') },
         },
         {
           salesOrderId: 'so-2',
-          subtotal: 200,
-          salesOrder: { createdAt: new Date('2026-10-03T03:00:00Z') },
+          subtotal: 50,
+          plannedCost: 30,
+          salesOrder: { ...SO2, createdAt: new Date('2026-10-03T03:00:00Z') },
         },
       ]);
 
@@ -639,13 +755,18 @@ describe('SalesOrderService — doanh số theo xưởng & thống kê theo khá
           },
         }),
       );
-      expect(result.totalRevenue).toBe(350);
+      expect(result.totalRevenue).toBe(200);
       expect(result.orderCount).toBe(2);
-      expect(result.series).toEqual([
-        { period: '2026-10-01', revenue: 150 },
-        { period: '2026-10-02', revenue: 0 },
-        { period: '2026-10-03', revenue: 200 },
+      const so2Profit = (300 * 50) / 350 - 30;
+      expect(result.totalPlannedProfit).toBeCloseTo(70 + so2Profit);
+      expect(result.series.map((p) => [p.period, p.revenue])).toEqual([
+        ['2026-10-01', 150],
+        ['2026-10-02', 0],
+        ['2026-10-03', 50],
       ]);
+      expect(result.series[0].plannedProfit).toBeCloseTo(70);
+      expect(result.series[1].plannedProfit).toBe(0);
+      expect(result.series[2].plannedProfit).toBeCloseTo(so2Profit);
     });
   });
 

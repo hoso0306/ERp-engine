@@ -121,26 +121,52 @@ export class ReportController {
     return this.reportService.getRevenueByCustomer(this.parseRange(query));
   }
 
-  // Nhóm Sản xuất — Doanh thu theo xưởng (sprint-04/028).
+  // Nhóm Sản xuất — Doanh thu theo xưởng (sprint-04/028). Lợi nhuận kế
+  // hoạch theo xưởng (sprint-04/031) chỉ trả khi role có THÊM `report.profit`
+  // — thiếu quyền thì bỏ hẳn các field lợi nhuận ở API (không dựa FE ẩn).
   @Get('revenue-by-production-center')
   @RequirePermission('report.revenue-by-production-center')
-  getRevenueByProductionCenter(@Query() query: ReportQueryDto) {
-    return this.reportService.getRevenueByProductionCenter(
+  async getRevenueByProductionCenter(
+    @Query() query: ReportQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const data = await this.reportService.getRevenueByProductionCenter(
       this.parseRange(query),
     );
+    if (await this.canViewProfit(req)) return data;
+    return {
+      totalRevenue: data.totalRevenue,
+      centers: data.centers.map((c) => ({
+        productionCenterId: c.productionCenterId,
+        productionCenterName: c.productionCenterName,
+        orderCount: c.orderCount,
+        revenue: c.revenue,
+        revenuePercent: c.revenuePercent,
+      })),
+    };
   }
 
   @Get('revenue-by-production-center/:id')
   @RequirePermission('report.revenue-by-production-center')
-  getProductionCenterRevenue(
+  async getProductionCenterRevenue(
     @Param('id') id: string,
     @Query() query: ReportQueryDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.reportService.getProductionCenterRevenue(
+    const data = await this.reportService.getProductionCenterRevenue(
       id,
       this.parseRange(query),
       this.parseGroupBy(query.groupBy),
     );
+    if (await this.canViewProfit(req)) return data;
+    return {
+      totalRevenue: data.totalRevenue,
+      orderCount: data.orderCount,
+      series: data.series.map((p) => ({
+        period: p.period,
+        revenue: p.revenue,
+      })),
+    };
   }
 
   // D2
@@ -195,6 +221,14 @@ export class ReportController {
   // Report bắt buộc from/to — không có preset "Tất cả" như Dashboard
   // (report.md "Khác nhau giữa Report và Dashboard"). Cùng pattern parseRange
   // đã dùng ở dashboard.controller.ts, chỉ khác: bắt buộc thay vì optional.
+  // Quyền xem lợi nhuận kế hoạch trong Báo cáo = quyền thẻ "Lợi nhuận kế
+  // hoạch" (029/031).
+  private async canViewProfit(req: AuthenticatedRequest): Promise<boolean> {
+    const roleId = req.user?.roleId;
+    if (!roleId) return false;
+    return this.permissionService.hasPermission(roleId, 'report.profit');
+  }
+
   private parseRange(query: ReportQueryDto): ReportRange {
     if (!query.from || !query.to) {
       throw new BadRequestException('Báo cáo yêu cầu tham số from và to.');

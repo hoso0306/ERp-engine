@@ -9,6 +9,9 @@ export interface RankingRow {
   percent: number;
   // Drill-down sang trang chi tiết (vd Doanh thu theo xưởng) — optional.
   href?: string;
+  // Giá trị cột phụ (vd Lợi nhuận kế hoạch theo xưởng, 031) — chỉ hiển thị
+  // khi bảng truyền `extraColumn`.
+  extraValue?: number;
 }
 
 interface ReportRankingTableProps {
@@ -16,12 +19,15 @@ interface ReportRankingTableProps {
   labelHeader: string;
   valueHeader: string;
   formatValue?: (value: number) => string;
+  // Cột phụ tuỳ chọn đặt ngay sau cột giá trị chính — không truyền thì bảng
+  // giữ nguyên như cũ (B2/C1/D2 không bị ảnh hưởng).
+  extraColumn?: { header: string; format: (value: number) => string };
 }
 
 // Bảng xếp hạng dùng chung cho báo cáo group-by (B2 sản phẩm, C1 nhân viên,
 // D2 lý do hoàn) — % tỷ trọng hiển thị bằng thanh ngang, không phải chart
 // riêng (report.md B2/B4: "bảng xếp hạng thay vì line chart theo ngày").
-export function ReportRankingTable({ rows, labelHeader, valueHeader, formatValue }: ReportRankingTableProps) {
+export function ReportRankingTable({ rows, labelHeader, valueHeader, formatValue, extraColumn }: ReportRankingTableProps) {
   return (
     <div className="rounded-md border">
       <Table>
@@ -30,6 +36,7 @@ export function ReportRankingTable({ rows, labelHeader, valueHeader, formatValue
             <TableHead className="w-10 text-center">#</TableHead>
             <TableHead>{labelHeader}</TableHead>
             <TableHead className="text-right">{valueHeader}</TableHead>
+            {extraColumn && <TableHead className="text-right">{extraColumn.header}</TableHead>}
             <TableHead className="w-20 text-right">Tỷ trọng</TableHead>
           </TableRow>
         </TableHeader>
@@ -58,6 +65,13 @@ export function ReportRankingTable({ rows, labelHeader, valueHeader, formatValue
               <TableCell className="text-right font-mono text-sm">
                 {formatValue ? formatValue(row.value) : row.value}
               </TableCell>
+              {extraColumn && (
+                <TableCell
+                  className={`text-right font-mono text-sm ${(row.extraValue ?? 0) < 0 ? "text-destructive" : ""}`}
+                >
+                  {row.extraValue === undefined ? "—" : extraColumn.format(row.extraValue)}
+                </TableCell>
+              )}
               <TableCell className="text-right text-sm text-muted-foreground">{row.percent.toFixed(1)}%</TableCell>
             </TableRow>
           ))}

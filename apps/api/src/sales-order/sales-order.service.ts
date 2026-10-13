@@ -1207,13 +1207,45 @@ export class SalesOrderService {
     };
   }
 
+  // Lợi nhuận kế hoạch của 1 dòng SalesOrderItem (sprint-04/031) — tính theo
+  // chính dòng sản phẩm đó, chỉ dùng số đã chốt tại Approve (không gọi lại
+  // Pricing/BOM, không lặp lại hằng số VAT hoá đơn của Quotation module):
+  //   doanh thu thuần của đơn = plannedProfit + plannedCost
+  //     (= tổng tiền hàng − Giảm thêm − VAT hoá đơn)
+  //   phần của dòng = doanh thu thuần × subtotal dòng / totalAmount đơn
+  //   lợi nhuận dòng = phần của dòng − plannedCost dòng
+  // → "Giảm thêm" (cấp đơn, không gắn sản phẩm) được chia theo tỷ lệ doanh số
+  // (user chốt Cách 1, 13/10/2026); VAT là tỷ lệ cố định nên chia theo tỷ lệ
+  // = tính trên doanh thu của dòng. Cộng mọi dòng của 1 đơn = plannedProfit.
+  private itemPlannedProfit(row: {
+    subtotal: Prisma.Decimal | number;
+    plannedCost: Prisma.Decimal | number;
+    salesOrder: {
+      totalAmount: Prisma.Decimal | number;
+      plannedProfit: Prisma.Decimal | number;
+      plannedCost: Prisma.Decimal | number;
+    };
+  }): { plannedCost: number; plannedProfit: number } {
+    const orderTotal = Number(row.salesOrder.totalAmount);
+    const orderNetRevenue =
+      Number(row.salesOrder.plannedProfit) + Number(row.salesOrder.plannedCost);
+    const share = orderTotal > 0 ? Number(row.subtotal) / orderTotal : 0;
+    const plannedCost = Number(row.plannedCost);
+    return {
+      plannedCost,
+      plannedProfit: orderNetRevenue * share - plannedCost,
+    };
+  }
+
   // Doanh số theo xưởng (sprint-04/028) — group SalesOrderItem theo
   // productionCenterId (Redundant Reference bất biến, snapshot tại Approve),
   // hiển thị productionCenterName snapshot — không join ngược ProductionCenter.
-  // GROSS (SUM subtotal, không trừ hàng hoàn — chưa có quy tắc phân bổ giá
-  // trị hoàn theo dòng, cùng lý do B2/B4). Dòng bán lẻ vật tư
+  // Doanh số GROSS (SUM subtotal, không trừ hàng hoàn — chưa có quy tắc phân
+  // bổ giá trị hoàn theo dòng, cùng lý do B2/B4). Dòng bán lẻ vật tư
   // (productionCenterId = null) giữ thành 1 nhóm riêng để tổng các xưởng
-  // khớp SUM(SalesOrder.totalAmount).
+  // khớp SUM(SalesOrder.totalAmount). Lợi nhuận kế hoạch theo xưởng
+  // (sprint-04/031) — xem itemPlannedProfit(); tổng các xưởng khớp
+  // SUM(SalesOrder.plannedProfit) (làm tròn hiển thị ở FE).
   async getRevenueByProductionCenter(from: Date, to: Date) {
     const rows = await this.prisma.salesOrderItem.findMany({
       where: { salesOrder: this.reportRangeWhere(from, to) },
@@ -1223,6 +1255,10 @@ export class SalesOrderService {
         productionCenterId: true,
         productionCenterName: true,
         subtotal: true,
+        plannedCost: true,
+        salesOrder: {
+          select: { totalAmount: true, plannedProfit: true, plannedCost: true },
+        },
       },
     });
 
@@ -1230,10 +1266,13 @@ export class SalesOrderService {
       productionCenterId: string | null;
       productionCenterName: string | null;
       revenue: number;
+      plannedCost: number;
+      plannedProfit: number;
       orderIds: Set<string>;
     };
     const byCenter = new Map<string | null, CenterAcc>();
     let totalRevenue = 0;
+    let totalPlannedProfit = 0;
 
     for (const row of rows) {
       const key = row.productionCenterId;
@@ -1243,19 +1282,26 @@ export class SalesOrderService {
           productionCenterId: key,
           productionCenterName: null,
           revenue: 0,
+          plannedCost: 0,
+          plannedProfit: 0,
           orderIds: new Set(),
         };
         byCenter.set(key, acc);
       }
+      const profit = this.itemPlannedProfit(row);
       // Nhãn hiển thị: snapshot mới nhất (rows sắp createdAt tăng dần).
       acc.productionCenterName = row.productionCenterName;
       acc.revenue += Number(row.subtotal);
+      acc.plannedCost += profit.plannedCost;
+      acc.plannedProfit += profit.plannedProfit;
       acc.orderIds.add(row.salesOrderId);
       totalRevenue += Number(row.subtotal);
+      totalPlannedProfit += profit.plannedProfit;
     }
 
     return {
       totalRevenue,
+      totalPlannedProfit,
       centers: Array.from(byCenter.values())
         .map((c) => ({
           productionCenterId: c.productionCenterId,
@@ -1264,14 +1310,17 @@ export class SalesOrderService {
           revenue: c.revenue,
           revenuePercent:
             totalRevenue > 0 ? (c.revenue / totalRevenue) * 100 : 0,
+          plannedCost: c.plannedCost,
+          plannedProfit: c.plannedProfit,
         }))
         .sort((a, b) => b.revenue - a.revenue),
     };
   }
 
   // Doanh số theo thời gian của 1 xưởng (sprint-04/028, trang chi tiết xưởng)
-  // — cùng nguồn/công thức getRevenueByProductionCenter() (gross), chuỗi theo
-  // kỳ cắt theo Settings.Company.timezone (buildSeries, giống A1).
+  // — cùng nguồn/công thức getRevenueByProductionCenter() (doanh số gross +
+  // lợi nhuận kế hoạch theo dòng), chuỗi theo kỳ cắt theo
+  // Settings.Company.timezone (buildSeries, giống A1).
   async getProductionCenterRevenueSeries(
     productionCenterId: string,
     from: Date,
@@ -1287,27 +1336,40 @@ export class SalesOrderService {
       select: {
         salesOrderId: true,
         subtotal: true,
-        salesOrder: { select: { createdAt: true } },
+        plannedCost: true,
+        salesOrder: {
+          select: {
+            createdAt: true,
+            totalAmount: true,
+            plannedProfit: true,
+            plannedCost: true,
+          },
+        },
       },
     });
 
-    const totalRevenue = rows.reduce((s, r) => s + Number(r.subtotal), 0);
+    const points = rows.map((r) => ({
+      date: r.salesOrder.createdAt,
+      values: {
+        revenue: Number(r.subtotal),
+        plannedProfit: this.itemPlannedProfit(r).plannedProfit,
+      },
+    }));
+    const totalRevenue = points.reduce((s, p) => s + p.values.revenue, 0);
+    const totalPlannedProfit = points.reduce(
+      (s, p) => s + p.values.plannedProfit,
+      0,
+    );
     const orderCount = new Set(rows.map((r) => r.salesOrderId)).size;
 
     return {
       totalRevenue,
+      totalPlannedProfit,
       orderCount,
-      series: buildSeries(
-        rows.map((r) => ({
-          date: r.salesOrder.createdAt,
-          values: { revenue: Number(r.subtotal) },
-        })),
-        from,
-        to,
-        timezone,
-        groupBy,
-        ['revenue'],
-      ),
+      series: buildSeries(points, from, to, timezone, groupBy, [
+        'revenue',
+        'plannedProfit',
+      ]),
     };
   }
 

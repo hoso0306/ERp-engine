@@ -4,6 +4,25 @@ import type { ChangelogRelease } from "./types";
 // cho người dùng: thêm 1 phần tử vào đầu mảng (cùng commit với tính năng).
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    date: "2026-10-13",
+    title: "Lợi nhuận kế hoạch theo xưởng",
+    items: [
+      {
+        title: "Xem lợi nhuận kế hoạch của từng xưởng",
+        description:
+          "Bên cạnh doanh số, giờ xem được lợi nhuận kế hoạch của từng xưởng.",
+        bullets: [
+          "Dashboard → khối \"Doanh số theo xưởng\": thêm cột \"Lợi nhuận kế hoạch\".",
+          "Báo cáo → Doanh thu theo xưởng: thêm tổng lợi nhuận và cột lợi nhuận từng xưởng.",
+          "Trang chi tiết xưởng: thêm ô Lợi nhuận kế hoạch, Tỷ suất lợi nhuận; biểu đồ có ô tích chọn hiện Doanh thu / Lợi nhuận kế hoạch.",
+          "Trong Báo cáo, chỉ người có thêm quyền xem báo cáo \"Lợi nhuận kế hoạch\" mới thấy phần lợi nhuận.",
+        ],
+        requiredAnyPermission: ["sales-order.view-cost", "report.profit"],
+        articleSlug: "doanh-so-theo-xuong",
+      },
+    ],
+  },
+  {
     date: "2026-10-12",
     title: "Mục Hướng dẫn & cập nhật",
     items: [

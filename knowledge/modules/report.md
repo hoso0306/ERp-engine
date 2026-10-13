@@ -204,7 +204,8 @@ SalesOrder.status != CANCELLED
 - **GROSS — chưa trừ hàng hoàn**, cùng lý do B2/B4 (chưa có quy tắc phân bổ giá trị hoàn theo dòng/xưởng). UI ghi rõ nhãn.
 - **Hiển thị** (`/reports/production-centers`): bảng xếp hạng xưởng — số đơn (distinct), doanh thu, tỷ trọng. Dòng bán lẻ vật tư (`productionCenterId = null`) giữ thành 1 dòng "Bán lẻ vật tư" để tổng = SUM(totalAmount) gross. Bấm tên xưởng → chi tiết.
 - **Chi tiết 1 xưởng** (`/reports/production-centers/[id]`): chuỗi doanh thu theo Ngày/Tuần/Tháng/Năm (`getProductionCenterRevenueSeries()`, `buildSeries` theo timezone công ty) + biểu đồ; danh sách phiếu sản xuất của xưởng (tái dùng `GET /production-orders?productionCenterId=`, gate thêm `production.view`).
-- **API:** `GET /reports/revenue-by-production-center?from=&to=` và `GET /reports/revenue-by-production-center/:id?from=&to=&groupBy=` — quyền `report.revenue-by-production-center` (dùng chung cho cả 2 route). Chưa có export Excel/PDF.
+- **Lợi nhuận kế hoạch theo xưởng (sprint-04/031, 13/10/2026):** danh sách có ô tổng + cột lợi nhuận; trang chi tiết có ô Lợi nhuận kế hoạch, Tỷ suất LN và ô tích chọn series Doanh thu / Lợi nhuận kế hoạch trên biểu đồ. Công thức theo dòng sản phẩm của xưởng, "Giảm thêm" chia theo tỷ lệ doanh số — xem `dashboard.md` mục 1d. Tổng các xưởng = A3.
+- **API:** `GET /reports/revenue-by-production-center?from=&to=` và `GET /reports/revenue-by-production-center/:id?from=&to=&groupBy=` — quyền `report.revenue-by-production-center` (dùng chung cho cả 2 route). **Field lợi nhuận** (`totalPlannedProfit`, `centers[].plannedCost/plannedProfit`, `series[].plannedProfit`) chỉ trả khi role có **thêm** `report.profit`; thiếu quyền → API bỏ hẳn các field này (FE ẩn theo việc field có mặt). Chưa có export Excel/PDF.
 
 ---
 

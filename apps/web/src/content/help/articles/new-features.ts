@@ -4,10 +4,10 @@ import type { HelpArticle } from "../types";
 export const NEW_FEATURE_ARTICLES: HelpArticle[] = [
   {
     slug: "doanh-so-theo-xuong",
-    title: "Xem doanh số theo xưởng",
-    summary: "Mỗi xưởng bán được bao nhiêu, theo ngày/tháng, kèm danh sách phiếu sản xuất",
+    title: "Xem doanh số và lợi nhuận theo xưởng",
+    summary: "Mỗi xưởng bán được bao nhiêu, lãi kế hoạch bao nhiêu, theo ngày/tháng, kèm danh sách phiếu sản xuất",
     group: "Tính năng mới",
-    updatedAt: "2026-10-11",
+    updatedAt: "2026-10-13",
     requiredAnyPermission: ["sales-order.view-cost", "report.revenue-by-production-center"],
     sections: [
       {
@@ -15,7 +15,7 @@ export const NEW_FEATURE_ARTICLES: HelpArticle[] = [
         steps: [
           "Vào Dashboard, kéo xuống khối \"Doanh số theo xưởng\" (ngay dưới khối Doanh số theo nhân viên).",
           "Bấm vào ô thời gian ở góc phải khối để chọn khoảng cần xem (mặc định Tháng này).",
-          "Mỗi dòng cho biết số đơn, doanh số và tỷ trọng của xưởng. Dòng \"Bán lẻ vật tư\" là các dòng bán vật tư lẻ, không qua xưởng nào.",
+          "Mỗi dòng cho biết số đơn, doanh số, lợi nhuận kế hoạch và tỷ trọng của xưởng. Dòng \"Bán lẻ vật tư\" là các dòng bán vật tư lẻ, không qua xưởng nào.",
           "Bấm tên xưởng để mở báo cáo chi tiết của xưởng đó.",
         ],
         notes: [
@@ -27,8 +27,12 @@ export const NEW_FEATURE_ARTICLES: HelpArticle[] = [
         heading: "Xem chi tiết trong Báo cáo",
         steps: [
           "Vào Báo cáo → nhóm \"Sản xuất\" → \"Doanh thu theo xưởng\".",
-          "Chọn kỳ cần xem (Tháng này, Tháng trước, Quý, Năm hoặc tự chọn ngày).",
-          "Bấm tên một xưởng để xem: doanh thu theo Ngày / Tuần / Tháng / Năm kèm biểu đồ, và danh sách phiếu sản xuất của xưởng (lọc được theo trạng thái).",
+          "Chọn kỳ cần xem (Tháng này, Tháng trước, Quý, Năm hoặc tự chọn ngày). Bảng có doanh thu và lợi nhuận kế hoạch của từng xưởng.",
+          "Bấm tên một xưởng để xem: doanh thu, lợi nhuận kế hoạch, tỷ suất lợi nhuận theo Ngày / Tuần / Tháng / Năm kèm biểu đồ, và danh sách phiếu sản xuất của xưởng (lọc được theo trạng thái).",
+          "Trên biểu đồ, tích ô \"Doanh thu\" và/hoặc \"Lợi nhuận kế hoạch\" để chọn số liệu muốn xem.",
+        ],
+        notes: [
+          "Phần lợi nhuận trong Báo cáo chỉ hiện với người có thêm quyền xem báo cáo \"Lợi nhuận kế hoạch\" (Cài đặt → Vai trò). Không có quyền này vẫn xem được doanh thu.",
         ],
         links: [{ label: "Mở báo cáo Doanh thu theo xưởng", href: "/reports/production-centers" }],
       },
@@ -38,6 +42,9 @@ export const NEW_FEATURE_ARTICLES: HelpArticle[] = [
           "Doanh số của xưởng = tổng thành tiền các dòng sản phẩm thuộc xưởng đó, theo ngày chốt đơn (ngày khách duyệt báo giá). Đơn đã huỷ không tính.",
           "Một đơn có sản phẩm ở nhiều xưởng sẽ được đếm ở mỗi xưởng, nên tổng cột \"Số đơn\" có thể lớn hơn số đơn thực tế.",
           "Số liệu CHƯA trừ hàng hoàn, nên có thể cao hơn \"Doanh thu\" ở báo cáo Doanh thu (báo cáo đó đã trừ phần công ty hỗ trợ khi hoàn hàng).",
+          "Lợi nhuận kế hoạch của xưởng = doanh thu các sản phẩm thuộc xưởng − VAT − giá vốn của chính các sản phẩm đó (giá vốn chốt lúc duyệt báo giá).",
+          "Khoản \"Giảm thêm\" nhập cho cả đơn được chia cho các xưởng theo tỷ lệ doanh số trong đơn, nên cộng lợi nhuận các xưởng khớp đúng tổng lợi nhuận kế hoạch ở báo cáo Lợi nhuận kế hoạch.",
+          "Lợi nhuận là số KẾ HOẠCH (theo giá vốn định mức), chưa phải lãi thực tế, và không trừ hàng hoàn.",
         ],
       },
     ],

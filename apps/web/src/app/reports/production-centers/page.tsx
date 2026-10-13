@@ -12,16 +12,22 @@ import {
 } from "@/components/report";
 import { apiGet } from "@/lib/api";
 
+// Lợi nhuận kế hoạch (031) chỉ có khi role có thêm quyền report.profit — BE
+// bỏ hẳn field khi thiếu quyền, FE dựa vào việc field có mặt hay không.
 interface RevenueByProductionCenterReport {
   totalRevenue: number;
+  totalPlannedProfit?: number;
   centers: {
     productionCenterId: string | null;
     productionCenterName: string | null;
     orderCount: number;
     revenue: number;
     revenuePercent: number;
+    plannedProfit?: number;
   }[];
 }
+
+const formatMoneyRounded = (v: number) => formatMoney(Math.round(v));
 
 // Nhóm Sản xuất — Doanh thu theo xưởng (sprint-04/028). GROSS: SUM thành
 // tiền dòng đơn hàng theo xưởng (snapshot tại Approve), chưa trừ hàng hoàn.
@@ -61,7 +67,9 @@ export default function RevenueByProductionCenterReportPage() {
       value: c.revenue,
       percent: c.revenuePercent,
       href: c.productionCenterId ? `/reports/production-centers/${c.productionCenterId}` : undefined,
+      extraValue: c.plannedProfit,
     })) ?? [];
+  const canViewProfit = data?.totalPlannedProfit !== undefined;
 
   return (
     <div className="space-y-6">
@@ -78,11 +86,20 @@ export default function RevenueByProductionCenterReportPage() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <StatTile label="Tổng doanh thu (chưa trừ hoàn)" value={formatMoney(data.totalRevenue)} />
+            {canViewProfit && (
+              <StatTile label="Tổng lợi nhuận kế hoạch" value={formatMoneyRounded(data.totalPlannedProfit ?? 0)} />
+            )}
             <StatTile label="Số xưởng có doanh thu" value={String(data.centers.filter((c) => c.productionCenterId).length)} />
           </div>
 
           {rows.length > 0 ? (
-            <ReportRankingTable rows={rows} labelHeader="Xưởng" valueHeader="Doanh thu" formatValue={formatMoney} />
+            <ReportRankingTable
+              rows={rows}
+              labelHeader="Xưởng"
+              valueHeader="Doanh thu"
+              formatValue={formatMoney}
+              extraColumn={canViewProfit ? { header: "Lợi nhuận kế hoạch", format: formatMoneyRounded } : undefined}
+            />
           ) : (
             <EmptyState description="Không có dữ liệu bán hàng trong kỳ đã chọn." />
           )}

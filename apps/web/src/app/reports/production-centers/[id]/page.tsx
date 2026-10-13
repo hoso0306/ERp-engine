@@ -7,9 +7,11 @@ import { StatTile } from "@/components/dashboard/stat-tile";
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ReportRangeFilter,
   ReportTrendChart,
+  type ReportTrendSeries,
   formatMoney,
   autoGroupBy,
   defaultReportRange,
@@ -28,11 +30,16 @@ interface ProductionCenter {
   isActive: boolean;
 }
 
+// totalPlannedProfit / series[].plannedProfit (031) chỉ có khi role có thêm
+// quyền report.profit — BE bỏ hẳn field khi thiếu quyền.
 interface CenterRevenue {
   totalRevenue: number;
+  totalPlannedProfit?: number;
   orderCount: number;
-  series: { period: string; revenue: number }[];
+  series: { period: string; revenue: number; plannedProfit?: number }[];
 }
+
+const formatMoneyRounded = (v: number) => formatMoney(Math.round(v));
 
 interface ProductionOrderRow {
   id: string;
@@ -69,6 +76,9 @@ function CenterRevenueSection({ centerId }: { centerId: string }) {
   const [data, setData] = useState<CenterRevenue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Ô tích chọn series hiện trên biểu đồ (031) — mặc định tích cả hai.
+  const [showRevenue, setShowRevenue] = useState(true);
+  const [showProfit, setShowProfit] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -108,19 +118,87 @@ function CenterRevenueSection({ centerId }: { centerId: string }) {
       ) : error ? (
         <ErrorState description={error} onRetry={fetchData} />
       ) : !data ? null : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <StatTile label="Doanh thu (chưa trừ hoàn)" value={formatMoney(data.totalRevenue)} />
-            <StatTile label="Số đơn" value={String(data.orderCount)} />
-          </div>
-          <ReportTrendChart
-            data={data.series}
-            variant={groupBy === "day" ? "bar" : "line"}
-            series={[{ key: "revenue", label: "Doanh thu", color: "var(--chart-1)", formatValue: formatMoney }]}
-          />
-        </div>
+        <CenterRevenueBody
+          data={data}
+          groupBy={groupBy}
+          showRevenue={showRevenue}
+          onShowRevenueChange={setShowRevenue}
+          showProfit={showProfit}
+          onShowProfitChange={setShowProfit}
+        />
       )}
     </DashboardCard>
+  );
+}
+
+// Phần số liệu + biểu đồ (031). Lợi nhuận kế hoạch: tính theo các dòng sản
+// phẩm của xưởng, Giảm thêm/VAT chia theo tỷ lệ doanh số — xem
+// SalesOrderService. Không có quyền report.profit → không có ô tích, biểu đồ
+// chỉ còn doanh thu như trước.
+function CenterRevenueBody({
+  data,
+  groupBy,
+  showRevenue,
+  onShowRevenueChange,
+  showProfit,
+  onShowProfitChange,
+}: {
+  data: CenterRevenue;
+  groupBy: GroupBy;
+  showRevenue: boolean;
+  onShowRevenueChange: (v: boolean) => void;
+  showProfit: boolean;
+  onShowProfitChange: (v: boolean) => void;
+}) {
+  const canViewProfit = data.totalPlannedProfit !== undefined;
+  const totalPlannedProfit = data.totalPlannedProfit ?? 0;
+  const margin = data.totalRevenue > 0 ? (totalPlannedProfit / data.totalRevenue) * 100 : null;
+
+  const series: ReportTrendSeries[] = [];
+  if (showRevenue || !canViewProfit) {
+    series.push({ key: "revenue", label: "Doanh thu", color: "var(--chart-1)", formatValue: formatMoney });
+  }
+  if (canViewProfit && showProfit) {
+    series.push({ key: "plannedProfit", label: "Lợi nhuận kế hoạch", color: "var(--chart-2)", formatValue: formatMoneyRounded });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className={`grid grid-cols-2 gap-4 ${canViewProfit ? "sm:grid-cols-4" : ""}`}>
+        <StatTile label="Doanh thu (chưa trừ hoàn)" value={formatMoney(data.totalRevenue)} />
+        {canViewProfit && (
+          <>
+            <StatTile
+              label="Lợi nhuận kế hoạch"
+              value={formatMoneyRounded(totalPlannedProfit)}
+              tone={totalPlannedProfit < 0 ? "danger" : "default"}
+            />
+            <StatTile label="Tỷ suất lợi nhuận" value={margin === null ? "—" : `${margin.toFixed(1)}%`} />
+          </>
+        )}
+        <StatTile label="Số đơn" value={String(data.orderCount)} />
+      </div>
+
+      {canViewProfit && (
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <span className="text-muted-foreground">Hiện trên biểu đồ:</span>
+          <label className="flex cursor-pointer items-center gap-2">
+            <Checkbox checked={showRevenue} onCheckedChange={(v) => onShowRevenueChange(v === true)} />
+            Doanh thu
+          </label>
+          <label className="flex cursor-pointer items-center gap-2">
+            <Checkbox checked={showProfit} onCheckedChange={(v) => onShowProfitChange(v === true)} />
+            Lợi nhuận kế hoạch
+          </label>
+        </div>
+      )}
+
+      {series.length > 0 ? (
+        <ReportTrendChart data={data.series} variant={groupBy === "day" ? "bar" : "line"} series={series} />
+      ) : (
+        <p className="py-8 text-center text-sm text-muted-foreground">Tích ít nhất một ô để hiện biểu đồ.</p>
+      )}
+    </div>
   );
 }
 

@@ -180,7 +180,17 @@ Mỗi dòng: xưởng, số đơn (distinct `SalesOrder`), doanh số = `SUM(Sal
 
 Bấm tên xưởng → báo cáo chi tiết xưởng `/reports/production-centers/[id]` (`report.md` E1 — quyền `report.revenue-by-production-center`; người thiếu quyền này bấm vào sẽ không xem được, đã chấp nhận).
 
-Permission: `sales-order.view-cost`. Endpoint: `GET /dashboard/sales/by-production-center?from=&to=` (bắt buộc `from`/`to`).
+**Lợi nhuận kế hoạch theo xưởng (sprint-04/031, 13/10/2026)** — thêm cột cạnh Doanh số, có ở dòng Tổng. Tính theo **các dòng sản phẩm thuộc xưởng**, chỉ từ số đã chốt tại Approve (`SalesOrderService.itemPlannedProfit()`):
+
+```text
+netRevenue(đơn)   = plannedProfit + plannedCost        (đã trừ Giảm thêm + VAT hoá đơn)
+LN dòng           = netRevenue(đơn) × subtotal dòng / totalAmount đơn − plannedCost dòng
+LN xưởng          = SUM(LN dòng của xưởng)
+```
+
+"Giảm thêm" (cấp đơn) chia theo tỷ lệ doanh số (user chốt Cách 1); VAT là tỷ lệ cố định nên tương đương tính trên doanh thu xưởng. Tổng LN các xưởng = SUM(`SalesOrder.plannedProfit`) → khớp KPI "Lợi nhuận kế hoạch" và báo cáo A3. Không trừ hàng hoàn (cùng A3). Không gọi Pricing/BOM, không lặp hằng số VAT.
+
+Permission: `sales-order.view-cost` (luôn kèm lợi nhuận). Endpoint: `GET /dashboard/sales/by-production-center?from=&to=` (bắt buộc `from`/`to`).
 
 
 ---

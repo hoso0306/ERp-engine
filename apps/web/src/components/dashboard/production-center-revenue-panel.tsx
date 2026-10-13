@@ -15,15 +15,21 @@ interface CenterRevenueRow {
   orderCount: number;
   revenue: number;
   revenuePercent: number;
+  plannedProfit: number;
 }
 
 interface CenterRevenueResponse {
   totalRevenue: number;
+  totalPlannedProfit: number;
   centers: CenterRevenueRow[];
 }
 
 function formatMoney(amount: number) {
-  return new Intl.NumberFormat("vi-VN").format(amount) + " ₫";
+  return new Intl.NumberFormat("vi-VN").format(Math.round(amount)) + " ₫";
+}
+
+function profitClass(amount: number) {
+  return amount < 0 ? "text-destructive" : "";
 }
 
 function presetRangeThisMonth(): { from: string; to: string } {
@@ -39,7 +45,9 @@ function presetRangeThisMonth(): { from: string; to: string } {
 // số theo nhân viên": bộ lọc riêng, mặc định "Tháng này". Số liệu GROSS
 // (SUM thành tiền dòng đơn hàng, chưa trừ hàng hoàn) — khác khối theo nhân
 // viên vốn đã trừ hoàn, nên ghi rõ nhãn để không lẫn. Dòng không có xưởng =
-// bán lẻ vật tư (không qua sản xuất).
+// bán lẻ vật tư (không qua sản xuất). Cột "Lợi nhuận kế hoạch" (sprint-04/031)
+// — tính theo các dòng sản phẩm của xưởng, Giảm thêm/VAT chia theo tỷ lệ
+// doanh số; tổng khớp lợi nhuận kế hoạch toàn công ty (xem SalesOrderService).
 export function ProductionCenterRevenuePanel() {
   const { hasPermission } = useAuth();
   const canView = hasPermission("sales-order.view-cost");
@@ -104,6 +112,7 @@ export function ProductionCenterRevenuePanel() {
                 <TableHead>Xưởng</TableHead>
                 <TableHead className="text-right">Số đơn</TableHead>
                 <TableHead className="text-right">Doanh số (chưa trừ hoàn)</TableHead>
+                <TableHead className="text-right">Lợi nhuận kế hoạch</TableHead>
                 <TableHead className="text-right">Tỷ trọng</TableHead>
               </TableRow>
             </TableHeader>
@@ -121,6 +130,9 @@ export function ProductionCenterRevenuePanel() {
                   </TableCell>
                   <TableCell className="text-right text-sm">{c.orderCount}</TableCell>
                   <TableCell className="text-right font-mono text-sm">{formatMoney(c.revenue)}</TableCell>
+                  <TableCell className={`text-right font-mono text-sm ${profitClass(c.plannedProfit)}`}>
+                    {formatMoney(c.plannedProfit)}
+                  </TableCell>
                   <TableCell className="text-right text-sm">{c.revenuePercent.toFixed(1)}%</TableCell>
                 </TableRow>
               ))}
@@ -128,6 +140,9 @@ export function ProductionCenterRevenuePanel() {
                 <TableCell className="font-medium">Tổng</TableCell>
                 <TableCell />
                 <TableCell className="text-right font-mono text-sm font-medium">{formatMoney(data.totalRevenue)}</TableCell>
+                <TableCell className={`text-right font-mono text-sm font-medium ${profitClass(data.totalPlannedProfit)}`}>
+                  {formatMoney(data.totalPlannedProfit)}
+                </TableCell>
                 <TableCell />
               </TableRow>
             </TableBody>
