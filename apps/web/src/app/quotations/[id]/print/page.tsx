@@ -751,9 +751,12 @@ export default function QuotationPrintPage() {
                   // đúng ngữ cảnh "giá/m²"), không áp dụng cho sản phẩm nhập tay không
                   // đo m² (vd "Hàng phân phối thêm", "Chi phí Sửa chữa/Lắp đặt" — cũng có
                   // tham số "dongia" nhưng là giá trọn gói, không phải đơn giá/m²).
+                  // Giá nhập tay bằng 0 là giá trị mặc định của nhánh tra bảng,
+                  // không được ghi đè đơn giá snapshot đã tính cho sản phẩm.
+                  const manualUnitPrice = paramNumber(item.parameters, "dongia");
                   const effectiveUnitPrice =
                     m2 !== null && m2 > 0 && item.productName
-                      ? (paramNumber(item.parameters, "dongia") ??
+                      ? ((manualUnitPrice !== null && manualUnitPrice > 0 ? manualUnitPrice : null) ??
                         (isRcv
                           ? item.subtotal / m2
                           : EFFECTIVE_UNIT_PRICE_PRODUCT_NAMES.has(item.productName)

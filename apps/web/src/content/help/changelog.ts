@@ -4,6 +4,19 @@ import type { ChangelogRelease } from "./types";
 // cho người dùng: thêm 1 phần tử vào đầu mảng (cùng commit với tính năng).
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    date: "2026-10-27",
+    title: "Sửa đơn giá trên bản in",
+    items: [
+      {
+        title: "Hiển thị đúng đơn giá khi không nhập giá tay",
+        description:
+          "Bản in báo giá và đơn hàng chỉ ưu tiên đơn giá nhập tay lớn hơn 0. Khi giá nhập tay bằng 0, bản in dùng giá đã lưu của chứng từ, khắc phục trường hợp Mành Tăm và Mành Trúc hiển thị đơn giá 0. Thành tiền không thay đổi.",
+        requiredAnyPermission: ["quotation.print"],
+        articleSlug: "bao-gia-va-don-hang",
+      },
+    ],
+  },
+  {
     date: "2026-10-13",
     title: "Lợi nhuận kế hoạch theo xưởng",
     items: [

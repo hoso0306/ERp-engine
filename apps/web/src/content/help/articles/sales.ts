@@ -77,7 +77,7 @@ export const SALES_ARTICLES: HelpArticle[] = [
     title: "Báo giá → khách duyệt → đơn hàng",
     summary: "Lập báo giá, gửi khách, chốt đơn để hệ thống tự sinh đơn hàng và phiếu sản xuất",
     group: "Khách hàng & bán hàng",
-    updatedAt: "2026-10-12",
+    updatedAt: "2026-10-27",
     requiredAnyPermission: ["quotation.view"],
     sections: [
       {
@@ -116,6 +116,9 @@ export const SALES_ARTICLES: HelpArticle[] = [
         steps: [
           "Bấm \"In Đơn\" để mở bản in. Tại đây có thể \"Sao chép ảnh báo giá\" để dán thẳng vào Zalo, hoặc xuất PDF.",
           "Bấm \"Gửi báo giá\" → xác nhận. Báo giá chuyển sang Đã gửi (vẫn sửa được nếu khách yêu cầu đổi).",
+        ],
+        notes: [
+          "Trên bản in báo giá và đơn hàng, đơn giá nhập tay chỉ được ưu tiên khi lớn hơn 0. Nếu bằng 0 hoặc không có, bản in dùng giá đã lưu của chứng từ; thành tiền giữ nguyên.",
         ],
       },
       {
